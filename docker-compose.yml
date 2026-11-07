@@ -1,8 +1,9 @@
 # yeerr and everything around it, in one file:
-#   1. cp .env.example .env, and set DATA (your media folder) and your WireGuard file in it
+#   1. cp .env.example .env, and set DATA (your media folder) in it
 #   2. docker compose up -d --build
 #   3. open http://<server>:8800 and create your account. yeerr then sets up every app for you:
 #      no logins at home, no API keys to copy, indexers added, Jellyfin and Seerr ready.
+#      Upload your VPN's WireGuard file in Settings → Services → VPN; until then nothing downloads.
 # Each app keeps its config in ./<app>/config, like a hand-made *arr compose, so an existing
 # one can be dropped in. Settings → Services shows what was set up and runs it again.
 name: yeerr
@@ -45,6 +46,7 @@ services:
       - ./prowlarr/config:/stack/prowlarr:ro
       - ./bazarr/config:/stack/bazarr:ro
       - ./seerr/config:/stack/seerr:ro
+      - ./gluetun:/stack/gluetun       # the VPN file you upload goes here
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/api/health', timeout=5)"]
       interval: 30s
@@ -65,19 +67,29 @@ services:
       - .:/compose
     restart: "no"
 
-  gluetun:                     # the VPN; qBittorrent's only way out
+  gluetun:                     # the VPN; qBittorrent's only way out. Upload your WireGuard file in yeerr
+                               # (Settings → Services → VPN): until then nothing gets out at all
     image: qmcgaw/gluetun:latest
     cap_add: [NET_ADMIN]
     devices: ["/dev/net/tun:/dev/net/tun"]
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/sh", "/gluetun/yeerr-vpn.sh"]   # yeerr's front door: blocks, waits for the file, runs Gluetun
     environment:
       TZ: ${TZ:-Etc/UTC}
       VPN_SERVICE_PROVIDER: custom
       VPN_TYPE: wireguard
       FIREWALL_OUTBOUND_SUBNETS: ${LAN_SUBNET:-192.168.0.0/16},172.16.0.0/12   # home network and the other containers
     volumes:
-      - ${WIREGUARD_CONF:-./gluetun/wg0.conf}:/gluetun/wireguard/wg0.conf:ro
+      - ./gluetun:/gluetun
     ports:
       - "8080:8080"            # qBittorrent's page
+    healthcheck:               # healthy once its firewall is up (tunnel or not): only then may qBittorrent start
+      test: ["CMD-SHELL", "grep -qv '^broken' /gluetun/yeerr-vpn.state"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
     restart: unless-stopped
 
   qbittorrent:
@@ -86,7 +98,7 @@ services:
     network_mode: service:gluetun   # other apps reach it at gluetun:8080
     depends_on:
       gluetun:
-        condition: service_healthy
+        condition: service_healthy   # firewall up; no VPN file yet means no internet, not no qBittorrent
       setup:
         condition: service_completed_successfully
     environment:

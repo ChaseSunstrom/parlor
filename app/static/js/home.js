@@ -79,6 +79,37 @@ async function drawServices(t) {
   if (s.run.running) setTimeout(() => t === ticket && drawServices(t), 2500);
 }
 
+/* Settings → Services → VPN: qBittorrent's tunnel, set any time after the stack is running */
+const VPN_PILL = { connected: ["available", "Connected"], off: ["failed", "Off"], waiting: ["pending", "Blocked"], starting: ["pending", "Starting"],
+  connecting: ["pending", "Reconnecting"], restarting: ["pending", "Restarting"], stopped: ["failed", "Not running"] };
+async function drawVpn(t) {
+  const box = $("#vpn");
+  const v = await api("/api/stack/vpn").catch(() => null);
+  if (!box || t !== ticket || !v?.available) return;
+  box.innerHTML = `<section class="panel"><div class="head"><div><h3>VPN</h3>
+      <p>${esc(v.words)}.${v.endpoint ? ` Server: ${esc(v.endpoint)}.` : ""} Upload the WireGuard file from your VPN provider; replacing it switches servers.</p></div>
+      ${pill(...(VPN_PILL[v.state] || ["failed", v.state.startsWith("broken") ? "Broken" : "Unknown"]))}</div>
+    <div class="actions">
+      <label class="ghost" style="cursor:pointer" tabindex="0" role="button" id="wgPick">${v.file ? "Replace the WireGuard file" : "Upload a WireGuard file"}<input type="file" id="wgFile" accept=".conf,text/plain" hidden></label>
+      ${v.file ? `<button class="ghost danger" id="wgRemove">Remove it</button>` : ""}
+      ${v.off ? `<button class="ghost" id="vpnOn">Turn the VPN back on</button>` : `<button class="ghost danger" id="vpnOff">Run without a VPN…</button>`}
+    </div></section>`;
+  const redraw = (msg) => () => { toast(msg); drawVpn(t); };
+  const fail = (err) => toast(err.message);
+  $("#wgFile").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";  // the same file can be picked again after fixing it
+    if (f) put("/api/stack/vpn", { conf: await f.text() }).then(redraw("Saved: the VPN restarts with it"), fail);
+  });
+  $("#wgPick").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#wgFile").click(); } });
+  $("#wgRemove")?.addEventListener("click", () => confirm("Remove the WireGuard file? qBittorrent goes offline until there's a new one.")
+    && del("/api/stack/vpn").then(redraw("Removed: qBittorrent is offline"), fail));
+  $("#vpnOn")?.addEventListener("click", () => put("/api/stack/vpn/off", { off: false }).then(redraw("VPN back on"), fail));
+  $("#vpnOff")?.addEventListener("click", () => confirm("Run qBittorrent without a VPN? Its traffic, and your home's IP address, will be visible to everyone you download from and to your internet provider.")
+    && put("/api/stack/vpn/off", { off: true, confirm: true }).then(redraw("VPN off: qBittorrent connects directly"), fail));
+  if (["starting", "connecting", "restarting"].includes(v.state)) setTimeout(() => t === ticket && drawVpn(t), 3000);
+}
+
 /* You: your lists, your library and settings in one place (the phone's "more" page) */
 async function showYou(t) {
   paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
@@ -196,7 +227,7 @@ async function adminPanels(t) {
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
       ${u.jellyfin ? "" : `<button class="ghost" data-reset>Reset password</button>`}
       ${u.id === ME.id ? "" : `<button class="ghost danger" data-delete-user>Delete</button>`}</div></td></tr>`;
-  $("#adminSide").innerHTML = `<div id="services"></div>
+  $("#adminSide").innerHTML = `<div id="services"></div><div id="vpn"></div>
     <section class="panel"><div class="head"><div><h3>Seerr</h3><p>${status.connected ? `Connected${status.version ? `, version ${esc(status.version)}` : ""}.` : `Not connected${status.reason && status.reason !== "not set up" ? `: ${esc(status.reason)}` : "."}`}</p></div>
         ${pill(status.connected ? "available" : "failed", status.connected ? "Connected" : "Offline")}</div>
       <form id="seerrForm">
@@ -246,6 +277,7 @@ async function adminPanels(t) {
     put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
   });
   drawServices(t);
+  drawVpn(t);
   $("#keepForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/yt/retention", { days: +$("#keepDays").value, watched_only: $("#keepWatched").checked })

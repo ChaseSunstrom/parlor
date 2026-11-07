@@ -11,11 +11,11 @@ One `docker compose` file runs yeerr and the whole stack around it: Sonarr, Rada
 ## Run it
 
 ```sh
-cp .env.example .env        # set DATA (your media folder), PUID/PGID, TZ and your WireGuard file
+cp .env.example .env        # set DATA (your media folder), PUID/PGID and TZ
 docker compose up -d --build
 ```
 
-Open `http://<server>:8800` and create your account. yeerr then, in the background:
+Open `http://<server>:8800`, create your account, and upload your VPN's WireGuard file in **Settings → Services → VPN** ([more](#the-vpn)). yeerr then, in the background:
 
 - reads every app's API key from its config folder;
 - turns off logins **on your home network** in Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent and Cleanuparr (from outside, the others take your yeerr name and password; qBittorrent keeps its own, which it prints in its log the first time);
@@ -37,7 +37,7 @@ DATA/
 
 ### Moving over from your own compose
 
-The compose keeps each app's config in `./<app>/config`, the usual hand-made layout. Stop your old stack (`docker compose down` in its folder), copy those `config` folders and your `wg0.conf` next to this compose, set `DATA` to the folder you mounted as `/data` before, and start this one. Everything you set up stays; yeerr adds only what's missing: an app that already has a root folder, indexers or a login keeps them, and an indexer you delete stays deleted.
+The compose keeps each app's config in `./<app>/config`, the usual hand-made layout. Stop your old stack (`docker compose down` in its folder), copy those `config` folders next to this compose (and your `wg0.conf` to `gluetun/wireguard/`, or upload it later), set `DATA` to the folder you mounted as `/data` before, and start this one. Everything you set up stays; yeerr adds only what's missing: an app that already has a root folder, indexers or a login keeps them, and an indexer you delete stays deleted.
 
 Upgrading from an earlier yeerr (the one with the `yeerr-data` volume)? Its accounts and Seerr's settings were in Docker volumes; copy them into the new folders once, before the first start (`docker volume ls` shows the exact names):
 
@@ -50,7 +50,13 @@ docker run --rm -v yeerr_seerr-config:/from -v "$PWD/seerr/config:/to" alpine sh
 
 Then move your music to `$DATA/music` and downloaded videos to `$DATA/youtube` (use your `PUID:PGID` if they aren't 1000).
 
-Not using a VPN? Delete the `gluetun` service, remove `network_mode` and `depends_on: gluetun` from `qbittorrent`, give it `ports: ["8080:8080"]`, and set `QBITTORRENT_URL=http://qbittorrent:8080` in `.env`.
+### The VPN
+
+qBittorrent reaches the internet only through Gluetun, and Gluetun needs your VPN provider's WireGuard file. Upload it any time, with everything running: **Settings → Services → VPN → Upload a WireGuard file**. Until there is one, **nothing gets out**: qBittorrent can talk to your home network and the other apps, not the internet, so nothing downloads in the open while you set up. Uploading another file switches servers (Gluetun restarts on it); removing it blocks again. If the tunnel drops, Gluetun's kill switch keeps qBittorrent offline until it's back.
+
+yeerr checks the file before saving it (a `[Interface]` with `PrivateKey` and `Address`, one `[Peer]` with `PublicKey` and `Endpoint`) and looks up a host name in `Endpoint`, since Gluetun needs an address. The file is readable by root only and never shown again.
+
+Don't want a VPN? **Run without a VPN…** in the same place asks you to confirm, then lets qBittorrent connect directly (your home's address is then visible to everyone you download from). **Turn the VPN back on** blocks again. Without yeerr's page: `touch gluetun/yeerr-vpn-off` does the same, and deleting it undoes it. (A first version of this compose read `WIREGUARD_CONF` from `.env`; that setting is gone: upload the file, or put it at `gluetun/wireguard/wg0.conf`.)
 
 Coming from music-fndr? Stop its container first: yeerr uses the same port (8800). Point `DATA` at the folder that holds your music as `music/`; yeerr picks up music-fndr's queue and synced playlists from `music/.music-findr/`.
 
@@ -120,7 +126,6 @@ Set these in `.env` (see `.env.example`).
 |---|---|---|
 | `DATA` | `/data` | Your media folder. Every app sees it as `/data`; music is `DATA/music`, YouTube downloads `DATA/youtube`. |
 | `PUID`, `PGID` | `1000` | The user and group that own `DATA` (`id` shows yours). The apps run as them, and folders yeerr makes belong to them. |
-| `WIREGUARD_CONF` | `./gluetun/wg0.conf` | Your VPN provider's WireGuard file, for Gluetun |
 | `LAN_SUBNET` | `192.168.0.0/16` | Your home network (comma-separated for more than one): qBittorrent's page is reachable through the VPN from it and skips its login there |
 | `PUBLIC_INDEXERS` | `yts,eztv,thepiratebay,1337x,limetorrents,nyaasi,knaben` | Public indexers Prowlarr gets (Prowlarr's names); `none` adds none |
 | `PORT` | `8800` | yeerr's port |

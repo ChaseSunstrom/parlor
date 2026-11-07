@@ -10,11 +10,15 @@ admin account is created; Settings → Services runs it again any time.
 `python stack.py init` runs before the apps start (a one-shot in the compose): it opens
 qBittorrent to the home network, which has to be in its config file before it starts."""
 
+import base64
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -298,6 +302,8 @@ def init_files(root: Optional[Path] = None) -> list:
         _own(conf.parent, tmp)
         os.replace(tmp, conf)
         done.append("qBittorrent: no login on the home network")
+    if install_vpn_script(root):
+        done.append("gluetun: front door in place")
     return done
 
 
@@ -585,6 +591,199 @@ def start(name=None, password=None, retries=0) -> bool:
 
     threading.Thread(target=go, daemon=True, name="stack-setup").start()
     return True
+
+
+# --- the VPN: Gluetun, behind a front door that keeps qBittorrent offline until there's a tunnel --
+
+VPN_SCRIPT = Path(__file__).with_name("gluetun-front.sh")
+VPN_WORDS = {
+    "waiting": "No VPN file yet: qBittorrent reaches your home network, not the internet",
+    "starting": "Starting the VPN: qBittorrent stays offline until the tunnel is up",
+    "connecting": "Reconnecting: qBittorrent stays offline until the tunnel is back",
+    "restarting": "Gluetun stopped; starting it again (qBittorrent stays offline)",
+    "connected": "Connected: qBittorrent's traffic goes through the VPN only",
+    "off": "VPN off: qBittorrent's traffic goes out directly",
+}
+OFF_FLAG = "yeerr-vpn-off"
+QUIET = 120  # the front door touches its state file every 30 s; this long without means it isn't running
+
+
+def gluetun_dir() -> Path:
+    return STACK / "gluetun"
+
+
+def _key(value: str, what: str):
+    try:
+        if len(base64.b64decode(value, validate=True)) == 32:
+            return
+    except ValueError:
+        pass
+    raise ValueError(f"The {what} isn't a WireGuard key (44 characters of base64)")
+
+
+def check_wireguard(text: str) -> str:
+    """The file as Gluetun will read it, or ValueError in plain words: one [Interface] with a key and
+    addresses, one [Peer] with a key and an endpoint. Gluetun needs the endpoint as an IP address, so a
+    host name is looked up here."""
+    if len(text) > 16_000:
+        raise ValueError("That's too big for a WireGuard file")
+    found, section, endpoint_at = {}, None, None
+    lines = text.replace("\r\n", "\n").split("\n")
+    for i, raw in enumerate(lines):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip().lower()
+            if section == "peer" and "peer" in found:
+                raise ValueError("Gluetun takes one [Peer]; this file has more")
+            found.setdefault(section, {})
+            continue
+        if section is None or "=" not in line:
+            raise ValueError("That isn't a WireGuard file (it should start with [Interface])")
+        k, v = (s.strip() for s in line.split("=", 1))
+        found[section][k.lower()] = v
+        if section == "peer" and k.lower() == "endpoint":
+            endpoint_at = i
+    for section, keys in (("Interface", ("PrivateKey", "Address")), ("Peer", ("PublicKey", "Endpoint"))):
+        for k in keys:
+            if not found.get(section.lower(), {}).get(k.lower()):
+                raise ValueError(f"The file has no {k} in [{section}]")
+    me, peer = found["interface"], found["peer"]
+    _key(me["privatekey"], "PrivateKey")
+    _key(peer["publickey"], "PublicKey")
+    if peer.get("presharedkey"):
+        _key(peer["presharedkey"], "PresharedKey")
+    try:
+        for a in me["address"].split(","):
+            ipaddress.ip_interface(a.strip())
+    except ValueError as exc:
+        raise ValueError(f"The Address in [Interface] should be like 10.64.0.2/32, not {me['address'][:40]}") from exc
+    host, _, port = peer["endpoint"].rpartition(":")
+    host = host.strip("[]")
+    if not host or not (port.isascii() and port.isdecimal() and 0 < int(port) < 65536):
+        raise ValueError("The [Peer] Endpoint should look like vpn.example.com:51820")
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            ip = ipaddress.ip_address(socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_DGRAM)[0][4][0])
+        except (OSError, IndexError, UnicodeError) as exc:
+            raise ValueError(f"Couldn't look up {host[:60]}; put the server's IP address in Endpoint instead") from exc
+    ep = f"[{ip}]:{port}" if ip.version == 6 else f"{ip}:{port}"
+    lines[endpoint_at] = f"Endpoint = {ep}"
+    return "\n".join(lines).strip() + "\n"
+
+
+def vpn_state(folder: Optional[Path] = None) -> dict:
+    """What the front door last said, the server, and the switches; never the file's keys."""
+    g = folder or gluetun_dir()
+    conf, state = g / "wireguard" / "wg0.conf", g / "yeerr-vpn.state"
+    try:
+        raw, age = state.read_text(errors="replace").strip(), time.time() - state.stat().st_mtime
+    except OSError:
+        raw, age = "", 0
+    endpoint = None
+    if conf.is_file():
+        endpoint = next((ln.split("=", 1)[1].strip() for ln in conf.read_text(errors="replace").splitlines()
+                         if "=" in ln and ln.split("=", 1)[0].strip().lower() == "endpoint"), None)
+    if not raw:
+        words = "Gluetun hasn't started yet (or is from before this yeerr)"
+    elif age > QUIET:
+        raw, words = "stopped", f"Gluetun isn't running: nothing heard from it for {int(age // 60)} minutes"
+    elif raw.startswith("broken"):
+        why = raw.split(": ", 1)[-1]
+        words = "Can't run the VPN: " + why[:1].lower() + why[1:]
+    else:
+        words = VPN_WORDS.get(raw, raw)
+    return {"available": g.is_dir(), "state": raw or "unknown", "words": words, "file": conf.is_file(),
+            "endpoint": endpoint, "off": (g / OFF_FLAG).exists()}
+
+
+def save_wireguard(text: str, folder: Optional[Path] = None) -> dict:
+    """Checked, then swapped in whole (Gluetun's front door sees the change and restarts it);
+    a file means you want the VPN, so the off switch goes back on."""
+    g = folder or gluetun_dir()
+    text = check_wireguard(text)
+    (g / "wireguard").mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=g / "wireguard", prefix=".wg0.", suffix=".tmp")  # 0600, its own name
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(tmp, g / "wireguard" / "wg0.conf")
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    (g / OFF_FLAG).unlink(missing_ok=True)
+    return vpn_state(g)
+
+
+def vpn_off(off: bool, folder: Optional[Path] = None) -> dict:
+    g = folder or gluetun_dir()
+    if off:
+        (g / OFF_FLAG).write_text("Turned off in yeerr; delete this file (or turn the VPN on in yeerr) to block again\n")
+    else:
+        (g / OFF_FLAG).unlink(missing_ok=True)
+    return vpn_state(g)
+
+
+def install_vpn_script(root: Path) -> bool:
+    """The front door into ./gluetun (the compose starts Gluetun through it); True if it changed.
+    A wg0.conf where the old compose kept it moves to where Gluetun reads it now."""
+    g = root / "gluetun"
+    (g / "wireguard").mkdir(parents=True, exist_ok=True)
+    old, new = g / "wg0.conf", g / "wireguard" / "wg0.conf"
+    if old.is_file() and not new.exists():
+        os.replace(old, new)
+    dest = g / "yeerr-vpn.sh"
+    script = VPN_SCRIPT.read_text()
+    if dest.is_file() and dest.read_text() == script:
+        return False
+    dest.write_text(script)
+    return True
+
+
+def _vpn_ready():
+    if not on() or not gluetun_dir().is_dir():
+        raise HTTPException(409, "The VPN is set here only in yeerr's own compose (./gluetun isn't mounted)")
+
+
+@router.get("/vpn")
+def vpn(_=Depends(admin)):
+    return vpn_state()
+
+
+class WireGuard(BaseModel):
+    conf: str
+
+
+@router.put("/vpn")
+def put_vpn(body: WireGuard, _=Depends(admin)):
+    _vpn_ready()
+    try:
+        return save_wireguard(body.conf)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.delete("/vpn")
+def delete_vpn(_=Depends(admin)):
+    _vpn_ready()
+    (gluetun_dir() / "wireguard" / "wg0.conf").unlink(missing_ok=True)
+    return vpn_state()
+
+
+class VpnOff(BaseModel):
+    off: bool
+    confirm: bool = False
+
+
+@router.put("/vpn/off")
+def put_vpn_off(body: VpnOff, _=Depends(admin)):
+    _vpn_ready()
+    if body.off and not body.confirm:
+        raise HTTPException(400, "Turning the VPN off sends qBittorrent's traffic out directly: confirm it")
+    return vpn_off(body.off)
 
 
 # --- the Services page ---------------------------------------------------------------------
