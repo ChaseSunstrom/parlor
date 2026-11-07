@@ -1304,20 +1304,22 @@ def start():
     restore_jobs()
     for n in range(max(1, PARALLEL)):
         threading.Thread(target=download_worker, daemon=True, name=f"yt-download-{n}").start()
+    threading.Thread(target=sweeper, daemon=True, name="yt-retention").start()
 
 
 # --- your video library ------------------------------------------------------------------
 
 @router.get("/yt/library")
 def library(user=Depends(me)):
-    found = rows("SELECT v.id, v.item, v.path, v.size, v.quality, v.added, v.user_id, u.name AS by_name "
+    found = rows("SELECT v.id, v.item, v.path, v.size, v.quality, v.added, v.user_id, v.keep, u.name AS by_name "
                  "FROM videos v LEFT JOIN users u ON u.id = v.user_id ORDER BY v.added DESC")
-    items = []
+    rule, items = retention(), []
     for r in found:
         if inside_videos(r["path"]):
             items.append({"type": "video", "id": r["id"], **json.loads(r["item"]), "thumb": f"/api/yt/file/{r['id']}/thumb",
                           "size": r["size"], "quality": r["quality"], "added": r["added"], "by": r["by_name"],
-                          "mine": r["user_id"] == user["id"]})
+                          "mine": r["user_id"] == user["id"], "keep": bool(r["keep"]),
+                          "expires": r["added"] + rule["days"] * 86400 if rule["days"] and not r["keep"] and not rule["watched_only"] else None})
     try:
         disk = shutil.disk_usage(core.VIDEOS)
         space = {"total": disk.total, "free": disk.free}
@@ -1363,17 +1365,104 @@ def video_thumb(vid: str):
 
 @router.delete("/yt/library/{vid}")
 def delete_video(vid: str, user=Depends(me)):
-    row, path = _saved(vid)
+    row, _ = _saved(vid)
     if not user["admin"] and row["user_id"] != user["id"]:
         raise HTTPException(403, "Only the person who downloaded it, or an admin, can delete it")
-    for f in path.parent.glob(glob_escape(path.stem) + ".*"):  # the video and its thumbnail/subtitles
-        f.unlink(missing_ok=True)
-    try:
-        path.parent.rmdir()  # the channel folder, if that was its last video
-    except OSError:
-        pass
-    db().execute("DELETE FROM videos WHERE id = ?", (vid,))
+    remove_video(vid)
     return {"ok": True}
+
+
+def remove_video(vid):
+    """Delete a downloaded video's files (if they're still there) and its row."""
+    row = one("SELECT path FROM videos WHERE id = ?", vid)
+    path = row and inside_videos(row["path"])
+    if path:
+        for f in path.parent.glob(glob_escape(path.stem) + ".*"):  # the video and its thumbnail/subtitles
+            f.unlink(missing_ok=True)
+        try:
+            path.parent.rmdir()  # the channel folder, if that was its last video
+        except OSError:
+            pass
+    db().execute("DELETE FROM videos WHERE id = ?", (vid,))
+
+
+# --- retention: downloads deleted after a while, if an admin turns it on ------------------
+
+def retention():
+    try:
+        days = max(0.0, float(core.setting("video_keep_days") or 0))
+    except ValueError:
+        days = 0.0
+    return {"days": int(days) if days == int(days) else days, "watched_only": core.setting("video_keep_watched_only") == "1"}
+
+
+def expired(now=None):
+    """Downloads past the retention period: N days after download, or with watched-only,
+    N days after someone finished watching. Kept videos never expire."""
+    rule = retention()
+    if not rule["days"]:
+        return []
+    cutoff = (now or time.time()) - rule["days"] * 86400
+    if not rule["watched_only"]:
+        return [r["id"] for r in rows("SELECT id FROM videos WHERE keep = 0 AND added < ?", cutoff)]
+    out = []
+    for r in rows("SELECT id, item FROM videos WHERE keep = 0"):
+        length = json.loads(r["item"]).get("duration") or 0
+        # finished: within 30 s or 10% of the end, whichever is later
+        if length and one("SELECT 1 AS x FROM history WHERE video_id = ? AND position >= ? AND watched < ?",
+                          r["id"], max(length * 0.9, length - 30), cutoff):
+            out.append(r["id"])
+    return out
+
+
+def sweep():
+    for vid in expired():
+        try:
+            remove_video(vid)
+            log.info("deleted downloaded video %s (retention)", vid)
+        except OSError:
+            log.warning("couldn't delete downloaded video %s", vid, exc_info=True)
+
+
+def sweeper():
+    while True:
+        try:
+            sweep()
+        except Exception:
+            log.exception("retention sweep failed")
+        time.sleep(3600)
+
+
+class Retention(BaseModel):
+    days: float
+    watched_only: bool = False
+
+
+@router.get("/yt/retention")
+def get_retention(_=Depends(me)):
+    return retention()
+
+
+@router.put("/yt/retention")
+def set_retention(body: Retention, _=Depends(admin)):
+    if not 0 <= body.days <= 3650:
+        raise HTTPException(422, "Days is 0 (keep everything) up to 3650")
+    core.set_setting("video_keep_days", str(body.days))
+    core.set_setting("video_keep_watched_only", "1" if body.watched_only else "0")
+    return retention()
+
+
+class Keep(BaseModel):
+    keep: bool
+
+
+@router.post("/yt/library/{vid}/keep")
+def keep_video(vid: str, body: Keep, user=Depends(me)):
+    row, _ = _saved(vid)
+    if not user["admin"] and row["user_id"] != user["id"]:
+        raise HTTPException(403, "Only the person who downloaded it, or an admin, can change that")
+    db().execute("UPDATE videos SET keep = ? WHERE id = ?", (int(body.keep), vid))
+    return {"keep": body.keep}
 
 
 def glob_escape(name: str) -> str:
@@ -1382,4 +1471,4 @@ def glob_escape(name: str) -> str:
 
 @router.get("/yt/status")
 def status(_=Depends(admin)):
-    return {"yt_dlp": yt_dlp.version.__version__, "parallel": PARALLEL, "videos": str(core.VIDEOS)}
+    return {"yt_dlp": yt_dlp.version.__version__, "parallel": PARALLEL, "videos": str(core.VIDEOS), "retention": retention()}

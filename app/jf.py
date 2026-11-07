@@ -95,7 +95,8 @@ def hexid(value, what="id"):
 # --- cards: the few fields the page needs, nothing of Jellyfin's own paths ------------
 
 def art(item_id, tag, kind="Primary"):
-    return f"/api/jf/stream/Items/{item_id}/Images/{kind}?tag={quote(str(tag), safe='')}" if item_id and tag else None
+    width = 1920 if kind.startswith("Backdrop") else 600  # cards don't need the full-size original
+    return f"/api/jf/stream/Items/{item_id}/Images/{kind}?tag={quote(str(tag), safe='')}&maxWidth={width}" if item_id and tag else None
 
 
 def secs(ticks):
@@ -176,10 +177,11 @@ def items(parent: str = "", types: str = "", sort: str = "", order: str = "", st
 
 @router.get("/latest")
 def latest(parent: str = "", limit: int = Query(20, ge=1, le=100), user=Depends(me)):
-    params = {"userId": who(user)["id"], "limit": limit, "fields": "Overview"}
+    uid = who(user)["id"]
+    params = {"userId": uid, "limit": limit, "fields": "Overview"}
     if parent:
         params["parentId"] = hexid(parent, "folder")
-    return [card(i) for i in call("GET", "/Items/Latest", params=params).json()]
+    return [card(i) for i in either("GET", "/Items/Latest", f"/Users/{uid}/Items/Latest", params=params).json()]
 
 
 @router.get("/resume")
@@ -321,6 +323,7 @@ ALLOWED = re.compile(rf"Videos/{_I}/(?:{_PLAY}|{_I}/Subtitles/\d+/(?:\d+/)?Strea
                      rf"|Audio/{_I}/(?:{_PLAY}|universal)"
                      rf"|Items/{_I}/(?:Images/(?:Primary|Backdrop|Thumb|Logo|Banner)(?:/\d+)?|Download)", re.ASCII)
 KEYS = {"api_key", "apikey", "x-emby-token"}
+DROP = KEYS | {"userid", "deviceid"}  # never forwarded from the browser: the server decides who is asking
 _KEY = re.compile(r"([?&])(?:api_key|apikey|x-emby-token)=[^&\s\"']*(&?)", re.I)
 PASS = ("content-range", "content-length", "accept-ranges")
 
@@ -341,11 +344,29 @@ def proxied(url: str):
     return f"/api/jf/stream/{path}" + (f"?{query}" if query else "")
 
 
+_seen = Cache(60, 5000)  # (Jellyfin user, item) pairs checked lately, so HLS segments don't each ask
+
+
+def may_see(user, iid, download=False):
+    """The proxy fetches with the admin key, so check this person's Jellyfin user can see the item
+    (and download, for Download) before serving it."""
+    uid = who(user)["id"]
+    if _seen.get((uid, iid.lower())) is None:
+        get_item(iid, uid)  # a 404 here means their Jellyfin user can't see it
+        _seen.put((uid, iid.lower()), True)
+    if download:
+        policy = next((u.get("Policy") or {} for u in _users.get("all") or [] if u["Id"] == uid), {})
+        if policy.get("EnableContentDownloading") is False:
+            raise HTTPException(403, "Your Jellyfin account isn't allowed to download")
+
+
 @router.get("/stream/{path:path}")
 def stream(path: str, request: Request, user=Depends(me)):
     if len(path) > 300 or not ALLOWED.fullmatch(path):
         raise HTTPException(404, "No such stream")
-    params = [(k, v) for k, v in request.query_params.multi_items() if k.lower() not in KEYS]
+    if "/Images/" not in path:  # pictures are let through unchecked: a page of cards would mean a lookup each
+        may_see(user, path.split("/")[1], download=path.endswith("/Download"))
+    params = [(k, v) for k, v in request.query_params.multi_items() if k.lower() not in DROP]
     headers = {"Accept-Encoding": "identity"}  # a compressed body would make Content-Length lie
     if request.headers.get("range"):
         headers["Range"] = request.headers["range"]

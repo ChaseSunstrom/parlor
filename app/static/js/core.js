@@ -36,6 +36,10 @@ const bytes = (n) => {
 };
 
 const ICON = {
+  home: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  user: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 20c.9-3.9 3.9-6 7.5-6s6.6 2.1 7.5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  pin: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10v17l-5-3.8-5 3.8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  pinned: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h10v17l-5-3.8-5 3.8z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   dl: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   ok: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   x: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
@@ -159,7 +163,7 @@ async function route() {
   const entry = PAGES[view] || PAGES[""];
   current = entry.section;
   document.body.dataset.section = current;
-  $$(".nav a").forEach((a) => a.toggleAttribute("aria-current", a.dataset.nav === current));
+  drawNav();
   input.placeholder = SECTIONS[current] || SECTIONS.home;
   closeMenus();
   if (!(PAGES[view] && /search/.test(location.hash))) input.value = "";
@@ -173,6 +177,17 @@ async function route() {
   keepScroll = false;
 }
 let keepScroll = false;
+let drawn = {};
+function drawNav() {
+  const at = navAt(location.hash, current);
+  const put = (el, html) => { if (drawn[el] !== html) $(el).innerHTML = drawn[el] = html; }; // unchanged: keep focus where it is
+  put(".nav", tabsHtml(at));
+  put("#side", sideHtml(at));
+  $("#back").hidden = !!(at.href || at.own || at.group === "home" && !location.hash.startsWith("#/search")); // pages inside a section get Back
+}
+$("#back").addEventListener("click", () => (history.length > 1 ? history.back() : go("#/")));
+/** this section's pages as a row of chips; phones only (wide screens have the sidebar) */
+const subnav = () => subnavHtml(navAt(location.hash, current));
 
 /* ---------- search box: searches the section you're in ---------- */
 

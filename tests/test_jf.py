@@ -96,6 +96,7 @@ class FakeJellyfin:
             ("GET", "/Items", lambda m, q, b, h: {"Items": [TRACK_JSON] if q.get("includeitemtypes") == "Audio" else [MOVIE_JSON, EP_JSON],
                                                   "TotalRecordCount": 7}),
             ("GET", "/Items/Latest", lambda *a: [MOVIE_JSON]),
+            ("GET", uid + "/Items/Latest", lambda *a: [MOVIE_JSON]),
             ("GET", "/UserItems/Resume", listing([MOVIE_JSON])),
             ("GET", uid + "/Items/Resume", listing([MOVIE_JSON])),
             ("GET", "/Shows/NextUp", listing([EP_JSON])),
@@ -109,7 +110,7 @@ class FakeJellyfin:
             ("POST", uid + "/Items/(?P<id>\\w+)/UserData", user_data),
             ("GET", "/(?:Videos|Audio)/.*|/Items/\\w+/(?:Images|Download).*", self.media),
         ]
-        gone = ("/UserViews", "/UserItems/Resume", "/Items/(?P<id>\\w+)", "/UserItems/(?P<id>\\w+)/UserData")  # before 10.9
+        gone = ("/UserViews", "/UserItems/Resume", "/Items/Latest", "/Items/(?P<id>\\w+)", "/UserItems/(?P<id>\\w+)/UserData")  # before 10.9
         return [r for r in routes if not (self.old and r[1] in gone)]
 
     def media(self, m, q, body, headers):
@@ -156,6 +157,7 @@ class Base(unittest.TestCase):
         for k, v in (("jellyfin_url", BASE), ("jellyfin_key", KEY), ("jellyfin_user", "family")):
             core.set_setting(k, v)
         jf._users.data.clear()
+        jf._seen.data.clear()
         self.fake = FakeJellyfin(self.old)
         patch = mock.patch.object(jf.requests, "request", self.fake)
         patch.start()
@@ -246,13 +248,13 @@ class Browse(Base):
         movie = body["items"][0]
         self.assertEqual(movie, {**movie, "id": MOVIE, "type": "Movie", "name": "Heat", "year": 1995, "overview": "Cops and robbers.",
                                  "runtime": 170 * 60, "played": False, "position": 600, "favourite": True,
-                                 "image": f"/api/jf/stream/Items/{MOVIE}/Images/Primary?tag=tagP",
-                                 "backdrop": f"/api/jf/stream/Items/{MOVIE}/Images/Backdrop/0?tag=tagB"})
+                                 "image": f"/api/jf/stream/Items/{MOVIE}/Images/Primary?tag=tagP&maxWidth=600",
+                                 "backdrop": f"/api/jf/stream/Items/{MOVIE}/Images/Backdrop/0?tag=tagB&maxWidth=1920"})
         self.assertNotIn("/secret", r.text, "Jellyfin's own fields don't leak")
         self.assertNotIn(KEY, r.text)
         ep = body["items"][1]
         self.assertEqual((ep["series"], ep["series_id"], ep["season"], ep["episode"], ep["played"]), ("Show", SERIES, 1, 2, True))
-        self.assertEqual(ep["image"], f"/api/jf/stream/Items/{SERIES}/Images/Primary?tag=sp", "an episode without a picture shows its series'")
+        self.assertEqual(ep["image"], f"/api/jf/stream/Items/{SERIES}/Images/Primary?tag=sp&maxWidth=600", "an episode without a picture shows its series'")
         self.get("/api/jf/items")
         q = self.fake.last("/Items")["q"]
         self.assertNotIn("recursive", q, "Recursive only when types (or a search) say what to look for")
@@ -288,7 +290,7 @@ class Browse(Base):
         self.assertEqual(self.fake.last("/Items")["q"]["parentid"], ALBUM)
         t = self.get(f"/api/jf/item/{TRACK}").json()
         self.assertEqual((t["album"], t["album_id"]), ("Record", ALBUM))
-        self.assertEqual(t["image"], f"/api/jf/stream/Items/{ALBUM}/Images/Primary?tag=ap")
+        self.assertEqual(t["image"], f"/api/jf/stream/Items/{ALBUM}/Images/Primary?tag=ap&maxWidth=600")
         self.assertEqual(self.get("/api/jf/item/nothex").status_code, 422)
         self.assertEqual(self.get(f"/api/jf/item/{hid(0x777)}").status_code, 404)
 
@@ -386,7 +388,7 @@ class Proxy(Base):
         self.assertEqual(c["path"], f"/Videos/{MOVIE}/stream")
         self.assertEqual(c["headers"]["Range"], "bytes=5-9", "Range goes through")
         self.assertIn(KEY, c["headers"]["Authorization"])
-        self.assertEqual(dict(c["params"]), {"static": "true", "MediaSourceId": MS, "userId": "u"})
+        self.assertEqual(dict(c["params"]), {"static": "true", "MediaSourceId": MS}, "the browser can't pick another userId")
         self.assertTrue(c["stream"])
         for h, v in (("content-range", "bytes 5-9/100"), ("content-length", "5"), ("content-type", "video/mp4"), ("accept-ranges", "bytes")):
             self.assertEqual(r.headers[h], v)
@@ -438,7 +440,16 @@ class Proxy(Base):
         self.assertEqual(dict(self.fake.calls[-1]["params"]), {"tag": "tagP", "maxWidth": "300"})
         self.assertEqual(self.stream(f"Videos/{MOVIE}/stream").headers["cache-control"], "no-store")
 
+    def test_only_what_your_jellyfin_user_can_see(self):
+        hidden = hid(0x777)  # the fake's Jellyfin has no such item for this user
+        before = len(self.fake.calls)
+        self.assertEqual(self.stream(f"Videos/{hidden}/stream").status_code, 404)
+        self.assertFalse([c for c in self.fake.calls[before:] if "/Videos/" in c.get("url", "")], "nothing was streamed")
+        jf._users.put("all", [{**u, "Policy": {"EnableContentDownloading": False}} for u in jf._users.get("all") or jf.call("GET", "/Users").json()])
+        self.assertEqual(self.stream(f"Items/{MOVIE}/Download").status_code, 403)
+
     def test_upstream_trouble(self):
+        self.stream(f"Videos/{MOVIE}/stream")  # the access check is cached, so what follows tests the stream itself
         for status, want in ((404, 404), (500, 502), (401, 502), (302, 502)):
             with mock.patch.object(jf.requests, "request", lambda *a, **k: Resp(status)):
                 self.assertEqual(self.stream(f"Videos/{MOVIE}/stream").status_code, want, status)

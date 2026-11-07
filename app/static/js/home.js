@@ -48,6 +48,14 @@ async function showDashboard(t) {
   (libraryOnce ||= loadLibrary().catch(() => { libraryOnce = null; })).then((songs) => { if (songs?.length) { stats.songs = songs.length; drawStats(); } });
 }
 
+/* You: your lists, your library and settings in one place (the phone's "more" page) */
+async function showYou(t) {
+  paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
+    <div class="wrap">${youHtml()}${slot("youContinue", "", "")}${slot("youLater", "", "")}</div>`);
+  api("/api/me/history?unfinished=true&limit=16").then((r) => fill(t, "youContinue", r.items.length ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v)).join("")}</div>`, "#/yt/continue") : ""), () => fill(t, "youContinue", ""));
+  api("/api/me/later").then((r) => { const items = r.items || r; fill(t, "youLater", items.length ? shelf("Watch later", `<div class="vstrip">${items.slice(0, 16).map((v) => vcard(v)).join("")}</div>`, "#/yt/later") : ""); }, () => fill(t, "youLater", ""));
+}
+
 async function showSearchAll(t, parts) {
   const q = parts.join("/");
   input.value = q;
@@ -180,6 +188,16 @@ async function adminPanels(t) {
         <label class="check"><input type="checkbox" id="newAdmin"><span>Admin</span></label>
         <div class="actions"><button class="primary small">Add account</button></div></form>
     </section>
+    <section class="panel"><h3>Downloaded videos</h3>
+      <form id="keepForm">
+        <label class="field"><span>Delete downloaded videos</span><select class="input" id="keepDays">
+          ${[[0, "Never"], [7, "After a week"], [14, "After 2 weeks"], [30, "After 30 days"], [60, "After 60 days"], [90, "After 90 days"], [180, "After 6 months"], [365, "After a year"]]
+            .concat([0, 7, 14, 30, 60, 90, 180, 365].includes(yt.retention?.days ?? 0) ? [] : [[yt.retention.days, `After ${plural(yt.retention.days, "day")}`]])
+            .map(([d, label]) => `<option value="${d}"${d === (yt.retention?.days ?? 0) ? " selected" : ""}>${label}</option>`).join("")}</select>
+          <small>Videos anyone pressed Keep on are never deleted. Checked every hour.</small></label>
+        <label class="check"><input type="checkbox" id="keepWatched"${yt.retention?.watched_only ? " checked" : ""}><span>Only once someone has watched it to the end, counting from then</span></label>
+        <div class="actions"><button class="primary small">Save</button></div></form>
+    </section>
     <section class="panel"><h3>About</h3><p>yt-dlp ${esc(yt.yt_dlp || "?")}, updated on every start and daily. Up to ${esc(yt.parallel || 2)} video downloads at once, saved to <code>${esc(yt.videos || "")}</code>.</p></section>`;
 
   $("#seerrForm").addEventListener("submit", (e) => {
@@ -195,6 +213,11 @@ async function adminPanels(t) {
   $("#signinForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
+  });
+  $("#keepForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    put("/api/yt/retention", { days: +$("#keepDays").value, watched_only: $("#keepWatched").checked })
+      .then((r) => toast(ruleText(r).split(".")[0] + "."), (err) => toast(err.message));
   });
   $("#addUser").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -264,6 +287,7 @@ async function showGate(mode) {
 page("", showDashboard, "home");
 page("search", showSearchAll, "home");
 page("settings", showSettings, "settings");
+page("you", showYou, "settings");
 
 async function boot() {
   try {

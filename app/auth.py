@@ -313,7 +313,7 @@ def put_settings(body: Settings, _=Depends(admin)):
         set_setting("jellyfin_url", _url(body.jellyfin_url))
     if body.jellyfin_key is not None:
         key = body.jellyfin_key.strip()
-        if not re.fullmatch(r"[\w.=+/-]{0,128}", key):
+        if not re.fullmatch(r"[\w.=+/-]{0,128}", key, re.ASCII):
             raise HTTPException(422, "That doesn't look like a Jellyfin API key")
         set_setting("jellyfin_key", key)
     if body.jellyfin_user is not None:

@@ -75,6 +75,11 @@ CREATE TABLE IF NOT EXISTS videos (
 );
 """
 
+COLUMNS = [
+    ("videos", "keep", "INTEGER NOT NULL DEFAULT 0"),  # 1: never deleted by the retention rule
+    ("users", "jf_user", "TEXT"),  # the Jellyfin user (name or id) they play as, set by an admin
+]
+
 _local = threading.local()
 _schema_lock = threading.Lock()
 _ready: set = set()
@@ -93,11 +98,12 @@ def db() -> sqlite3.Connection:
         with _schema_lock:
             if path not in _ready:
                 conn.executescript(SCHEMA)
-                if "jf_user" not in {r["name"] for r in conn.execute("PRAGMA table_info(users)")}:  # databases from before it
-                    try:
-                        conn.execute("ALTER TABLE users ADD COLUMN jf_user TEXT")
-                    except sqlite3.OperationalError:  # another process added it first
-                        pass
+                for table, column, decl in COLUMNS:  # columns added after a table first shipped
+                    if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                        try:
+                            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                        except sqlite3.OperationalError:  # another process added it first
+                            pass
                 _ready.add(path)
         _local.db, _local.path = conn, path
     return conn
@@ -121,6 +127,7 @@ ENV_DEFAULTS = {
     "jellyfin_key": "JELLYFIN_API_KEY",
     "jellyfin_user": "JELLYFIN_USER",
     "open_signup": "OPEN_SIGNUP",
+    "video_keep_days": "VIDEO_KEEP_DAYS",
 }
 
 

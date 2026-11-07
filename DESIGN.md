@@ -26,4 +26,11 @@ The app always shows a little movement, which carries information where it can:
 - the player's seek map draws the YouTube "most replayed" heat curve, chapters and SponsorBlock segments under a live playhead
 
 All of it stops under `prefers-reduced-motion`. Light mode follows the system.
-On phones, the section nav becomes a bottom tab bar.
+
+## Navigation
+
+One list (`NAV` in `app/static/js/nav.js`) draws all of it, so a new section or page is one entry:
+
+- **Wide screens (900 px and up):** a sidebar with each section and its pages, the section icon in its own colour, a glowing dot on the current page. A **Back** button appears in the top bar on pages inside a section (a film, an album, a video).
+- **Phones and tablets:** a tab bar with the first four sections and **You**, and a row of the section's pages under each page title.
+- **You** holds your own lists (continue watching, watch later, history, downloaded, channels) and Settings, and lists every section's pages, so anything is two taps away.
