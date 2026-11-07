@@ -1,6 +1,7 @@
 """Setting up the whole stack: every step checks first, changes only what's missing, and says
 what it did. The apps are one fake (an in-memory copy of each API's behaviour seen on real ones)."""
 import json
+import os
 import re
 import threading
 import time
@@ -663,6 +664,21 @@ class YourOwnIndexers(Base):
 
 
 class InitFiles(unittest.TestCase):
+    def test_empty_media_folders_docker_made_go_to_the_apps_user_and_full_ones_are_left_alone(self):
+        media = TMP / "kinds"
+        for kind in ("movies", "shows"):
+            (media / kind).mkdir(parents=True, exist_ok=True)
+        (media / "shows" / "Show").mkdir(exist_ok=True)
+        owned = []
+        other = str(os.getuid() + 1)  # the apps' user is not who owns the folders
+        with mock.patch.object(stack, "DATA", media), mock.patch.object(stack, "_own", lambda *p: owned.extend(p)), \
+                mock.patch.dict(os.environ, {"PUID": other, "PGID": other}):
+            done = stack.init_files(TMP / "init-kinds")
+        self.assertEqual(owned.count(media / "movies"), 1, "empty and not theirs: handed over")
+        self.assertNotIn(media / "shows", owned, "an existing library is never touched")
+        self.assertNotIn(media / "music", owned, "a folder that isn't mounted isn't made")
+        self.assertIn("movies: folder handed to the apps' user", done)
+
     def test_qbittorrent_opens_to_the_home_network_once_and_keeps_your_password(self):
         root = TMP / "init"
         conf = root / "qbittorrent" / "config" / "qBittorrent" / "qBittorrent.conf"

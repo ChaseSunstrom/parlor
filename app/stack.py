@@ -358,6 +358,7 @@ def _ensure(lines, section, pairs):
     return changed or bool(insert)
 
 
+KINDS = ["movies", "shows", "music", "books", "games", "youtube", "downloads"]  # each is /data/<kind>, and .env can put it anywhere
 CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent"]
 
 
@@ -388,6 +389,15 @@ def init_files(root: Optional[Path] = None) -> list:
             folder.mkdir(parents=True)
             _own(folder.parent, folder)
             done.append(f"{app}: made its config folder")
+    uid = os.environ.get("PUID")
+    for kind in KINDS:  # Docker makes a missing media folder root's when it mounts it: hand an empty one to the apps' user
+        folder = DATA / kind
+        try:
+            if uid and folder.is_dir() and folder.stat().st_uid != int(uid) and not any(folder.iterdir()):
+                _own(folder)
+                done.append(f"{kind}: folder handed to the apps' user")
+        except OSError:  # a read-only or network folder: leave it as it is
+            pass
     conf = root / "qbittorrent" / "config" / "qBittorrent" / "qBittorrent.conf"
     text = conf.read_text() if conf.is_file() else QBIT_NEW
     lines = text.rstrip().splitlines()

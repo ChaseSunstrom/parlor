@@ -33,13 +33,26 @@ Open `http://<server>:8800`, create your account, and upload your VPN's WireGuar
 
 **Settings → Services** shows each app, whether it answers, and what setup did, step by step. **Set up again** re-checks everything and puts back anything that went missing. It only ever adds what's missing and never touches a login you set yourself. On later restarts Parlor re-checks what it can without your password.
 
-Your media folder ends up like this (the same `/data` inside every container, so moves are instant):
+Your media folder ends up like this (every container sees the same `/data/<kind>` paths):
 
 ```
 DATA/
   downloads/   qBittorrent, a folder per category
-  movies/  shows/  music/  youtube/  books/
+  movies/  shows/  music/  youtube/  books/  games/
 ```
+
+### Folders per kind
+
+Each kind can live somewhere else, such as another disk or a library you already have. Set any of `MOVIES`, `SHOWS`, `MUSIC`, `BOOKS`, `GAMES`, `YOUTUBE` and `DOWNLOADS` in `.env`; each defaults to `DATA/<kind>`. Inside every container that uses it, the folder still appears at `/data/<kind>`, so the apps' settings (root folders, Jellyfin libraries, qBittorrent's save path) don't change.
+
+```
+DATA=/srv/media            # everything not listed below
+MOVIES=/mnt/bigdisk/films  # an existing library: Radarr, Jellyfin and Bazarr find it at /data/movies
+```
+
+To use a library you already have, point its kind at it (`MOVIES=/path/to/your/movies`) and run `docker compose up -d`; the apps' root folders and Jellyfin's libraries already point at `/data/<kind>`, so they find what's there (Settings → Services → Set up again re-checks them). The folder must be readable and writable by `PUID:PGID`.
+
+**Moves between different disks are copies, not instant.** A finished download reaching your library (`downloads` to `movies`, `shows` or `music`) is a copy and a delete when the two folders are on different disks, and no hardlink is made, so the file takes twice the space until the torrent is removed after seeding. Linux also treats two separate mounts as different places even on one disk, so with these folders mounted one by one the same is true there too.
 
 ### Moving over from your own compose
 
@@ -152,6 +165,7 @@ Set these in `.env` (see `.env.example`).
 | Variable | Default | What it does |
 |---|---|---|
 | `DATA` | `/data` | Your media folder. Every app sees it as `/data`; music is `DATA/music`, YouTube downloads `DATA/youtube`. |
+| `MOVIES`, `SHOWS`, `MUSIC`, `BOOKS`, `GAMES`, `YOUTUBE`, `DOWNLOADS` | `DATA/<kind>` | Where that kind lives (another disk, an existing library). Every app sees it as `/data/<kind>`. See [Folders per kind](#folders-per-kind). |
 | `PUID`, `PGID` | `1000` | The user and group that own `DATA` (`id` shows yours). The apps run as them, and folders Parlor makes belong to them. |
 | `LAN_SUBNET` | `192.168.0.0/16` | Your home network (comma-separated for more than one): qBittorrent's page is reachable through the VPN from it and skips its login there |
 | `PUBLIC_INDEXERS` | `yts,eztv,thepiratebay,1337x,limetorrents,nyaasi,knaben` | Public indexers Prowlarr gets (Prowlarr's names); `none` adds none |
