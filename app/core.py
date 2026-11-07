@@ -58,6 +58,12 @@ CREATE TABLE IF NOT EXISTS later (
   added REAL NOT NULL,
   PRIMARY KEY (user_id, video_id)
 );
+CREATE TABLE IF NOT EXISTS prefs (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,          -- JSON
+  PRIMARY KEY (user_id, key)
+);
 CREATE TABLE IF NOT EXISTS videos (
   id TEXT PRIMARY KEY,          -- YouTube id of a downloaded video
   item TEXT NOT NULL,

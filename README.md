@@ -44,6 +44,16 @@ The player streams through your server. YouTube serves HD video and audio separa
 - **Keys**: Space or K to play and pause, J and L to skip 10 s, ← and → for 5 s, ↑ and ↓ for volume, M to mute, F for full screen, T for theater mode, C for captions, < and > for speed, 0–9 to jump, Shift+N for the next video, / to search.
 - Live streams open on YouTube.
 
+### Browsing
+
+You don't need links or an account to find something to watch. **Watch → Home** has:
+
+- **Continue watching**, and **Because you watched …**: the videos YouTube suggests beside the ones you watched last.
+- **New from your subscriptions**.
+- **Topics**: a shelf of this week's most-watched videos for each topic you pick (Music, Gaming, Science… to start; **Edit topics** to change them). YouTube retired its Trending page, so this stands in for it. Each account has its own topics.
+
+The player's **Up next** list is YouTube's own suggestions for that video, and autoplay follows it. Channels in search results have a Subscribe button.
+
 ### Subscriptions
 
 Subscribe on any channel or video page, or import them in Watch → Channels from:
@@ -57,7 +67,7 @@ The feed reads each channel's public RSS feed (no Google account involved) and f
 
 ### Recommended
 
-Without a YouTube account, Recommended shows new videos from the channels you watch most but don't follow, mixed so no single channel takes over.
+Without a YouTube account, Recommended mixes videos like the ones you watched last with new videos from the channels you watch most but don't follow, so no single video or channel takes over.
 
 For YouTube's own recommendations, add your YouTube cookies in Settings. Export them with a "cookies.txt" browser extension while signed in to youtube.com. This also adds your YouTube feed and YouTube watch later, and plays videos that need a sign-in (age-restricted ones). The cookies are stored with owner-only permissions and used only for those requests. YouTube can flag accounts used this way, so a spare account is safer.
 

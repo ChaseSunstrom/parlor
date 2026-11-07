@@ -32,8 +32,9 @@ function vcard(v, { forget = false, remove = false } = {}) {
     </div>
   </article>`;
 }
-const ccard = (c) => `<a class="ccard" href="#/channel/${esc(c.id)}">${img(c.avatar)}<span class="t">${esc(c.name)}</span>
-  <span class="s">${esc([c.handle, c.followers != null && `${compact.format(c.followers)} subscribers`].filter(Boolean).join(" · "))}</span></a>`;
+const ccard = (c) => `<div class="ccard"><a href="#/channel/${esc(c.id)}">${img(c.avatar)}<span class="t">${esc(c.name)}</span>
+  <span class="s">${esc([c.handle, c.followers != null && `${compact.format(c.followers)} subscribers`].filter(Boolean).join(" · "))}</span></a>
+  ${subButton(c.id, c.name, c.avatar, c.subscribed)}</div>`;
 const lcard = (p) => `<article class="vcard lcard"><a class="vthumb" href="#/ytlist/${esc(p.id)}">${p.thumb ? `<img src="${esc(p.thumb)}" alt="" loading="lazy">` : ""}
   <span class="len">${ICON.play}${p.count ? plural(p.count, "video") : "Playlist"}</span></a>
   <div class="vmeta"><a class="t" href="#/ytlist/${esc(p.id)}">${esc(p.title)}</a>${p.channel ? `<span class="c">${esc(p.channel)}</span>` : ""}</div></article>`;
@@ -103,7 +104,7 @@ document.addEventListener("click", (e) => {
 
 /* ---------- the Watch section's pages ---------- */
 
-const WATCH_TABS = [["subs", "Subscriptions"], ["rec", "Recommended"], ["continue", "Continue watching"], ["later", "Watch later"],
+const WATCH_TABS = [["home", "Home"], ["subs", "Subscriptions"], ["rec", "Recommended"], ["continue", "Continue watching"], ["later", "Watch later"],
   ["history", "History"], ["downloads", "Downloaded"], ["channels", "Channels"]];
 function watchHead(active, title, blurb, extra = "") {
   const account = ME?.youtube_cookies
@@ -120,11 +121,97 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-shorts]")) { setPref("hideShorts", !pref("hideShorts")); keepScroll = true; route(); }
 });
 
-async function showYt(t, [tab = "subs", ...rest]) {
+async function showYt(t, [tab = "home", ...rest]) {
   if (tab === "search") return showYtSearch(t, rest.join("/"));
-  const pages = { subs: ytSubs, rec: ytRec, continue: ytContinue, later: ytLater, history: ytHistory, downloads: ytDownloads, channels: ytChannels, account: ytAccount };
-  return (pages[tab] || ytSubs)(t, rest);
+  const pages = { home: ytHome, subs: ytSubs, rec: ytRec, continue: ytContinue, later: ytLater, history: ytHistory, downloads: ytDownloads, channels: ytChannels, account: ytAccount };
+  return (pages[tab] || ytHome)(t, rest);
 }
+
+/* Home: something to watch without pasting a link. Shelves fill in as they arrive;
+   topic shelves load as they scroll into view. */
+const vstrip = (items) => (items.length ? `<div class="vstrip">${items.map((v) => vcard(v)).join("")}</div>` : "");
+async function ytHome(t) {
+  paint(t, watchHead("home", "Home", "Picked from what you watch, the channels you follow and the topics you like.", shortsChip()) + `<div class="wrap">
+    ${slot("wContinue", "", "")}${slot("wBecause0", "", skeletons(4, "v", "vstrip"))}${slot("wSubs", "", "")}${slot("wBecause1", "", "")}
+    <div id="wTopics"></div></div>`);
+  api("/api/me/history?unfinished=true&limit=16").then((r) => fill(t, "wContinue", shelf("Continue watching", vstrip(r.items), "#/yt/continue")), () => fill(t, "wContinue", ""));
+  api("/api/yt/feed?limit=24").then((r) => fill(t, "wSubs", shelf("New from your subscriptions", vstrip(hideShorts(r.items).slice(0, 16)), "#/yt/subs")), () => fill(t, "wSubs", ""));
+  api("/api/me/history?limit=60").then((h) => {
+    const seeds = [], channels = new Set(); // your latest videos, one per channel
+    for (const v of h.items) if (seeds.length < 2 && !channels.has(v.channel_id || v.id)) { channels.add(v.channel_id || v.id); seeds.push(v); }
+    [0, 1].forEach((n) => (seeds[n]
+      ? api(`/api/yt/related/${seeds[n].id}`).then((r) => {
+        const title = seeds[n].title || "a video";
+        fill(t, `wBecause${n}`, shelf(`Because you watched “${title.length > 50 ? title.slice(0, 48).trim() + "…" : title}”`, vstrip(hideShorts(r.items).slice(0, 16))));
+      }, () => fill(t, `wBecause${n}`, ""))
+      : fill(t, `wBecause${n}`, "")));
+  }, () => fill(t, "wBecause0", ""));
+  const { topics, suggested } = await api("/api/me/topics");
+  if (t === ticket) drawTopics(t, topics, suggested);
+}
+
+function drawTopics(t, topics, suggested) {
+  const box = $("#wTopics");
+  if (!box) return;
+  box.innerHTML = `<div class="shelf-head"><h2>Topics</h2><button class="ghost" data-topics-edit>Edit topics</button></div>
+    <p class="dim topics-blurb">This week's most-watched videos about each one.</p>
+    ${topics.map((q, i) => `<div class="topic" id="wTopic${i}" data-topic="${esc(q)}"><div class="shelf-head"><h3>${esc(q)}</h3>
+      <a class="more" href="#/yt/search/${encodeURIComponent(q)}">Search</a></div>${skeletons(4, "v", "vstrip")}</div>`).join("") ||
+      `<div class="empty-state" style="padding-top:0">No topics. Add some to fill this page.</div>`}`;
+  box.dataset.topics = JSON.stringify({ topics, suggested });
+  const seen = new IntersectionObserver((hits) => hits.forEach((hit) => {
+    if (!hit.isIntersecting) return;
+    seen.unobserve(hit.target);
+    const el = hit.target, q = el.dataset.topic, head = el.firstElementChild.outerHTML;
+    api(`/api/yt/topic?q=${encodeURIComponent(q)}`).then(
+      (r) => { if (t === ticket) el.innerHTML = head + (vstrip(hideShorts(r.items).slice(0, 18)) || `<p class="dim">Nothing this week.</p>`); },
+      (err) => { if (t === ticket) el.innerHTML = head + `<p class="dim">${esc(err.message)}</p>`; });
+  }), { rootMargin: "600px 0px" });
+  $$(".topic", box).forEach((el) => seen.observe(el));
+}
+
+function topicEditor(box, topics, suggested) {
+  const ideas = suggested.filter((s) => !topics.some((x) => x.toLowerCase() === s.toLowerCase()));
+  box.innerHTML = `<section class="panel topic-editor">
+    <div class="head"><div><h3>Your topics</h3><p>Each topic is a shelf of this week's most-watched videos about it. Only you see yours.</p></div></div>
+    <div class="chips">${topics.map((x) => `<button class="tchip" data-topic-rm="${esc(x)}" aria-label="Remove ${esc(x)}">${esc(x)}${ICON.x}</button>`).join("") || `<span class="dim">None yet</span>`}</div>
+    ${topics.length < 20 ? `<form class="actions" data-topic-form><label class="field grow"><span class="vh">New topic</span><input class="input" name="topic" maxlength="60" placeholder="Add a topic, like woodworking or chess" autocomplete="off"></label><button class="ghost">${ICON.plus}Add</button></form>`
+      : `<p class="dim">That's 20, the most there can be. Remove one to add another.</p>`}
+    ${ideas.length && topics.length < 20 ? `<div class="chips">${ideas.map((x) => `<button data-topic-idea="${esc(x)}">${ICON.plus}${esc(x)}</button>`).join("")}</div>` : ""}
+    <div class="actions"><button class="primary" data-topics-save>Save</button><button class="ghost" data-topics-cancel>Cancel</button></div>
+  </section>`;
+  box.dataset.editing = JSON.stringify(topics);
+  ($("input", box) || $("[data-topics-save]", box)).focus();
+}
+const editing = (box) => JSON.parse(box.dataset.editing || "[]");
+document.addEventListener("click", (e) => {
+  const box = e.target.closest("#wTopics");
+  if (!box) return;
+  const { topics, suggested } = JSON.parse(box.dataset.topics || '{"topics":[],"suggested":[]}');
+  const rm = e.target.closest("[data-topic-rm]"), idea = e.target.closest("[data-topic-idea]");
+  if (e.target.closest("[data-topics-edit]")) topicEditor(box, topics, suggested);
+  else if (rm) topicEditor(box, editing(box).filter((x) => x !== rm.dataset.topicRm), suggested);
+  else if (idea) topicEditor(box, [...editing(box), idea.dataset.topicIdea], suggested);
+  else if (e.target.closest("[data-topics-cancel]")) drawTopics(ticket, topics, suggested);
+  else if (e.target.closest("[data-topics-save]")) {
+    const typed = $("[data-topic-form] input", box)?.value.trim(); // typed but not added: keep it too
+    put("/api/me/topics", { topics: typed ? [...editing(box), typed] : editing(box) }).then((r) => {
+      drawTopics(ticket, r.topics, suggested);
+      $("[data-topics-edit]", box)?.focus();
+      toast("Topics saved");
+    }, (err) => toast(err.message));
+  }
+});
+document.addEventListener("submit", (e) => {
+  const form = e.target.closest("[data-topic-form]");
+  if (!form) return;
+  e.preventDefault();
+  const box = form.closest("#wTopics"), name = form.topic.value.trim();
+  if (!name) return;
+  const { suggested } = JSON.parse(box.dataset.topics);
+  const now = editing(box);
+  topicEditor(box, now.some((x) => x.toLowerCase() === name.toLowerCase()) ? now : [...now, name], suggested);
+});
 
 async function ytSubs(t) {
   paint(t, watchHead("subs", "Subscriptions", "The newest videos from the channels you follow, without ads.", shortsChip()) + `<div class="wrap">${skeletons(12)}</div>`);
@@ -140,7 +227,7 @@ async function ytSubs(t) {
 async function ytRec(t) {
   paint(t, watchHead("rec", "Recommended", "") + `<div class="wrap">${skeletons(12)}</div>`);
   const r = await api("/api/yt/recommended");
-  const blurb = { youtube: "YouTube's picks for your account.", local: "New videos from the channels you watch most, mixed together.", none: "" }[r.source];
+  const blurb = { youtube: "YouTube's picks for your account.", local: "Videos like the ones you've watched, and new ones from the channels you watch most.", none: "" }[r.source];
   paint(t, watchHead("rec", "Recommended", blurb, shortsChip()) + `<div class="wrap">${vgrid(hideShorts(r.items)) ||
     `<div class="empty-state"><strong>Nothing to recommend yet</strong>Watch a few videos or subscribe to some channels and this fills up. For YouTube's own recommendations, add your YouTube cookies in <a href="#/settings">Settings</a>.</div>`}</div>`);
 }
@@ -641,8 +728,12 @@ async function fillAside(v) {
     items = playQueue.items.slice(at + 1).concat(playQueue.items.slice(0, at)).slice(0, 30);
   } else {
     playQueue = null;
-    title = `More from ${v.channel}`;
-    items = v.channel_id ? (await api(`/api/yt/channel/${v.channel_id}`).catch(() => ({ items: [] }))).items.filter((i) => i.type === "video" && i.id !== v.id).slice(0, 20) : [];
+    title = "Up next";
+    items = (await api(`/api/yt/related/${v.id}`).catch(() => ({ items: [] }))).items.filter((i) => i.id !== v.id).slice(0, 24);
+    if (!items.length && v.channel_id) { // YouTube's list couldn't be read: the channel's other videos instead
+      title = `More from ${v.channel}`;
+      items = (await api(`/api/yt/channel/${v.channel_id}`).catch(() => ({ items: [] }))).items.filter((i) => i.type === "video" && i.id !== v.id).slice(0, 20);
+    }
   }
   if (!$("#aside")) return;
   aside.innerHTML = items.length ? `<h2>${esc(title)}</h2><div class="upnext"${playQueue ? ` data-queue="${esc(playQueue.title)}"` : ""}>${items.map((i) => vcard(i)).join("")}</div>` : "";

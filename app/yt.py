@@ -24,6 +24,8 @@ from urllib.parse import parse_qs, quote, urlparse
 
 import requests
 import yt_dlp
+from yt_dlp.extractor.youtube import YoutubeIE
+from yt_dlp.utils import parse_count, parse_duration
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
@@ -261,7 +263,11 @@ def search(q: str, request: Request, user=Depends(me)):
 
 
 def mark(items, user_id):
-    """Add what this user has done with each video: progress, watch later, downloaded."""
+    """Add what this user has done with each video (progress, watch later, downloaded)
+    and whether they follow each channel."""
+    if any(i.get("type") == "channel" for i in items):
+        subbed = {r["channel_id"] for r in rows("SELECT channel_id FROM subs WHERE user_id = ?", user_id)}
+        items = [{**i, "subscribed": i["id"] in subbed} if i.get("type") == "channel" else i for i in items]
     ids = [i["id"] for i in items if i.get("type", "video") == "video"]
     if not ids:
         return items
@@ -693,23 +699,148 @@ def recommended(user=Depends(me)):
             return {**account_feed("recommended", user), "source": "youtube"}
         except HTTPException as exc:
             log.warning("account recommendations failed: %s", exc.detail)
-    watched = Counter(json.loads(r["item"]).get("channel_id") for r in rows(
-        "SELECT item FROM history WHERE user_id = ? ORDER BY watched DESC LIMIT 300", user["id"]))
-    watched.pop(None, None)
-    watched.pop("", None)
+    recent = [(r["video_id"], json.loads(r["item"]).get("channel_id")) for r in rows(
+        "SELECT video_id, item FROM history WHERE user_id = ? ORDER BY watched DESC LIMIT 300", user["id"])]
+    watched = Counter(c for _, c in recent if c)
     subbed = {r["channel_id"] for r in rows("SELECT channel_id FROM subs WHERE user_id = ?", user["id"])}
     channels = [c for c, _ in watched.most_common(30) if c not in subbed][:15] or list(subbed)[:15]
-    if not channels:
+    seeds, seeded = [], set()  # your latest videos, one per channel: their related videos come first
+    for v, c in recent[:60]:
+        if len(seeds) < 6 and (c or v) not in seeded:
+            seeded.add(c or v)
+            seeds.append(v)
+    if not channels and not seeds:
         return {"items": [], "source": "none"}
-    items, _, _ = merged_feed(channels, 120)
+    with ThreadPoolExecutor(6) as pool:
+        groups = list(pool.map(related, seeds))
+    if channels:
+        by_channel = OrderedDict()
+        for i in merged_feed(channels, 120)[0]:
+            by_channel.setdefault(i["channel_id"], []).append(i)
+        groups += by_channel.values()
+    # take one from each group in turn so no single video or channel fills the page
     seen = {r["video_id"] for r in rows("SELECT video_id FROM history WHERE user_id = ?", user["id"])}
-    fresh = [i for i in items if i["id"] not in seen]
-    # interleave channels so one busy channel doesn't fill the page
-    by_channel = OrderedDict()
-    for i in fresh:
-        by_channel.setdefault(i["channel_id"], []).append(i)
-    mixed = [i for group in itertools.zip_longest(*by_channel.values()) for i in group if i]
+    mixed = []
+    for i in (i for row in itertools.zip_longest(*groups) for i in row if i):
+        if i["id"] not in seen:
+            seen.add(i["id"])
+            mixed.append(i)
     return {"items": mark(mixed[:60], user["id"]), "source": "local"}
+
+
+# --- browsing: what YouTube suggests next, and topics -----------------------------------
+
+AGO = re.compile(r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago", re.I)
+SPAN = {"second": 1, "minute": 60, "hour": 3600, "day": 86400, "week": 7 * 86400, "month": 30 * 86400, "year": 365 * 86400}
+
+
+def _ago(text, now=None):
+    """'9 years ago' as a rough timestamp."""
+    m = AGO.search(text or "")
+    return int((now or time.time()) - int(m[1]) * SPAN[m[2].lower()]) if m else None
+
+
+def lockup_card(item):
+    """A video in YouTube's "lockup" layout (its Up next list) as a card; None for shelves and the rest."""
+    lv = item.get("lockupViewModel") or {}
+    if lv.get("contentType") != "LOCKUP_CONTENT_TYPE_VIDEO" or not VIDEO_ID.fullmatch(lv.get("contentId") or ""):
+        return None
+    meta = lv["metadata"]["lockupMetadataViewModel"]
+    parts = [p for row in meta["metadata"]["contentMetadataViewModel"]["metadataRows"] for p in row.get("metadataParts", [])]
+    said = lambda end: next((p for p in parts if (p.get("accessibilityLabel") or "").endswith(end)), {})  # noqa: E731
+    raw = json.dumps(lv)
+    badge = re.search(r'"thumbnailBadgeViewModel": \{"text": "([^"]+)"', raw)
+    channel_id = re.search(r'"browseId": "(UC[\w-]{22})"', raw)
+    badge = badge and badge[1]
+    return video_card({
+        "id": lv["contentId"], "title": meta["title"]["content"], "channel": parts[0]["text"]["content"] if parts else "",
+        "channel_id": channel_id and channel_id[1], "duration": parse_duration(badge) if badge else None,
+        "view_count": parse_count((said("views").get("text") or {}).get("content")),
+        "timestamp": _ago(said("ago").get("accessibilityLabel")), "live_status": "is_live" if badge == "LIVE" else None,
+    })
+
+
+def lockup_cards(data):
+    results = data["contents"]["twoColumnWatchNextResults"]["secondaryResults"]["secondaryResults"]["results"]
+    out = []
+    for r in results:
+        try:
+            card = lockup_card(r)
+        except (KeyError, IndexError, TypeError):  # an odd item is skipped, not fatal
+            card = None
+        if card:
+            out.append(card)
+    return out
+
+
+_related = Cache(6 * 3600, 500)
+_related_miss = Cache(5 * 60, 500)  # failures and empty answers: retried after a few minutes, not on every page
+
+
+def related(vid):
+    """The videos YouTube suggests beside this one; empty if YouTube's answer can't be read."""
+    hit = _related.get(vid) or _related_miss.get(vid)
+    if hit is not None:
+        return hit
+    try:
+        # ponytail: yt-dlp's private innertube helper (it keeps it working as YouTube changes);
+        # callers fall back to the channel's videos when this comes back empty
+        with yt_dlp.YoutubeDL(_opts({})) as y:
+            data = YoutubeIE(y)._call_api("next", {"videoId": vid}, vid, note=False)
+        found = lockup_cards(data)
+    except Exception as exc:
+        log.warning("related videos for %s: %s", vid, exc)
+        found = []
+    return (_related if found else _related_miss).put(vid, found)
+
+
+@router.get("/yt/related/{vid}")
+def related_videos(vid: str, user=Depends(me)):
+    return {"items": mark(related(check(VIDEO_ID, vid, "video")), user["id"])}
+
+
+# YouTube's search filter for videos from this week. Sorting the search by views instead
+# brings the week's biggest videos in any language, about anything; relevance then views stays on topic.
+TOPIC_FILTER = "EgQIAxAB"
+DEFAULT_TOPICS = ["Music", "Gaming", "Science", "Comedy", "Cooking", "Technology", "Sports", "Movie trailers"]
+_topic = Cache(3600, 100)
+
+
+@router.get("/yt/topic")
+def topic(q: str, user=Depends(me)):
+    """This week's most-watched videos about something (YouTube dropped its Trending page)."""
+    q = q.strip()[:60]
+    if not q:
+        raise HTTPException(422, "Which topic?")
+    hit = _topic.get(q.casefold())
+    if hit is None:
+        info = extract(f"https://www.youtube.com/results?search_query={quote(q)}&sp={TOPIC_FILTER}", extract_flat=True, playlistend=30)
+        videos = [c for c in cards(info.get("entries")) if c["type"] == "video"]
+        hit = _topic.put(q.casefold(), sorted(videos, key=lambda c: -(c["views"] or 0)))
+    return {"items": mark(hit, user["id"])}
+
+
+class Topics(BaseModel):
+    topics: list[str]
+
+
+@router.get("/me/topics")
+def my_topics(user=Depends(me)):
+    r = one("SELECT value FROM prefs WHERE user_id = ? AND key = 'topics'", user["id"])
+    return {"topics": json.loads(r["value"]) if r else DEFAULT_TOPICS, "suggested": DEFAULT_TOPICS}
+
+
+@router.put("/me/topics")
+def set_topics(body: Topics, user=Depends(me)):
+    kept = {}
+    for t in body.topics:
+        t = " ".join(t.split())[:60]
+        if t:
+            kept.setdefault(t.casefold(), t)
+    topics = list(kept.values())[:20]
+    db().execute("INSERT INTO prefs (user_id, key, value) VALUES (?, 'topics', ?) "
+                 "ON CONFLICT (user_id, key) DO UPDATE SET value = excluded.value", (user["id"], json.dumps(topics)))
+    return {"topics": topics}
 
 
 # --- your subscriptions -------------------------------------------------------------------

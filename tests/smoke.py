@@ -96,6 +96,16 @@ def feed():
     return f"{len(r['items'])} videos from {r['channels']} channel(s)"
 
 
+def browse():
+    s, rel, _ = call("GET", f"/api/yt/related/{ZOO}")
+    ok(s == 200 and len(rel["items"]) >= 5 and all(i["title"] and i["channel_id"] for i in rel["items"]), f"related {s} {rel}")
+    s, top, _ = call("GET", "/api/yt/topic?q=science")
+    ok(s == 200 and top["items"], f"topic {s} {top}")
+    s, mine, _ = call("GET", "/api/me/topics")
+    ok(s == 200 and mine["topics"], f"topics {s}")
+    return f"{len(rel['items'])} related videos; {len(top['items'])} in this week's science shelf"
+
+
 def download(kind, quality):
     def run():
         s, job, _ = call("POST", "/api/yt/downloads", {"id": ZOO, "quality": quality, "kind": kind})
@@ -151,6 +161,7 @@ def seerr():
 
 checks = [("health", lambda: ok(call("GET", "/api/health")[0] == 200, "down")), ("sign in", sign_in), ("YouTube search", search),
           ("open a video", open_video), ("stream ranges", stream), ("SponsorBlock and a channel", extras), ("subscriptions feed", feed),
+          ("browse: related videos and topics", browse),
           ("download a video", download("video", "480")), ("play the download", play_download),
           ("save audio to music", download("music", "best")), ("music section", music), ("movies and TV (Seerr)", seerr)]
 results = [step(name, fn) for name, fn in checks]
