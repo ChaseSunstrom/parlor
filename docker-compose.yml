@@ -1,5 +1,6 @@
 # Parlor and everything around it, in one file:
-#   1. cp .env.example .env, and set DATA (your media folder) in it
+#   1. cp .env.example .env, and set DATA (your media folder) in it; MOVIES, SHOWS, MUSIC, BOOKS, GAMES, YOUTUBE
+#      and DOWNLOADS can each point somewhere else (another disk, an existing library). Apps always see /data/<kind>.
 #   2. docker compose up -d --build
 #   3. open http://<server>:8800 and create your account. Parlor then sets up every app for you:
 #      no logins at home, no API keys to copy, indexers added, Jellyfin and Seerr ready.
@@ -39,6 +40,12 @@ services:
     volumes:
       - ./parlor/config:/config
       - ${DATA:-/data}:/data
+      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
+      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
+      - ${MUSIC:-${DATA:-/data}/music}:/data/music
+      - ${BOOKS:-${DATA:-/data}/books}:/data/books
+      - ${GAMES:-${DATA:-/data}/games}:/data/games
+      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
       # the apps' config folders, read-only: Parlor reads their API keys from them
       - ./sonarr/config:/stack/sonarr:ro
       - ./radarr/config:/stack/radarr:ro
@@ -65,6 +72,13 @@ services:
       LAN_SUBNET: ${LAN_SUBNET:-192.168.0.0/16}
     volumes:
       - .:/compose
+      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies        # the media folders, so a missing one can be handed to PUID:PGID
+      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
+      - ${MUSIC:-${DATA:-/data}/music}:/data/music
+      - ${BOOKS:-${DATA:-/data}/books}:/data/books
+      - ${GAMES:-${DATA:-/data}/games}:/data/games
+      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
+      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
     restart: "no"
 
   gluetun:                     # the VPN; qBittorrent's only way out. Upload your WireGuard file in Parlor
@@ -107,6 +121,7 @@ services:
     volumes:
       - ./qbittorrent/config:/config
       - ${DATA:-/data}:/data
+      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
 
   prowlarr:
     <<: *app
@@ -130,6 +145,8 @@ services:
     volumes:
       - ./sonarr/config:/config
       - ${DATA:-/data}:/data
+      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
+      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
 
   radarr:
     <<: *app
@@ -138,6 +155,8 @@ services:
     volumes:
       - ./radarr/config:/config
       - ${DATA:-/data}:/data
+      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
+      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
 
   lidarr:
     <<: *app
@@ -146,6 +165,8 @@ services:
     volumes:
       - ./lidarr/config:/config
       - ${DATA:-/data}:/data
+      - ${MUSIC:-${DATA:-/data}/music}:/data/music
+      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
 
   bazarr:
     <<: *app
@@ -154,6 +175,8 @@ services:
     volumes:
       - ./bazarr/config:/config
       - ${DATA:-/data}:/data
+      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
+      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
 
   jellyfin:
     <<: *app
@@ -162,6 +185,11 @@ services:
     volumes:
       - ./jellyfin/config:/config
       - ${DATA:-/data}:/data
+      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
+      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
+      - ${MUSIC:-${DATA:-/data}/music}:/data/music
+      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
+      - ${BOOKS:-${DATA:-/data}/books}:/data/books
     # for hardware transcoding, pass your GPU through, e.g. devices: ["/dev/dri:/dev/dri"]
 
   seerr:
