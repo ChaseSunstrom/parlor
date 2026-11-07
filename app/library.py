@@ -28,6 +28,15 @@ def hid(prefix, *parts) -> str:
     return f"{prefix}-" + hashlib.sha1("\0".join(parts).encode()).hexdigest()[:16]
 
 
+def utf8(name: str) -> bool:
+    """False for a file name the filesystem gave us that isn't UTF-8 (Python holds such bytes as lone surrogates)."""
+    try:
+        name.encode()
+        return True
+    except UnicodeEncodeError:
+        return False
+
+
 def _num(value):
     try:
         return int(str(value).split("/")[0])
@@ -83,30 +92,48 @@ def _refresh():
                 ",".join(batch[0]), ",".join("?" * len(batch[0])))
             conn = core.db()
             conn.execute("BEGIN")
-            conn.executemany(insert, [tuple(r.values()) for r in batch])
-            conn.execute("COMMIT")
+            try:
+                conn.executemany(insert, [tuple(r.values()) for r in batch])
+                conn.execute("COMMIT")
+            except Exception:  # never leave this thread's connection inside a transaction
+                conn.execute("ROLLBACK")
+                raise
             batch.clear()
 
-    for here, dirs, files in os.walk(top):
+    walk_errors = []
+    for here, dirs, files in os.walk(top, onerror=walk_errors.append):
         dirs[:] = [d for d in dirs if not d.startswith((".", "@"))]
         for name in files:
             if Path(name).suffix.lower() not in AUDIO or name.startswith("."):
                 continue
             path = Path(here, name)
-            rel = path.relative_to(top).as_posix()
             try:
+                rel = path.relative_to(top).as_posix()
+                if not utf8(rel):  # a name that isn't UTF-8 can't be an id, a database value or XML
+                    log.warning("skipping %r: its name isn't valid UTF-8", rel)
+                    continue
                 st = path.stat()
             except OSError:
                 continue
             found.add(rel)
             if known.get(rel) != (st.st_mtime, st.st_size):
-                batch.append(read(path, rel, st))
+                try:
+                    batch.append(read(path, rel, st))
+                except Exception:
+                    log.exception("couldn't read %s", rel)
+                    continue
                 if len(batch) >= 200:  # the library fills in as the first scan goes
                     save()
     save()
+    if walk_errors or (known and not found):  # a folder we couldn't open, or an unmounted share: not "all deleted"
+        log.warning("not removing missing tracks: %s", walk_errors[:1] or "no audio files found at all")
+        return len(found)
     gone = [(p,) for p in known if p not in found]
     if gone:
         core.db().executemany("DELETE FROM tracks WHERE path = ?", gone)
+        # stars, ratings and plays are kept by path hash, so a file that's gone leaves them orphaned
+        core.db().execute("""DELETE FROM sub_meta WHERE item NOT IN
+            (SELECT id FROM tracks UNION SELECT album_id FROM tracks UNION SELECT artist_id FROM tracks)""")
     return len(found)
 
 

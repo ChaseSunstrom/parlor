@@ -81,6 +81,16 @@ Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p)
 - Downloads resume after a restart. If YouTube rate-limits the server, they wait 15 minutes and try again instead of failing.
 - **Clearing out old downloads** (Settings → Downloaded videos, off by default): delete each video a week, 30 days, 90 days… after it was downloaded, or only once someone has watched it to the end, counting from then. Press **Keep** on a video in Watch → Downloaded and it's never deleted automatically. Each video there says when it goes.
 
+## Music apps (Subsonic)
+
+yeerr speaks the Subsonic/OpenSubsonic API, so Symfonium, Tempo, DSub, Feishin and similar apps can play your music folder.
+
+- **Server URL:** yeerr's address (`http://your-server:8800`); the API is under `/rest`. Apps that ask for a path use `/rest`.
+- **Login:** your yeerr name and password work. For apps that send a salted token instead (most do), or a long-lived key, make an **app password**: signed in, `POST /api/me/app-passwords` with `{"name": "phone"}` shows its secret once (there's no Settings screen for it yet). Use the secret as the app's password, or as its API key. Delete it at `DELETE /api/me/app-passwords/<id>` to cut that app off.
+- Stars, ratings, plays, playlists, play queue and bookmarks are per person. Playlists from music-fndr's `Playlists/` folder show up read-only.
+- Tracks are found by a hash of their path in the music folder. **Moving or renaming a file makes it a new track**: its stars, ratings and play counts don't follow it (they're deleted at the next scan, every 10 minutes, once the old path is gone).
+- A scan that can't open a folder, or finds no music at all (an unmounted share), removes nothing; it logs a warning instead. Files whose names aren't valid UTF-8 are skipped.
+
 ## Settings
 
 Set these in `.env` (see `.env.example`).

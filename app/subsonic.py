@@ -8,6 +8,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import re
 import secrets
@@ -15,6 +16,7 @@ import shutil
 import subprocess
 import threading
 import time
+import weakref
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,6 +45,14 @@ HTTP_STATUS = {10: 400, 40: 401, 41: 401, 44: 401, 50: 403, 70: 404}
 ENDPOINTS: dict = {}
 _now: dict = {}  # user id -> (track id, started, player): who is playing what right now
 _transcodes = threading.BoundedSemaphore(4)  # ffmpeg is heavy: a few at a time
+SLOT_WAIT = 30  # seconds to wait for one before sending the file as it is
+BODY_LIMIT = 1_000_000
+COVER_CACHE = 300 * 1024 * 1024  # bytes of resized covers kept
+SIZES = (64, 128, 256, 512, 1024)  # the cover sizes we make
+PW_TTL = 300
+_pw_key = secrets.token_bytes(32)
+_pw_ok: dict = {}  # HMAC of (account, stored hash, password) -> until when the password is known good
+log = logging.getLogger("yeerr.subsonic")
 
 
 class Fail(Exception):
@@ -82,8 +92,8 @@ class P:
         if v in (None, ""):
             return default
         try:
-            n = int(float(v))
-        except ValueError:
+            n = max(-2**31, min(2**31, int(float(v))))  # SQLite can't take huge offsets
+        except (ValueError, OverflowError):  # "abc", "nan", "inf"
             raise Fail(10, f"{key} must be a number")
         return n if lo is None else max(lo, n if hi is None else min(hi, n))
 
@@ -150,9 +160,13 @@ def reply(p, payload, status="ok", http=200):
 @router.api_route("/rest/{method}", methods=["GET", "POST"])
 async def rest(method: str, request: Request):
     pairs = list(request.query_params.multi_items())
-    if request.method == "POST":  # formPost: the same parameters in the body
-        body = (await request.body())[:1_000_000]
-        pairs += parse_qsl(body.decode("utf-8", "replace"), keep_blank_values=True)
+    if request.method == "POST":  # formPost: the same parameters in the body, of which we read 1 MB at most
+        body = bytearray()
+        async for chunk in request.stream():
+            body += chunk
+            if len(body) > BODY_LIMIT:
+                break
+        pairs += parse_qsl(bytes(body[:BODY_LIMIT]).decode("utf-8", "replace"), keep_blank_values=True)
     return await anyio.to_thread.run_sync(handle, method.removesuffix(".view"), P(pairs), request)
 
 
@@ -166,6 +180,12 @@ def handle(name, p, request):
     except Fail as e:
         http = HTTP_STATUS.get(e.code, 200) if name in BINARY else 200
         return reply(p, {"error": {"code": e.code, "message": e.message}}, "failed", http)
+    except HTTPException:  # a 416 from a bad Range and the like: the right HTTP answer as it is
+        raise
+    except Exception:  # a bug or odd input: a Subsonic error the app can show, and the detail in our log only
+        log.exception("subsonic %s failed", name[:40])
+        return reply(p, {"error": {"code": 0, "message": "Something went wrong on the server"}}, "failed",
+                     500 if name in BINARY else 200)
 
 
 # --- logging in ---------------------------------------------------------------------------------------
@@ -180,7 +200,7 @@ def login(p, request, method):
         return None
     if not key and not name:
         raise Fail(10, "Required parameter is missing: u")
-    keys = (f"name:{(name or '').casefold()}", f"ip:{auth._client(request)}")
+    keys = (f"rest-name:{(name or '').casefold()}", f"rest-ip:{auth._client(request)}")  # not the web login's buckets
     if auth._throttled(*keys):
         raise Fail(40, "Too many wrong attempts. Wait a few minutes and try again.")
     try:
@@ -188,10 +208,30 @@ def login(p, request, method):
     except Fail:
         auth._failed(*keys)
         raise
+    auth._failures.pop(keys[0], None)  # an app that has the right password now isn't a guesser (the IP's count stays)
     if used:
         now = time.time()
         db().execute("UPDATE app_passwords SET used = ? WHERE id = ? AND (used IS NULL OR used < ?)", (now, used, now - 3600))
     return user
+
+
+def password_ok(user, password):
+    """core.check_password, remembered for five minutes: apps send the password with every call and scrypt is slow.
+    The key holds the stored hash (new salt on every change), so a changed password stops working at once."""
+    key = hmac.digest(_pw_key, f"{user['id']}\0{user['pw']}\0{password}".encode(), "sha256")
+    now = time.time()
+    if _pw_ok.get(key, 0) > now:
+        return True
+    if not core.check_password(password, user["pw"]):
+        return False
+    if len(_pw_ok) >= 1000:  # bounded
+        for k, until in list(_pw_ok.items()):
+            if until <= now:
+                _pw_ok.pop(k, None)
+        if len(_pw_ok) >= 1000:
+            _pw_ok.clear()
+    _pw_ok[key] = now + PW_TTL
+    return True
 
 
 def check(p, key, name):
@@ -217,10 +257,10 @@ def check(p, key, name):
             except ValueError:
                 raise Fail(40, "Wrong username or password")
         hit = next((a for a in apps if same(a["secret"], password)), None)
-        if not hit and not core.check_password(password, user["pw"] if user else "scrypt$00$00"):  # same work for unknown names
-            user = None
-        elif not hit and user:
+        if not hit and user and password_ok(user, password):
             hit = {"id": None}
+        elif not hit and not user:
+            core.check_password(password, "scrypt$00$00")  # the same work for unknown names
     else:
         raise Fail(10, "Required parameter is missing: p")
     if not user or not hit:
@@ -435,6 +475,36 @@ def music_directory(c):
     raise Fail(70, "Directory not found")
 
 
+@api("tokenInfo")
+def token_info(c):
+    return {"tokenInfo": {"username": c.u["name"]}}
+
+
+@api("getInternetRadioStations")
+def radio(c):
+    return {"internetRadioStations": {}}
+
+
+@api("getPodcasts")
+def podcasts(c):
+    return {"podcasts": {}}
+
+
+@api("getNewestPodcasts")
+def newest_podcasts(c):
+    return {"newestPodcasts": {}}
+
+
+@api("getShares")
+def shares(c):
+    return {"shares": {}}
+
+
+@api("getAvatar")
+def avatar(c):
+    raise Fail(70, "No avatars here")
+
+
 @api("getArtistInfo")
 def artist_info(c):
     return {"artistInfo": {}}
@@ -631,14 +701,17 @@ def scrobble(c):
     ids, times = c.p.all("id"), c.p.all("time")
     if not ids:
         raise Fail(10, "Required parameter is missing: id")
-    ts = [track(i) for i in ids]
+    ts = [(one("SELECT * FROM tracks WHERE id = ?", i), times[n] if n < len(times) else None) for n, i in enumerate(ids)]
+    ts = [(t, w) for t, w in ts if t]  # an offline app's batch can name songs that are gone: count the rest
+    if not ts:
+        raise Fail(70, "Song not found")
     if c.p.get("submission", "true").lower() == "false":
-        _now[c.uid] = (ts[-1]["id"], time.time(), c.p.get("c", ""))
+        _now[c.uid] = (ts[-1][0]["id"], time.time(), c.p.get("c", ""))
         return {}
-    for n, t in enumerate(ts):
+    for t, w in ts:
         try:
-            when = int(times[n]) / 1000 if n < len(times) else time.time()
-        except ValueError:
+            when = max(0, min(int(w) / 1000, time.time())) if w is not None else time.time()
+        except (ValueError, OverflowError):
             when = time.time()
         db().execute("""INSERT INTO sub_meta(user_id, item, plays, played) VALUES (?, ?, 1, ?)
                         ON CONFLICT(user_id, item) DO UPDATE SET plays = plays + 1, played = MAX(IFNULL(played, 0), excluded.played)""",
@@ -668,10 +741,16 @@ PL = """SELECT p.*, u.name AS owner,
   FROM sub_playlists p JOIN users u ON u.id = p.user_id """
 
 
+def number(s):
+    """int(s) for plain ASCII digits (not '²' or '٣', which isdigit() accepts and int() doesn't), else None."""
+    return int(s) if s.isdecimal() and s.isascii() and len(s) < 18 else None
+
+
 def synced():
     """music-fndr's playlist files (Playlists/*.m3u8): id -> file."""
     folder = library.root() / "Playlists"
-    return {library.hid("m3u", f.name): f for f in sorted(folder.glob("*.m3u*"))} if folder.is_dir() else {}
+    files = sorted(f for f in folder.glob("*.m3u*") if library.utf8(f.name)) if folder.is_dir() else []  # not UTF-8: skipped
+    return {library.hid("m3u", f.name): f for f in files}
 
 
 def m3u_tracks(file):
@@ -693,8 +772,8 @@ def find_playlist(c, pid, write=False):
         return ({"id": pid, "name": name, "comment": "", "public": 1, "owner": "music-fndr", "created": m, "changed": m,
                  "n": len(ts), "secs": sum(t["secs"] for t in ts), "cover": ts[0]["album_id"] if ts else None, "user_id": 0},
                 [t["id"] for t in ts])
-    num = pid[3:] if pid.startswith("pl-") else ""
-    row = one(PL + "WHERE p.id = ?", int(num)) if num.isdigit() else None
+    num = number(pid[3:]) if pid.startswith("pl-") else None
+    row = one(PL + "WHERE p.id = ?", num) if num is not None else None
     if not row or (row["user_id"] != c.uid and not row["public"]):
         raise Fail(70, "Playlist not found")
     if write and row["user_id"] != c.uid:
@@ -767,7 +846,7 @@ def create_playlist(c):
 @api("updatePlaylist")
 def update_playlist(c):
     row, ids = find_playlist(c, c.p.need("playlistId"), write=True)
-    drop = {int(i) for i in c.p.all("songIndexToRemove") if i.isdigit()}
+    drop = {n for i in c.p.all("songIndexToRemove") if (n := number(i)) is not None}
     ids = [i for n, i in enumerate(ids) if n not in drop] + wanted_tracks(c.p, "songIdToAdd")
     db().execute("UPDATE sub_playlists SET name = ?, comment = ?, public = ? WHERE id = ?",
                  ((c.p.get("name") or row["name"])[:200], c.p.get("comment", row["comment"]),
@@ -856,19 +935,32 @@ def stream(c):
     cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-i", str(path), "-map", "0:a:0", "-vn", "-threads", "1",
            *codec, "-b:a", f"{kbps}k", "pipe:1"]
 
-    def pipe():
-        if not _transcodes.acquire(timeout=30):
-            return
+    raw = lambda: yt.send_file(path, c.req, TYPES.get(t["suffix"], "audio/mpeg"))  # noqa: E731
+    if not _transcodes.acquire(timeout=SLOT_WAIT):  # busy: the player gets the file as it is, not an empty 200
+        return raw()
+    try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        try:
-            while chunk := proc.stdout.read(65536):
-                yield chunk
-        finally:  # a player that goes away mid-song stops the encoder
+    except OSError:
+        _transcodes.release()
+        return raw()
+    once = threading.Lock()
+
+    def finish():  # the slot goes back exactly once, whether the stream ends, breaks, or never starts
+        if once.acquire(blocking=False):
             proc.kill()
             proc.wait()
             _transcodes.release()
 
-    return StreamingResponse(pipe(), media_type="audio/mpeg" if target == "mp3" else "audio/ogg")
+    def pipe():
+        try:
+            while chunk := proc.stdout.read(65536):
+                yield chunk
+        finally:  # a player that goes away mid-song stops the encoder
+            finish()
+
+    body = pipe()
+    weakref.finalize(body, finish)  # a response dropped before its first chunk never runs the finally above
+    return StreamingResponse(body, media_type="audio/mpeg" if target == "mp3" else "audio/ogg")
 
 
 @api("download")
@@ -879,18 +971,16 @@ def download(c):
 
 # --- cover art ------------------------------------------------------------------------------------------------------
 
-def cover_track(item):
+def cover_track(c, item):
     if item.startswith("tr-"):
         return one("SELECT * FROM tracks WHERE id = ?", item)
     if item.startswith("al-"):
         return one("SELECT * FROM tracks WHERE album_id = ? ORDER BY disc, track LIMIT 1", item)
     if item.startswith("ar-"):
         return one("SELECT * FROM tracks WHERE artist_id = ? ORDER BY year, album, disc, track LIMIT 1", item)
-    if item.startswith(("pl-", "m3u-")):
-        if item in synced():
-            return next(iter(m3u_tracks(synced()[item])[1]), None)
-        first = one("SELECT track_id FROM sub_playlist_tracks WHERE playlist_id = ? ORDER BY pos LIMIT 1", item[3:] if item[3:].isdigit() else -1)
-        return first and one("SELECT * FROM tracks WHERE id = ?", first["track_id"])
+    if item.startswith(("pl-", "m3u-")):  # the same rules as reading the playlist: someone else's private one is a 70
+        ids = find_playlist(c, item)[1]
+        return next((t for i in ids if (t := one("SELECT * FROM tracks WHERE id = ?", i))), None)
     return None
 
 
@@ -915,34 +1005,51 @@ def cover_data(t):
 
 
 def resized(data, source, size):
-    """JPEG of at most size x size, kept under DATA/covers so the next ask is a file read."""
+    """JPEG of at most one of SIZES (the next one up from what's asked, so the cache stays small), kept under
+    DATA/covers so the next ask is a file read. Oldest files go when the folder passes COVER_CACHE."""
+    size = next((s for s in SIZES if s >= size), SIZES[-1])
     cache = core.DATA / "covers" / (hashlib.sha1(f"{source}|{os.path.getmtime(source)}|{size}".encode()).hexdigest() + ".jpg")
-    if cache.is_file():
+    try:
         return cache.read_bytes()
+    except OSError:
+        pass
     try:
         from PIL import Image
 
+        Image.MAX_IMAGE_PIXELS = 40_000_000  # a "decompression bomb" of a cover is refused (we send the original)
         im = Image.open(io.BytesIO(data))
         im.thumbnail((size, size))
         out = io.BytesIO()
         im.convert("RGB").save(out, "JPEG", quality=85)
     except Exception:  # no Pillow, or art it can't read: the original is still a cover
         return data
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_bytes(out.getvalue())
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_name(f"{cache.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+        tmp.write_bytes(out.getvalue())
+        os.replace(tmp, cache)  # whole or not there at all, even with two requests making the same one
+        files = [(f.stat(), f) for f in cache.parent.glob("*.jpg") if f != cache]
+        total = cache.stat().st_size + sum(s.st_size for s, _ in files)
+        for s, f in sorted(files, key=lambda x: x[0].st_mtime):
+            if total <= COVER_CACHE:
+                break
+            f.unlink(missing_ok=True)
+            total -= s.st_size
+    except OSError:  # a full disk or a file another request just removed: this answer doesn't need the cache
+        log.warning("cover cache", exc_info=True)
     return out.getvalue()
 
 
 @api("getCoverArt")
 def cover_art(c):
-    t = cover_track(c.p.need("id"))
+    t = cover_track(c, c.p.need("id"))
     got = t and cover_data(t)
     if not got:
         raise Fail(70, "No cover art")
     data, source = got
     size = c.p.int("size", 0, 0, 1200)
     if size:
-        data = resized(data, source, max(size, 16))
+        data = resized(data, source, size)
     kind = "image/png" if data[:4] == b"\x89PNG" else "image/jpeg"
     return Response(data, media_type=kind, headers={"Cache-Control": "max-age=86400"})
 

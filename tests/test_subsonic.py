@@ -1,10 +1,13 @@
 """The Subsonic/OpenSubsonic server over a temp music folder: tiny tagged files made with ffmpeg,
 then every endpoint through TestClient in XML and JSON, the three login styles, ranges and per-account data."""
 import hashlib
+import os
 import shutil
 import subprocess
+import threading
 import unittest
 import xml.etree.ElementTree as ET
+from unittest import mock
 
 import yeerr_test_env as env
 from yeerr_test_env import H, TMP, client, signed_in
@@ -12,6 +15,7 @@ from yeerr_test_env import H, TMP, client, signed_in
 import auth
 import core
 import library
+import subsonic
 
 MUSIC = TMP / "music"
 LRC = "[00:01.50]first line\n[00:03.00]second line\n"
@@ -291,8 +295,8 @@ class Subsonic(unittest.TestCase):
         self.assertEqual(Image.open(BytesIO(r.content)).size, (64, 64))
         r = self.get("getCoverArt", id=self.b_album)  # embedded
         self.assertEqual(Image.open(BytesIO(r.content)).size, (80, 80))
-        r = self.get("getCoverArt", id=self.gamma, size=32)
-        self.assertEqual(Image.open(BytesIO(r.content)).size, (32, 32))
+        r = self.get("getCoverArt", id=self.gamma, size=32)  # sizes snap up to 64, 128, 256, 512 or 1024
+        self.assertEqual(Image.open(BytesIO(r.content)).size, (64, 64))
         self.assertEqual(self.get("getCoverArt", id=self.a_artist, size=16).status_code, 200)
         self.assertEqual(self.get("getCoverArt", id="al-0000000000000000").status_code, 404)
 
@@ -426,6 +430,165 @@ class Subsonic(unittest.TestCase):
         self.assertEqual(self.ok("getScanStatus")["scanStatus"]["count"], 3)
         self.assertEqual(self.ok("search3", query="delta")["searchResult3"], {})
         self.assertFalse(extra.exists())
+
+    # --- review fixes: a scan that must not fall over or delete the library -----------------------------------
+
+    def count(self):
+        return core.one("SELECT COUNT(*) AS n FROM tracks")["n"]
+
+    def test_scan_survives_non_utf8_names(self):
+        bad = os.fsencode(MUSIC) + b"/Band A/bad-\xff.mp3"
+        bad_list = os.fsencode(MUSIC) + b"/Playlists/Bad-\xff.m3u8"
+        shutil.copy(MUSIC / "Band A/Record One/01 Alpha.mp3", bad)
+        shutil.copy(MUSIC / "Playlists/Mix.m3u8", bad_list)
+        make("Band C/Record Three/01 Delta.mp3", "mp3", title="Delta", artist="Band C", album="Record Three")
+        try:
+            library.refresh()  # used to raise, and index nothing after the bad name
+            self.assertEqual(self.count(), 4)  # the three, and Delta; the bad name is skipped
+            self.assertNotIn("Bad-", " ".join(p["name"] for p in self.ok("getPlaylists")["playlists"]["playlist"]))
+        finally:
+            os.unlink(bad)
+            os.unlink(bad_list)
+            shutil.rmtree(MUSIC / "Band C")
+        library.refresh()
+        self.assertEqual(self.count(), 3)
+
+    def test_failed_save_rolls_back(self):
+        make("Band C/Record Three/01 Delta.mp3", "mp3", title="Delta", artist="Band C", album="Record Three")
+        try:
+            with mock.patch.object(library, "read", return_value={"no_such_column": 1}):
+                with self.assertRaises(Exception):
+                    library.refresh()
+            self.assertFalse(core.db().in_transaction)  # not left inside a transaction for good
+        finally:
+            shutil.rmtree(MUSIC / "Band C")
+        library.refresh()
+        self.assertEqual(self.count(), 3)
+
+    def test_unreadable_or_missing_folder_deletes_nothing(self):
+        empty = TMP / "empty-root"
+        empty.mkdir(exist_ok=True)
+        with mock.patch.object(library, "root", return_value=empty):  # an unmounted music share looks like this
+            library.refresh()
+        self.assertEqual(self.count(), 3)
+        if os.geteuid() == 0:
+            return
+        locked = MUSIC / "Band B"
+        locked.chmod(0)
+        try:
+            library.refresh()
+            self.assertEqual(self.count(), 3)  # Gamma isn't gone, it's unreadable right now
+        finally:
+            locked.chmod(0o755)
+
+    def test_orphaned_stars_are_pruned(self):
+        make("Band C/Record Three/01 Delta.mp3", "mp3", title="Delta", artist="Band C", album="Record Three")
+        library.refresh()
+        delta = core.one("SELECT id FROM tracks WHERE title = 'Delta'")["id"]
+        self.ok("star", id=delta)
+        self.assertEqual(core.one("SELECT COUNT(*) AS n FROM sub_meta WHERE item = ?", delta)["n"], 1)
+        shutil.rmtree(MUSIC / "Band C")
+        library.refresh()
+        self.assertEqual(core.one("SELECT COUNT(*) AS n FROM sub_meta WHERE item = ?", delta)["n"], 0)
+
+    # --- review fixes: transcoding, odd input, stubs ------------------------------------------------------------------
+
+    def test_transcode_without_a_free_slot_sends_the_file(self):
+        raw = self.beta_path.read_bytes()
+        with mock.patch.object(subsonic, "_transcodes", threading.BoundedSemaphore(0)), \
+                mock.patch.object(subsonic, "SLOT_WAIT", 0.05):
+            r = self.get("stream", id=self.beta, format="mp3")
+        self.assertEqual((r.status_code, r.content), (200, raw))
+
+    def test_failed_encoder_start_gives_the_slot_back(self):
+        slots = threading.BoundedSemaphore(1)
+        with mock.patch.object(subsonic, "_transcodes", slots), mock.patch.object(subprocess, "Popen", side_effect=OSError("no")):
+            r = self.get("stream", id=self.beta, format="mp3")
+        self.assertEqual(r.content, self.beta_path.read_bytes())
+        self.assertTrue(slots.acquire(blocking=False))
+
+    def test_scrobble_skips_unknown_ids(self):
+        before = self.ok("getSong", id=self.alpha)["song"].get("playCount", 0)
+        self.ok("scrobble", id=["tr-0000000000000000", self.alpha])  # one gone song doesn't spoil the batch
+        self.assertEqual(self.ok("getSong", id=self.alpha)["song"]["playCount"], before + 1)
+
+    def test_odd_numbers_are_subsonic_errors(self):
+        self.err(10, "getAlbumList2", type="newest", size="inf")
+        self.err(10, "getAlbumList2", type="newest", size="nan")
+        self.ok("getAlbumList2", type="newest", size=5, offset="9" * 40)  # clamped, not an OverflowError
+        pid = self.ok("createPlaylist", name="Odd", songId=[self.alpha])["playlist"]["id"]
+        self.ok("updatePlaylist", playlistId=pid, songIndexToRemove="²")  # '²'.isdigit() is True, int('²') fails
+        self.ok("deletePlaylist", id=pid)
+
+    def test_an_endpoint_that_blows_up_is_an_envelope(self):
+        boom = mock.Mock(side_effect=RuntimeError("secret detail"))
+        with mock.patch.dict(subsonic.ENDPOINTS, {"getGenres": boom}):
+            r = self.call("getGenres")
+        self.assertEqual((r["status"], r["error"]["code"]), ("failed", 0))
+        self.assertNotIn("secret detail", str(r))
+
+    def test_stubs_clients_ask_for(self):
+        for name, key in (("getInternetRadioStations", "internetRadioStations"), ("getPodcasts", "podcasts"),
+                          ("getNewestPodcasts", "newestPodcasts"), ("getShares", "shares")):
+            self.assertIn(key, self.ok(name))
+        self.err(70, "getAvatar")
+        r = client().get("/rest/tokenInfo", params={"f": "json", "apiKey": self.key["admin"]}).json()["subsonic-response"]
+        self.assertEqual(r["tokenInfo"]["username"], "admin")
+
+    # --- review fixes: login throttle, size limits, covers, password cost ---------------------------------------------
+
+    def test_rest_failures_do_not_lock_the_web_login(self):
+        c = client()
+        for _ in range(auth.FAIL_LIMIT):
+            c.get("/rest/ping", params={"u": "admin", "p": "stale"})
+        r = c.post("/api/auth/login", json={"name": "admin", "password": "correct horse"}, headers=H)
+        self.assertEqual(r.status_code, 200)
+
+    def test_a_good_login_clears_the_rest_failures(self):
+        client().get("/rest/ping", params={"u": "admin", "p": "stale"})
+        self.assertTrue(auth._failures["rest-name:admin"])
+        self.ok("getMusicFolders")
+        self.assertFalse(auth._failures.get("rest-name:admin"))
+
+    def test_post_body_is_read_only_up_to_the_limit(self):
+        junk = "f=json&x=" + "a" * 1_200_000 + "&u=admin&p=correct+horse"
+        r = client().post("/rest/getMusicFolders", content=junk, headers={"content-type": "application/x-www-form-urlencoded"})
+        self.assertEqual(r.json()["subsonic-response"]["error"]["code"], 10)  # the login came after the limit: ignored
+
+    def test_cover_sizes_snap_and_the_cache_is_capped(self):
+        cache = core.DATA / "covers"
+        shutil.rmtree(cache, ignore_errors=True)
+        for size in (20, 40, 63):
+            self.get("getCoverArt", id=self.gamma, size=size)
+        self.assertEqual(len(list(cache.glob("*.jpg"))), 1)  # all the 64 bucket
+        self.assertEqual(list(cache.glob("*.tmp")), [])
+        with mock.patch.object(subsonic, "COVER_CACHE", 1):
+            self.get("getCoverArt", id=self.gamma, size=100)
+            self.get("getCoverArt", id=self.a_album, size=100)
+        self.assertEqual(len(list(cache.glob("*.jpg"))), 1)  # oldest dropped to stay under the cap
+
+    def test_cover_of_another_accounts_playlist_is_private(self):
+        pid = self.ok("createPlaylist", name="Private art", songId=[self.gamma])["playlist"]["id"]
+        try:
+            self.assertEqual(self.get("getCoverArt", id=pid).status_code, 200)
+            other = client().get("/rest/getCoverArt", params={"u": "sub_bob", "p": "correct horse", "id": pid})
+            self.assertEqual(other.status_code, 404)
+        finally:
+            self.ok("deletePlaylist", id=pid)
+
+    def test_password_check_is_remembered_until_it_changes(self):
+        subsonic._pw_ok.clear()
+        real = core.check_password
+        with mock.patch.object(core, "check_password", side_effect=real) as spy:
+            for _ in range(3):
+                self.ok("ping", "sub_bob")
+            self.assertEqual(spy.call_count, 1)
+            old = core.one("SELECT pw FROM users WHERE name = 'sub_bob'")["pw"]
+            core.db().execute("UPDATE users SET pw = ? WHERE name = 'sub_bob'", (core.hash_password("a new one"),))
+            try:
+                self.err(40, "ping", "sub_bob")  # the old password stops working at once
+            finally:
+                core.db().execute("UPDATE users SET pw = ? WHERE name = 'sub_bob'", (old,))
 
 
 if __name__ == "__main__":
