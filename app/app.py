@@ -80,6 +80,7 @@ def start():
     library.start()  # keeps the music index (for /rest) current
     if stack.on():
         stack.start(retries=10)  # what needs no password; the apps may still be starting
+        stack.rechecker()  # the weekly search for better copies
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="ui")

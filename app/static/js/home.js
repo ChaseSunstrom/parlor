@@ -68,10 +68,16 @@ async function drawServices(t) {
         qBittorrent, Prowlarr's indexers, Jellyfin, Seerr, Bazarr and Cleanuparr. It only ever adds what's missing. ${when}</p></div>
       ${s.run.running ? `<span class="spin-sm" aria-label="Running"></span>` : ""}</div>
     <ul class="svc-list">${s.apps.map(row).join("")}</ul>
+    <label class="field"><span>Download quality</span><select id="stackQuality">
+      <option value="best"${s.quality === "best" ? " selected" : ""}>Best available, and better copies as they appear</option>
+      <option value="default"${s.quality === "default" ? " selected" : ""}>Each app's own profile</option></select>
+      <small>Best available can mean 4K files of 40 GB or more. Seerr's requests and music requests use it; the apps search for upgrades weekly.</small></label>
     <form id="stackForm" class="actions"><label class="field grow"><span>Your password</span>
       <input type="password" id="stackPw" autocomplete="current-password" placeholder="Only needed the first time: it becomes your login in Jellyfin, Seerr and the *arrs"></label>
       <button class="primary small"${s.run.running ? " disabled" : ""}>${s.run.finished ? "Set up again" : "Set up everything"}</button></form>
   </section>`;
+  $("#stackQuality").addEventListener("change", (e) => put("/api/stack/quality", { best: e.target.value === "best" })
+    .then((r) => toast(r.detail.charAt(0).toUpperCase() + r.detail.slice(1)), (err) => toast(err.message)));
   $("#stackForm").addEventListener("submit", (e) => {
     e.preventDefault();
     post("/api/stack/setup", { password: $("#stackPw").value || null }).then(() => { toast("Setting up your apps…"); drawServices(t); }, (err) => toast(err.message));

@@ -41,6 +41,8 @@ class FakeStack:
         self.roots = {a: list((roots or {}).get(a, [])) for a in ("sonarr", "radarr", "lidarr")}
         self.clients = {a: [] for a in ("sonarr", "radarr", "lidarr")}
         self.apps, self.proxies, self.tags, self.indexers = [], [], [], list(indexers)
+        self.profiles = {a: [{"id": 1, "name": "Any"}] for a in KEYS}
+        self.commands = []
         self.broken, self.needs_fs = set(broken_indexers), set(needs_flaresolverr)
         self.qbit = {"open": qbit_open, "save_path": "/downloads/", "categories": {}}
         self.jf = {"wizard": False, "user": None, "keys": [], "libs": []}
@@ -89,8 +91,25 @@ class FakeStack:
             return Resp(200, self.roots[app])
         if path == "/system/status":
             return Resp(200, {"version": {"sonarr": "4.0.15.2941", "radarr": "5.26.2.10099", "lidarr": "2.13.3.4711", "prowlarr": "2.0.5.5160"}[app]})
-        if path in ("/qualityprofile", "/metadataprofile"):
-            return Resp(200, [{"id": 1, "name": "Any"}, {"id": 2, "name": "None"}] if "metadata" in path else [{"id": 1, "name": "Any"}])
+        if path == "/qualityprofile/schema":  # worst to best, as the real ones list them
+            q = lambda i, n: {"quality": {"id": i, "name": n}, "allowed": False}  # noqa: E731
+            return Resp(200, {"name": "", "upgradeAllowed": False, "cutoff": 0, "items": [
+                q(0, "Unknown"), q(25, "CAM"), {"id": 1002, "name": "WEB 1080p", "allowed": False, "items": [q(3, "WEBDL-1080p"), q(15, "WEBRip-1080p")]},
+                q(7, "Bluray-1080p"), q(31, "Remux-2160p"), q(22, "BR-DISK"), q(10, "Raw-HD")]})
+        if path == "/qualityprofile":
+            if method == "POST":
+                self.profiles[app].append({**body, "id": len(self.profiles[app]) + 1})
+                return Resp(201, self.profiles[app][-1])
+            return Resp(200, self.profiles[app])
+        if path == "/metadataprofile":
+            return Resp(200, [{"id": 1, "name": "Any"}, {"id": 2, "name": "None"}])
+        m = re.fullmatch(r"/rootfolder/(\d+)", path)
+        if m and method == "PUT":
+            next(r for r in self.roots[app] if r["id"] == int(m[1])).update(body)
+            return Resp(202, body)
+        if path == "/command" and method == "POST":
+            self.commands.append((app, body["name"]))
+            return Resp(201, {"name": body["name"], "status": "queued"})
         if path == "/downloadclient/schema":
             cat = arr.APPS[app]["category"][0]
             return Resp(200, [{"implementation": "Transmission", "fields": []},
@@ -220,9 +239,15 @@ class FakeStack:
             if m[2]:
                 return Resp(200, {"profiles": [{"id": 1, "name": "Any"}, {"id": 4, "name": "HD-1080p"}], "rootFolders": [{"path": arr.APPS[m[1]]["root"]}]})
             if method == "POST":
-                self.seerr[m[1]].append(body)
+                self.seerr[m[1]].append({**body, "id": len(self.seerr[m[1]])})
                 return Resp(201, body)
             return Resp(200, self.seerr[m[1]])
+        m = re.fullmatch(r"/settings/(radarr|sonarr)/(\d+)", p)
+        if m and method == "PUT":
+            if "id" in body:  # as the real one says
+                return Resp(400, {"message": "request/body/id is read-only"})
+            self.seerr[m[1]][int(m[2])].update(body)
+            return Resp(200, self.seerr[m[1]][int(m[2])])
         if p == "/settings/initialize":
             self.seerr["initialized"] = True
             return Resp(200, {"initialized": True})
@@ -319,7 +344,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),
@@ -363,7 +388,7 @@ class Everything(Base):
         me = core.one("SELECT seerr_id, jf_user FROM users WHERE name = 'admin'")
         self.assertEqual((me["seerr_id"], me["jf_user"]), (1, "admin"), "your yeerr account is linked to the Seerr and Jellyfin admin it made")
         self.assertTrue(f.seerr["libs"][0]["enabled"])
-        self.assertEqual((f.seerr["radarr"][0]["activeProfileName"], f.seerr["radarr"][0]["activeDirectory"]), ("HD-1080p", "/data/movies"))
+        self.assertEqual((f.seerr["radarr"][0]["activeProfileName"], f.seerr["radarr"][0]["activeDirectory"]), (stack.BEST, "/data/movies"), "Seerr asks for the best there is")
         self.assertEqual((f.bazarr["use_sonarr"], f.bazarr["sonarr_key"], f.bazarr["radarr_key"]), (True, KEYS["sonarr"], KEYS["radarr"]))
         self.assertTrue(f.cleanup["local"])
         self.assertEqual({k: len(v) for k, v in f.cleanup["instances"].items()}, {"sonarr": 1, "radarr": 1, "lidarr": 1})
@@ -381,6 +406,14 @@ class Everything(Base):
         rule = f.cleanup["seeding"]["dc0"][0]
         self.assertEqual((rule["categories"], rule["maxRatio"], rule["action"]), (["tv-sonarr", "radarr", "lidarr"], 2, "Delete"))
         self.assertTrue(f.cleanup["download_cleaner"]["enabled"])
+        # best quality: a profile in each *arr, what Seerr and music requests ask for
+        for app in ("sonarr", "radarr", "lidarr"):
+            best = next(p for p in f.profiles[app] if p["name"] == stack.BEST)
+            allowed = [q["quality"]["name"] for it in best["items"] for q in (it.get("items") or [it]) if q["allowed"]]
+            self.assertEqual(allowed, ["Unknown", "WEBDL-1080p", "WEBRip-1080p", "Bluray-1080p", "Remux-2160p"], "no cinema recordings, disc images or raw captures")
+            self.assertEqual((best["cutoff"], best["upgradeAllowed"]), (31, True), "keeps upgrading up to the best there is")
+        self.assertEqual({(s["activeProfileId"], s["activeProfileName"]) for s in f.seerr["radarr"] + f.seerr["sonarr"]}, {(2, stack.BEST)})
+        self.assertEqual(f.roots["lidarr"][0]["defaultQualityProfileId"], 2)
 
         before = len(f.writes())
         again = self.run_all()
@@ -409,6 +442,33 @@ class Everything(Base):
         r = self.run_all()
         self.assertEqual(r[("radarr", "login")]["status"], "ok")
         self.assertEqual(self.fake.host["radarr"]["username"], "theirs")
+
+
+class Quality(Base):
+    def test_your_change_stays_and_switching_off_puts_back_what_was_there(self):
+        self.run_all()
+        f = self.fake
+        f.seerr["sonarr"][0].update(activeProfileId=1, activeProfileName="Any")  # you chose Any for shows
+        self.run_all()
+        self.assertEqual(f.seerr["sonarr"][0]["activeProfileId"], 1, "your choice stays")
+        admin = signed_in("admin")
+        r = admin.put("/api/stack/quality", json={"best": False}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(f.seerr["radarr"][0]["activeProfileId"], 4, "back to what Seerr had (HD-1080p)")
+        self.assertEqual(f.seerr["sonarr"][0]["activeProfileId"], 1, "not touched: it wasn't ours any more")
+        self.assertEqual(f.roots["lidarr"][0]["defaultQualityProfileId"], 1)
+        self.assertEqual(admin.get("/api/stack").json()["quality"], "default")
+        self.assertEqual(stack.recheck(), [], "no upgrade searches when it's off")
+        admin.put("/api/stack/quality", json={"best": True}, headers=H)
+        self.assertEqual(f.seerr["radarr"][0]["activeProfileId"], 2)
+
+    def test_upgrades_are_searched_for_weekly(self):
+        self.run_all()
+        core.set_setting("quality_recheck", "")
+        self.assertEqual(stack.recheck(now=1_000_000), ["sonarr", "radarr", "lidarr"])
+        self.assertEqual(self.fake.commands, [("sonarr", "CutoffUnmetEpisodeSearch"), ("radarr", "CutoffUnmetMoviesSearch"), ("lidarr", "CutoffUnmetAlbumSearch")])
+        self.assertEqual(stack.recheck(now=1_000_000 + 6 * 86400), [], "not again within the week")
+        self.assertEqual(len(stack.recheck(now=1_000_000 + 8 * 86400)), 3)
 
 
 class CleanuparrYourWay(Base):

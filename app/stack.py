@@ -444,6 +444,106 @@ def seerr_apps():
     return ("done", "connected " + " and ".join(added)) if added else ("ok", "Radarr and Sonarr connected")
 
 
+# --- the best quality there is, and better copies as they appear -------------------------------------
+
+BEST = "Best available"
+# disc images, raw captures, cinema recordings and uncompressed audio: big, unplayable or worse than they sound
+JUNK = {"BR-DISK", "Raw-HD", "WORKPRINT", "CAM", "TELESYNC", "TELECINE", "REGIONAL", "DVDSCR", "WAV"}
+RECHECK = {"sonarr": "CutoffUnmetEpisodeSearch", "radarr": "CutoffUnmetMoviesSearch", "lidarr": "CutoffUnmetAlbumSearch"}
+WEEK = 7 * 86400
+
+
+def best_on() -> bool:
+    return (setting("quality") or "best") == "best"
+
+
+def best_profile(app, make=True) -> Optional[int]:
+    """The app's 'Best available' profile: every quality but the junk, upgrades on, cutoff at the top."""
+    found = next((p["id"] for p in arr.call(app, "GET", "/qualityprofile") if p["name"] == BEST), None)
+    if found or not make:
+        return found
+    s = arr.call(app, "GET", "/qualityprofile/schema")
+    for it in s["items"]:
+        for q in it.get("items") or [it]:
+            q["allowed"] = q["quality"]["name"] not in JUNK
+        if it.get("items"):
+            it["allowed"] = any(q["allowed"] for q in it["items"])
+    top = [it for it in s["items"] if it["allowed"]][-1]  # the *arrs list qualities from worst to best
+    s.update(name=BEST, upgradeAllowed=True, cutoff=top["id"] if top.get("items") else top["quality"]["id"])
+    return arr.call(app, "POST", "/qualityprofile", json=s)["id"]
+
+
+def _targets():
+    """What decides the quality of new downloads: Seerr's Radarr and Sonarr, and Lidarr's root folder
+    (yeerr's music requests use its default). Each: (key, app, label, current id, set(id))."""
+    for app in ("radarr", "sonarr"):
+        if setting("seerr_key"):
+            for s in seerr("GET", f"/settings/{app}").json():
+                put = lambda pid, s=s, app=app: seerr("PUT", f"/settings/{app}/{s['id']}", json={  # noqa: E731
+                    **{k: v for k, v in s.items() if k != "id"},  # Seerr refuses its own id in the body
+                    "activeProfileId": pid, "activeProfileName": BEST if pid == best_profile(app, make=False) else s.get("activeProfileName")})
+                yield f"seerr_{app}_{s['id']}", app, f"Seerr's {arr.APPS[app]['label']}", s.get("activeProfileId"), put
+    if arr.key("lidarr"):
+        for r in arr.call("lidarr", "GET", "/rootfolder")[:1]:
+            put = lambda pid, r=r: arr.call("lidarr", "PUT", f"/rootfolder/{r['id']}", json={**r, "defaultQualityProfileId": pid})  # noqa: E731
+            yield "lidarr_root", "lidarr", "music requests", r.get("defaultQualityProfileId"), put
+
+
+def quality():
+    """Best available for new downloads (or back to what each app had). Switched once and remembered:
+    if you pick another profile in Seerr or Lidarr afterwards, yours stays."""
+    before, changed, best = json.loads(setting("quality_before") or "{}"), [], {}
+    for key, app, label, current, put in list(_targets()):
+        if best_on():
+            if app not in best:
+                best[app] = best_profile(app)
+            if key not in before:
+                before[key] = current
+                if current != best[app]:
+                    put(best[app])
+                    changed.append(label)
+        elif key in before:
+            if current is not None and current == best_profile(app, make=False):
+                put(before[key])
+                changed.append(label)
+            del before[key]
+    core.set_setting("quality_before", json.dumps(before))
+    if not best_on():
+        return ("done", "back to each app's own profile: " + ", ".join(changed)) if changed else ("ok", "each app's own profile")
+    return ("done", "best available for " + ", ".join(changed)) if changed else ("ok", "best available, upgrading as better copies appear")
+
+
+def recheck(now: Optional[float] = None) -> list:
+    """Once a week each *arr searches again for what's below its profile's cutoff: better copies of what
+    you have. (Their RSS sync already grabs upgrades that show up new.)"""
+    now = now or time.time()
+    if not best_on() or now - float(setting("quality_recheck") or 0) < WEEK:
+        return []
+    sent = []
+    for app, command in RECHECK.items():
+        if arr.key(app):
+            try:
+                arr.call(app, "POST", "/command", json={"name": command})
+                sent.append(app)
+            except arr.ArrError as exc:
+                log.warning("upgrade search: %s", exc)
+    if sent:
+        core.set_setting("quality_recheck", str(now))
+    return sent
+
+
+def rechecker():
+    """Started with yeerr in the stack: looks every hour whether the weekly upgrade search is due."""
+    def loop():
+        while True:
+            time.sleep(3600)
+            try:
+                recheck()
+            except Exception:  # never let one bad hour stop the next
+                log.exception("upgrade search")
+    threading.Thread(target=loop, daemon=True, name="stack-recheck").start()
+
+
 # --- Bazarr and Cleanuparr ---------------------------------------------------------------------
 
 def bazarr_key():
@@ -607,6 +707,7 @@ def steps(name, password):
     yield "jellyfin", "libraries", jellyfin_libraries
     yield "seerr", "setup", lambda: seerr_setup(name, password)
     yield "seerr", "radarr and sonarr", seerr_apps
+    yield "quality", "best available", quality
     yield "bazarr", "sonarr and radarr", bazarr
     yield "cleanuparr", "connections", lambda: cleanuparr(name, password)
     yield "cleanuparr", "cleanup jobs", cleanuparr_jobs
@@ -892,7 +993,21 @@ def status():
 
 @router.get("")
 def services(_=Depends(admin)):
-    return {"on": on(), "apps": status(), "run": state}
+    return {"on": on(), "apps": status(), "run": state, "quality": "best" if best_on() else "default"}
+
+
+class Quality(BaseModel):
+    best: bool
+
+
+@router.put("/quality")
+def set_quality(body: Quality, _=Depends(admin)):
+    core.set_setting("quality", "best" if body.best else "default")
+    try:
+        status_, detail = quality()
+    except (arr.ArrError, Fail, Wait, requests.RequestException) as exc:
+        return {"quality": "best" if body.best else "default", "detail": f"saved; the apps follow on the next setup run ({exc})"}
+    return {"quality": "best" if body.best else "default", "detail": detail}
 
 
 class Setup(BaseModel):
