@@ -79,6 +79,7 @@ Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p)
 - **Cut sponsors out of downloaded videos** (Settings) removes SponsorBlock's sponsor segments from the file.
 - **Save audio to music** puts a tagged audio file (artist, album, square cover art) in your music library, in music-fndr's format and bitrate. Non-music parts of music videos are cut out.
 - Downloads resume after a restart. If YouTube rate-limits the server, they wait 15 minutes and try again instead of failing.
+- **Clearing out old downloads** (Settings → Downloaded videos, off by default): delete each video a week, 30 days, 90 days… after it was downloaded, or only once someone has watched it to the end, counting from then. Press **Keep** on a video in Watch → Downloaded and it's never deleted automatically. Each video there says when it goes.
 
 ## Settings
 
@@ -94,6 +95,7 @@ Set these in `.env` (see `.env.example`).
 | `JELLYFIN_URL` | | Turns on sign-in with Jellyfin. music-fndr also uses it, with `JELLYFIN_API_KEY`, to make playlists in Jellyfin. |
 | `OPEN_SIGNUP` | `0` | `1` lets anyone who can reach yeerr create an account |
 | `YT_PARALLEL` | `2` | Videos downloading at once |
+| `VIDEO_KEEP_DAYS` | `0` | Delete downloaded videos this many days after they're downloaded; `0` keeps them. Settings can change it. |
 | `UPDATE_HOURS` | `24` | How often yt-dlp is updated while running (it's also updated on every start). `0` turns both off. |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 

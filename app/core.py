@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS videos (
 );
 """
 
+COLUMNS = [
+    ("videos", "keep", "INTEGER NOT NULL DEFAULT 0"),  # 1: never deleted by the retention rule
+]
+
 _local = threading.local()
 _schema_lock = threading.Lock()
 _ready: set = set()
@@ -92,6 +96,9 @@ def db() -> sqlite3.Connection:
         with _schema_lock:
             if path not in _ready:
                 conn.executescript(SCHEMA)
+                for table, column, decl in COLUMNS:  # columns added after a table first shipped
+                    if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
                 _ready.add(path)
         _local.db, _local.path = conn, path
     return conn
@@ -113,6 +120,7 @@ ENV_DEFAULTS = {
     "seerr_key": "SEERR_API_KEY",
     "jellyfin_url": "JELLYFIN_URL",
     "open_signup": "OPEN_SIGNUP",
+    "video_keep_days": "VIDEO_KEEP_DAYS",
 }
 
 

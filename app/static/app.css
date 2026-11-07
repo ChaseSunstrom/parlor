@@ -354,6 +354,10 @@ a.ghost { display: inline-flex; align-items: center; }
 .ccard > a:hover { text-decoration: none; }
 .ccard:hover { background: var(--raise); }
 .ccard .sub-btn { height: 32px; padding: 0 14px; font-size: .88rem; }
+.vmeta .kept, .vmeta .expires { display: inline-flex; align-items: center; gap: 4px; }
+.vmeta .kept { color: var(--accent); font-weight: 600; }
+.vmeta .kept .i { width: 14px; height: 14px; }
+.vact [data-vkeep].on { color: var(--accent); }
 .topic .shelf-head { margin-top: 28px; }
 .topic h3 { margin: 0; font-size: 1.12rem; }
 .topics-blurb { margin: -6px 0 0; }

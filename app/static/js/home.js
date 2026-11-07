@@ -180,6 +180,16 @@ async function adminPanels(t) {
         <label class="check"><input type="checkbox" id="newAdmin"><span>Admin</span></label>
         <div class="actions"><button class="primary small">Add account</button></div></form>
     </section>
+    <section class="panel"><h3>Downloaded videos</h3>
+      <form id="keepForm">
+        <label class="field"><span>Delete downloaded videos</span><select class="input" id="keepDays">
+          ${[[0, "Never"], [7, "After a week"], [14, "After 2 weeks"], [30, "After 30 days"], [60, "After 60 days"], [90, "After 90 days"], [180, "After 6 months"], [365, "After a year"]]
+            .concat([0, 7, 14, 30, 60, 90, 180, 365].includes(yt.retention?.days ?? 0) ? [] : [[yt.retention.days, `After ${plural(yt.retention.days, "day")}`]])
+            .map(([d, label]) => `<option value="${d}"${d === (yt.retention?.days ?? 0) ? " selected" : ""}>${label}</option>`).join("")}</select>
+          <small>Videos anyone pressed Keep on are never deleted. Checked every hour.</small></label>
+        <label class="check"><input type="checkbox" id="keepWatched"${yt.retention?.watched_only ? " checked" : ""}><span>Only once someone has watched it to the end, counting from then</span></label>
+        <div class="actions"><button class="primary small">Save</button></div></form>
+    </section>
     <section class="panel"><h3>About</h3><p>yt-dlp ${esc(yt.yt_dlp || "?")}, updated on every start and daily. Up to ${esc(yt.parallel || 2)} video downloads at once, saved to <code>${esc(yt.videos || "")}</code>.</p></section>`;
 
   $("#seerrForm").addEventListener("submit", (e) => {
@@ -195,6 +205,11 @@ async function adminPanels(t) {
   $("#signinForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
+  });
+  $("#keepForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    put("/api/yt/retention", { days: +$("#keepDays").value, watched_only: $("#keepWatched").checked })
+      .then((r) => toast(ruleText(r).split(".")[0] + "."), (err) => toast(err.message));
   });
   $("#addUser").addEventListener("submit", (e) => {
     e.preventDefault();

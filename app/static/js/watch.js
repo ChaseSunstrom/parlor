@@ -6,6 +6,8 @@ const cardData = (v) => esc(JSON.stringify({ id: v.id, title: v.title || "", cha
 const chanHref = (v) => (v.channel_id ? `#/channel/${esc(v.channel_id)}` : `#/yt/search/${encodeURIComponent(v.channel || "")}`);
 let playQueue = null; // {title, items}: what "Up next" plays after this video
 
+/** "today", "tomorrow" or "in 5 days" until a timestamp */
+const until = (ts) => { const d = Math.ceil((ts * 1000 - Date.now()) / 864e5); return d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`; };
 function vcard(v, { forget = false, remove = false } = {}) {
   const href = `#/watch/${esc(v.id)}`;
   const pct = v.position && v.duration ? Math.min(100, (100 * v.position) / v.duration) : 0;
@@ -20,15 +22,17 @@ function vcard(v, { forget = false, remove = false } = {}) {
       ${v.downloaded ? `<span class="tag">${ICON.ok}Saved</span>` : ""}
     </a>
     <div class="vact">
-      <button data-vdl title="Download" aria-label="Download ${esc(v.title)}">${ICON.dl}</button>
+      ${remove ? "" : `<button data-vdl title="Download" aria-label="Download ${esc(v.title)}">${ICON.dl}</button>`}
       <button data-later class="${v.later ? "on" : ""}" title="${v.later ? "In Watch later" : "Watch later"}" aria-label="Watch later">${v.later ? ICON.ok : ICON.clock}</button>
       ${forget ? `<button data-forget title="Remove from history" aria-label="Remove from history">${ICON.x}</button>` : ""}
-      ${remove ? `<button data-vdelete title="Delete the file" aria-label="Delete the file">${ICON.trash}</button>` : ""}
+      ${remove ? `<button data-vkeep class="${v.keep ? "on" : ""}" aria-pressed="${!!v.keep}" title="${v.keep ? "Kept: never deleted automatically" : "Keep: never delete it automatically"}" aria-label="Keep">${v.keep ? ICON.pinned : ICON.pin}</button>
+        <button data-vdelete title="Delete the file" aria-label="Delete the file">${ICON.trash}</button>` : ""}
     </div>
     <div class="vmeta">
       <a class="t" href="${href}" title="${esc(v.title)}">${esc(v.title || "Untitled")}</a>
       ${v.channel ? `<a class="c" href="${chanHref(v)}">${esc(v.channel)}</a>` : ""}
       ${meta || v.size ? `<span class="s">${esc([meta, v.size && bytes(v.size), v.quality && (v.quality === "best" ? "best quality" : v.quality + "p")].filter(Boolean).join(" · "))}</span>` : ""}
+      ${v.keep ? `<span class="s kept">${ICON.pinned}Kept</span>` : v.expires ? `<span class="s expires">Deletes ${until(v.expires)}</span>` : ""}
     </div>
   </article>`;
 }
@@ -91,6 +95,12 @@ document.addEventListener("click", (e) => {
   if (sub) toggleSub(sub);
   const forget = e.target.closest("[data-forget]");
   if (forget && v) del(`/api/me/history/${v.id}`).then(() => card.remove(), (err) => toast(err.message));
+  const keep = e.target.closest("[data-vkeep]");
+  if (keep && v) {
+    keep.disabled = true;
+    post(`/api/yt/library/${v.id}/keep`, { keep: !keep.classList.contains("on") })
+      .then((r) => { toast(r.keep ? "Kept: it won't be deleted automatically" : "No longer kept"); keepScroll = true; route(); }, (err) => { keep.disabled = false; toast(err.message); });
+  }
   const rm = e.target.closest("[data-vdelete]");
   if (rm && v && confirm(`Delete “${v.title}” from your video folder?`)) {
     del(`/api/yt/library/${v.id}`).then(() => { card.remove(); toast("Deleted"); }, (err) => toast(err.message));
@@ -255,10 +265,13 @@ document.addEventListener("click", (e) => {
   }
 });
 
+const ruleText = (rule) => (!rule.days ? "Downloads are kept until someone deletes them."
+  : rule.watched_only ? `Each video is deleted ${plural(rule.days, "day")} after someone finishes watching it. Press Keep on the ones to hold on to.`
+  : `Each video is deleted ${plural(rule.days, "day")} after it's downloaded. Press Keep on the ones to hold on to.`);
 async function ytDownloads(t) {
-  const r = await api("/api/yt/library");
+  const [r, rule] = await Promise.all([api("/api/yt/library"), api("/api/yt/retention").catch(() => ({ days: 0 }))]);
   const disk = r.disk ? ` ${bytes(r.used)} used, ${bytes(r.disk.free)} free on the disk.` : "";
-  paint(t, watchHead("downloads", "Downloaded", r.items.length ? `${plural(r.items.length, "video")} in your video folder.${disk} They play from here, and Jellyfin or Plex can pick them up too.` : "") +
+  paint(t, watchHead("downloads", "Downloaded", r.items.length ? `${plural(r.items.length, "video")} in your video folder.${disk} ${ruleText(rule)}` : "") +
     `<div class="wrap" data-queue="Downloaded">${r.items.length ? `<div class="vgrid">${r.items.map((v) => vcard(v, { remove: v.mine || ME?.admin })).join("")}</div>`
       : `<div class="empty-state"><strong>No downloads yet</strong>Use the download button on any video. It's saved with chapters, subtitles and the thumbnail.</div>`}</div>`);
 }
