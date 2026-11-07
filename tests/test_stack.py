@@ -484,6 +484,37 @@ class Quality(Base):
         self.assertEqual(len(stack.recheck(now=1_000_000 + 8 * 86400)), 3)
 
 
+class Yours(Base):
+    """Settings pointing Parlor at your own Seerr, Jellyfin or Sonarr elsewhere: setup leaves those alone."""
+    OUTSIDE = {"seerr_url": "https://seerr.example.test", "jellyfin_url": "http://media.example.test:8096", "sonarr_url": "http://nas.example.test:8989"}
+
+    def setUp(self):
+        super().setUp()
+        for k, v in self.OUTSIDE.items():
+            core.set_setting(k, v)
+        self.addCleanup(lambda: [core.db().execute("DELETE FROM settings WHERE key = ?", (k,)) for k in self.OUTSIDE])
+
+    def test_your_own_servers_are_left_alone(self):
+        r = self.run_all()
+        hosts = {c[1] for c in self.fake.calls}
+        self.assertFalse(hosts & {"seerr.example.test", "media.example.test", "nas.example.test"}, "nothing sent to them at all")
+        for key in (("seerr", "setup"), ("jellyfin", "libraries"), ("sonarr", "login"), ("sonarr", "root folder")):
+            self.assertEqual(r[key]["status"], "ok", key)
+            self.assertIn("left alone", r[key]["detail"])
+        self.assertNotIn("Sonarr", {a["implementation"] for a in self.fake.apps}, "Prowlarr isn't told to fill your own Sonarr")
+        self.assertEqual(set(self.fake.cleanup["instances"]["sonarr"]), set(), "nor is Cleanuparr told to clean it")
+        self.assertEqual(r[("radarr", "root folder")]["status"], "done", "the stack's own apps are still set up")
+
+
+class SeerrOfYourOwnArrs(Base):
+    def test_a_seerr_entry_for_another_radarr_keeps_its_profile(self):
+        self.run_all()
+        self.fake.seerr["radarr"].append({"id": 1, "hostname": "nas.example.test", "port": 7878, "activeProfileId": 7, "activeProfileName": "Mine"})
+        core.db().execute("DELETE FROM settings WHERE key = 'quality_before'")
+        self.run_all()
+        self.assertEqual(self.fake.seerr["radarr"][1]["activeProfileId"], 7)
+
+
 class CleanuparrYourWay(Base):
     def test_your_own_cleanup_settings_and_deletions_stay(self):
         self.run_all()

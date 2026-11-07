@@ -64,6 +64,22 @@ bazarr_url = lambda: where("bazarr", "http://bazarr:6767")  # noqa: E731
 cleanuparr_url = lambda: where("cleanuparr", "http://cleanuparr:11011")  # noqa: E731
 flaresolverr_url = lambda: where("flaresolverr", "http://flaresolverr:8191")  # noqa: E731
 
+# the compose's service names: setup changes an app only when Parlor's address for it is one of these,
+# never a server of yours elsewhere that Settings points at
+SERVICES = {"sonarr": {"sonarr"}, "radarr": {"radarr"}, "lidarr": {"lidarr"}, "prowlarr": {"prowlarr"}, "qbittorrent": {"gluetun", "qbittorrent"},
+            "jellyfin": {"jellyfin"}, "seerr": {"seerr"}, "bazarr": {"bazarr"}, "cleanuparr": {"cleanuparr"}}
+LABELS = {"qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "seerr": "Seerr", "bazarr": "Bazarr", "cleanuparr": "Cleanuparr"}
+
+
+def address(app) -> str:
+    return arr.url(app) if app in arr.APPS else {"qbittorrent": qbit, "jellyfin": jellyfin_url, "seerr": seerr_url,
+                                                 "bazarr": bazarr_url, "cleanuparr": cleanuparr_url}[app]()
+
+
+def ours(app) -> bool:
+    """The compose's own app, not one of yours elsewhere."""
+    return (urlsplit(address(app)).hostname or "") in SERVICES[app]
+
 
 class Wait(Exception):
     """The step can't run yet (say why); it isn't a failure."""
@@ -146,6 +162,8 @@ def prowlarr_apps():
     have = {a.get("implementation") for a in arr.call("prowlarr", "GET", "/applications")}
     schemas, added = None, []
     for app in ("sonarr", "radarr", "lidarr"):
+        if not ours(app):
+            continue  # Prowlarr would push its indexers into your own one
         label = arr.APPS[app]["label"]
         if label in have or not arr.key(app):
             continue
@@ -511,7 +529,7 @@ def seerr_apps():
         raise Wait("needs Seerr's API key first")
     added = []
     for app in ("radarr", "sonarr"):
-        if seerr("GET", f"/settings/{app}").json() or not arr.key(app):
+        if not ours(app) or seerr("GET", f"/settings/{app}").json() or not arr.key(app):
             continue
         where_ = urlsplit(arr.url(app))
         conn = {"hostname": where_.hostname, "port": where_.port, "apiKey": arr.key(app), "useSsl": False, "baseUrl": ""}
@@ -558,13 +576,15 @@ def _targets():
     """What decides the quality of new downloads: Seerr's Radarr and Sonarr, and Lidarr's root folder
     (Parlor's music requests use its default). Each: (key, app, label, current id, set(id))."""
     for app in ("radarr", "sonarr"):
-        if setting("seerr_key"):
+        if setting("seerr_key") and ours("seerr") and ours(app):
             for s in seerr("GET", f"/settings/{app}").json():
+                if s.get("hostname") != urlsplit(arr.url(app)).hostname:
+                    continue  # an entry for a Radarr or Sonarr of yours elsewhere: its profiles aren't these
                 put = lambda pid, s=s, app=app: seerr("PUT", f"/settings/{app}/{s['id']}", json={  # noqa: E731
                     **{k: v for k, v in s.items() if k != "id"},  # Seerr refuses its own id in the body
                     "activeProfileId": pid, "activeProfileName": BEST if pid == best_profile(app, make=False) else s.get("activeProfileName")})
                 yield f"seerr_{app}_{s['id']}", app, f"Seerr's {arr.APPS[app]['label']}", s.get("activeProfileId"), put
-    if arr.key("lidarr"):
+    if arr.key("lidarr") and ours("lidarr"):
         for r in arr.call("lidarr", "GET", "/rootfolder")[:1]:
             put = lambda pid, r=r: arr.call("lidarr", "PUT", f"/rootfolder/{r['id']}", json={**r, "defaultQualityProfileId": pid})  # noqa: E731
             yield "lidarr_root", "lidarr", "music requests", r.get("defaultQualityProfileId"), put
@@ -602,7 +622,7 @@ def recheck(now: Optional[float] = None) -> list:
         return []
     sent = []
     for app, command in RECHECK.items():
-        if arr.key(app):
+        if arr.key(app) and ours(app):
             try:
                 arr.call(app, "POST", "/command", json={"name": command})
                 sent.append(app)
@@ -644,7 +664,7 @@ def bazarr():
     url, headers = bazarr_url() + "/api/system/settings", {"X-API-KEY": key}
     now, form = need(http("GET", url, headers=headers), "Bazarr").json(), {}
     for app in ("sonarr", "radarr"):
-        if not arr.key(app) or (now.get("general", {}).get(f"use_{app}") and (now.get(app) or {}).get("apikey")):
+        if not ours(app) or not arr.key(app) or (now.get("general", {}).get(f"use_{app}") and (now.get(app) or {}).get("apikey")):
             continue
         where_ = urlsplit(arr.url(app))
         form.update({f"settings-general-use_{app}": "true", f"settings-{app}-ip": where_.hostname, f"settings-{app}-port": str(where_.port),
@@ -679,7 +699,7 @@ def cleanuparr(name, password):
         need(http("PUT", f"{base}/api/configuration/general", headers=headers, json=general), "Cleanuparr")
         changed.append("no login at home")
     for app in ("sonarr", "radarr", "lidarr"):
-        if not arr.key(app) or get(f"/api/configuration/{app}").get("instances"):
+        if not ours(app) or not arr.key(app) or get(f"/api/configuration/{app}").get("instances"):
             continue
         need(http("POST", f"{base}/api/configuration/{app}/instances", headers=headers, json={
             "name": arr.APPS[app]["label"], "url": arr.url(app), "apiKey": arr.key(app), "enabled": True,
@@ -801,6 +821,10 @@ def run(name=None, password=None, into=None) -> list:
     results = [] if into is None else into
     for app, step, fn in steps(name, password):
         started = time.time()
+        mine = app not in SERVICES or ours(app)
+        if not mine:
+            fn = lambda app=app: ("ok", f"your own {arr.APPS[app]['label'] if app in arr.APPS else LABELS[app]} "  # noqa: E731
+                                        f"at {urlsplit(address(app)).hostname}: left alone")
         try:
             status, detail = fn()
         except Wait as exc:
