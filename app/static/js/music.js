@@ -427,8 +427,7 @@ document.addEventListener("click", (e) => {
 
 /* ---------- yeerr: the Music section's routes ---------- */
 
-const musicChips = (on) => `<nav class="chips" aria-label="Music">${[["discover", "#/music", "Discover"], ["library", "#/library", "Your library"], ["playlists", "#/playlists", "Playlists"]]
-  .map(([key, href, label]) => `<a href="${href}"${key === on ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
+const musicChips = () => subnav();
 
 // marks songs you already have; the first scan of a big folder can take a while,
 // so pages wait for it at most 1.5 s

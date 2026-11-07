@@ -48,6 +48,14 @@ async function showDashboard(t) {
   (libraryOnce ||= loadLibrary().catch(() => { libraryOnce = null; })).then((songs) => { if (songs?.length) { stats.songs = songs.length; drawStats(); } });
 }
 
+/* You: your lists, your library and settings in one place (the phone's "more" page) */
+async function showYou(t) {
+  paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
+    <div class="wrap">${youHtml()}${slot("youContinue", "", "")}${slot("youLater", "", "")}</div>`);
+  api("/api/me/history?unfinished=true&limit=16").then((r) => fill(t, "youContinue", r.items.length ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v)).join("")}</div>`, "#/yt/continue") : ""), () => fill(t, "youContinue", ""));
+  api("/api/me/later").then((r) => { const items = r.items || r; fill(t, "youLater", items.length ? shelf("Watch later", `<div class="vstrip">${items.slice(0, 16).map((v) => vcard(v)).join("")}</div>`, "#/yt/later") : ""); }, () => fill(t, "youLater", ""));
+}
+
 async function showSearchAll(t, parts) {
   const q = parts.join("/");
   input.value = q;
@@ -279,6 +287,7 @@ async function showGate(mode) {
 page("", showDashboard, "home");
 page("search", showSearchAll, "home");
 page("settings", showSettings, "settings");
+page("you", showYou, "settings");
 
 async function boot() {
   try {

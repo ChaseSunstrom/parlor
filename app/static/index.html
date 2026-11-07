@@ -16,12 +16,8 @@
 <body data-section="home">
 <header class="bar">
   <a class="brand" href="#/"><img src="logo.svg" alt=""><span>yeerr</span></a>
-  <nav class="nav" aria-label="Sections">
-    <a href="#/" data-nav="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Home</span></a>
-    <a href="#/yt" data-nav="watch"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z" fill="currentColor"/></svg><span>Watch</span></a>
-    <a href="#/media" data-nav="media"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 4v16M16.5 4v16M3.5 9h4M3.5 15h4M16.5 9h4M16.5 15h4" stroke="currentColor" stroke-width="2"/></svg><span>Movies &amp; TV</span></a>
-    <a href="#/music" data-nav="music"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg><span>Music</span></a>
-  </nav>
+  <button class="back-btn" id="back" hidden aria-label="Back"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Back</span></button>
+  <nav class="nav" aria-label="Sections"></nav>
   <form class="search" id="searchForm" role="search">
     <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     <label class="vh" for="q">Search</label>
@@ -34,6 +30,7 @@
   <button class="avatar-btn" id="account" aria-haspopup="menu" aria-expanded="false" aria-label="Account">?</button>
 </header>
 <div class="menu" id="accountMenu" role="menu" hidden></div>
+<nav class="side" id="side" aria-label="Sections"></nav>
 
 <main id="main"></main>
 
@@ -56,6 +53,7 @@
 <div id="gate"></div>
 
 <script src="js/core.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/music.js"></script>
 <script src="js/watch.js"></script>
 <script src="js/media.js"></script>

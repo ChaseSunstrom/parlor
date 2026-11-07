@@ -28,7 +28,7 @@ const pgrid = (items) => (items?.length ? `<div class="pgrid">${items.map(pcard)
 
 function notConnected(t, reason) {
   paint(t, `<section class="home">${aurora}<h1>Movies &amp; TV</h1>
-    <p>Find films and shows and request them; Seerr gets them into your library.</p></section>
+    <p>Find films and shows and request them; Seerr gets them into your library.</p>${subnav()}</section>
     <div class="wrap"><div class="panel"><div class="head"><div><h3>Seerr isn't connected yet</h3>
       <p>${ME?.admin ? "Add your Seerr address and API key (Seerr → Settings → General → API Key)." : "Ask an admin to connect Seerr."} ${reason && reason !== "not set up" ? `(${esc(reason)})` : ""}</p></div>
       ${ME?.admin ? `<a class="primary" href="#/settings">Connect Seerr</a>` : ""}</div></div></div>`);
@@ -41,8 +41,7 @@ async function checkSeerr() {
   return s;
 }
 
-const MEDIA_CHIPS = [["", "Discover"], ["requests", "Requests"]];
-const mediaChips = (on) => `<nav class="chips">${MEDIA_CHIPS.map(([k, label]) => `<a href="#/${k ? k : "media"}"${k === on ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
+const mediaChips = () => subnav();
 
 async function showMedia(t, [what = "", ...rest]) {
   if (what === "search") return showMediaSearch(t, rest.join("/"));

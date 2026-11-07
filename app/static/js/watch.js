@@ -114,16 +114,15 @@ document.addEventListener("click", (e) => {
 
 /* ---------- the Watch section's pages ---------- */
 
-const WATCH_TABS = [["home", "Home"], ["subs", "Subscriptions"], ["rec", "Recommended"], ["continue", "Continue watching"], ["later", "Watch later"],
-  ["history", "History"], ["downloads", "Downloaded"], ["channels", "Channels"]];
 function watchHead(active, title, blurb, extra = "") {
-  const account = ME?.youtube_cookies
-    ? `<span class="sep"></span><a href="#/yt/account/subscriptions"${active === "account-subscriptions" ? ' aria-current="page"' : ""}>YouTube feed</a>
+  const feeds = ["home", "subs", "rec"].includes(active) || active.startsWith("account");
+  const account = ME?.youtube_cookies && feeds
+    ? `<a href="#/yt/account/subscriptions"${active === "account-subscriptions" ? ' aria-current="page"' : ""}>Your YouTube feed</a>
        <a href="#/yt/account/later"${active === "account-later" ? ' aria-current="page"' : ""}>YouTube watch later</a>` : "";
+  const actions = [account, extra.replace(/^\s*<span class="sep"><\/span>/, "")].filter((x) => x.trim()).join('<span class="sep"></span>');
   return `<section class="home">${aurora}
     <h1>${esc(title)}</h1>${blurb ? `<p>${blurb}</p>` : ""}
-    <nav class="chips" aria-label="Watch">${WATCH_TABS.map(([k, label]) => `<a href="#/yt/${k}"${k === active ? ' aria-current="page"' : ""}>${label}</a>`).join("")}${account}
-      ${extra}</nav>
+    ${subnav()}${actions ? `<div class="chips page-actions">${actions}</div>` : ""}
   </section>`;
 }
 const shortsChip = () => `<span class="sep"></span><button data-shorts aria-pressed="${pref("hideShorts")}">Hide Shorts</button>`;
@@ -141,7 +140,7 @@ async function showYt(t, [tab = "home", ...rest]) {
    topic shelves load as they scroll into view. */
 const vstrip = (items) => (items.length ? `<div class="vstrip">${items.map((v) => vcard(v)).join("")}</div>` : "");
 async function ytHome(t) {
-  paint(t, watchHead("home", "Home", "Picked from what you watch, the channels you follow and the topics you like.", shortsChip()) + `<div class="wrap">
+  paint(t, watchHead("home", "For you", "Picked from what you watch, the channels you follow and the topics you like.", shortsChip()) + `<div class="wrap">
     ${slot("wContinue", "", "")}${slot("wBecause0", "", skeletons(4, "v", "vstrip"))}${slot("wSubs", "", "")}${slot("wBecause1", "", "")}
     <div id="wTopics"></div></div>`);
   api("/api/me/history?unfinished=true&limit=16").then((r) => fill(t, "wContinue", shelf("Continue watching", vstrip(r.items), "#/yt/continue")), () => fill(t, "wContinue", ""));
