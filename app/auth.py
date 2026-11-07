@@ -1,5 +1,6 @@
 """Accounts: first-run admin setup, sign in (local or Jellyfin), users and settings."""
 
+import re
 import time
 import uuid
 from collections import defaultdict
@@ -201,7 +202,7 @@ def create_user(name, password, is_admin) -> int:
 
 @router.get("/users")
 def list_users(_=Depends(admin)):
-    return rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.created,
+    return rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.jf_user, u.created,
                           (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
                    FROM users u ORDER BY u.name""")
 
@@ -222,6 +223,7 @@ class UserChange(BaseModel):
     password: Optional[str] = None
     seerr_id: Optional[int] = None
     unlink_seerr: bool = False
+    jf_user: Optional[str] = None  # the Jellyfin user they play as; "" clears it
 
 
 def _admins_left_without(user_id: int) -> int:
@@ -244,6 +246,8 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
         db().execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
     if body.seerr_id is not None or body.unlink_seerr:
         db().execute("UPDATE users SET seerr_id = ? WHERE id = ?", (None if body.unlink_seerr else body.seerr_id, user_id))
+    if body.jf_user is not None:
+        db().execute("UPDATE users SET jf_user = ? WHERE id = ?", (_jf_user(body.jf_user) or None, user_id))
     return {"ok": True}
 
 
@@ -266,7 +270,16 @@ class Settings(BaseModel):
     seerr_url: Optional[str] = None
     seerr_key: Optional[str] = None
     jellyfin_url: Optional[str] = None
+    jellyfin_key: Optional[str] = None
+    jellyfin_user: Optional[str] = None  # who unlinked accounts play as
     open_signup: Optional[bool] = None
+
+
+def _jf_user(value: str) -> str:
+    value = (value or "").strip()
+    if len(value) > 64:
+        raise HTTPException(422, "Jellyfin user names are at most 64 characters")
+    return value
 
 
 def _url(value: str) -> str:
@@ -284,6 +297,8 @@ def get_settings(_=Depends(admin)):
         "seerr_key_set": bool(key),
         "seerr_key_hint": f"…{key[-4:]}" if len(key) > 8 else "",
         "jellyfin_url": setting("jellyfin_url"),
+        "jellyfin_key_set": bool(setting("jellyfin_key")),  # the key itself is never sent back
+        "jellyfin_user": setting("jellyfin_user"),
         "open_signup": setting("open_signup") in ("1", "true", "yes"),
     }
 
@@ -296,6 +311,13 @@ def put_settings(body: Settings, _=Depends(admin)):
         set_setting("seerr_key", body.seerr_key.strip())
     if body.jellyfin_url is not None:
         set_setting("jellyfin_url", _url(body.jellyfin_url))
+    if body.jellyfin_key is not None:
+        key = body.jellyfin_key.strip()
+        if not re.fullmatch(r"[\w.=+/-]{0,128}", key):
+            raise HTTPException(422, "That doesn't look like a Jellyfin API key")
+        set_setting("jellyfin_key", key)
+    if body.jellyfin_user is not None:
+        set_setting("jellyfin_user", _jf_user(body.jellyfin_user))
     if body.open_signup is not None:
         set_setting("open_signup", "1" if body.open_signup else "0")
     return get_settings(_)

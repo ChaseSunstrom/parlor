@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   admin INTEGER NOT NULL DEFAULT 0,
   jellyfin_id TEXT UNIQUE,
   seerr_id INTEGER,             -- the Seerr user requests are made as
+  jf_user TEXT,                 -- the Jellyfin user (name or id) they play as, set by an admin
   created REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -92,6 +93,11 @@ def db() -> sqlite3.Connection:
         with _schema_lock:
             if path not in _ready:
                 conn.executescript(SCHEMA)
+                if "jf_user" not in {r["name"] for r in conn.execute("PRAGMA table_info(users)")}:  # databases from before it
+                    try:
+                        conn.execute("ALTER TABLE users ADD COLUMN jf_user TEXT")
+                    except sqlite3.OperationalError:  # another process added it first
+                        pass
                 _ready.add(path)
         _local.db, _local.path = conn, path
     return conn
@@ -112,6 +118,8 @@ ENV_DEFAULTS = {
     "seerr_url": "SEERR_URL",
     "seerr_key": "SEERR_API_KEY",
     "jellyfin_url": "JELLYFIN_URL",
+    "jellyfin_key": "JELLYFIN_API_KEY",
+    "jellyfin_user": "JELLYFIN_USER",
     "open_signup": "OPEN_SIGNUP",
 }
 
