@@ -322,6 +322,7 @@ _PLAY = rf"(?:stream(?:\.\w+)?|master\.m3u8|main\.m3u8|hls1/{_SEGS})"
 ALLOWED = re.compile(rf"Videos/{_I}/(?:{_PLAY}|{_I}/Subtitles/\d+/(?:\d+/)?Stream\.(?:vtt|srt|ass))"
                      rf"|Audio/{_I}/(?:{_PLAY}|universal)"
                      rf"|Items/{_I}/(?:Images/(?:Primary|Backdrop|Thumb|Logo|Banner)(?:/\d+)?|Download)", re.ASCII)
+IMAGE = re.compile(rf"Items/{_I}/Images/[A-Za-z]+(?:/\d+)?", re.ASCII)  # within ALLOWED: only these skip the access check
 KEYS = {"api_key", "apikey", "x-emby-token"}
 DROP = KEYS | {"userid", "deviceid"}  # never forwarded from the browser: the server decides who is asking
 _KEY = re.compile(r"([?&])(?:api_key|apikey|x-emby-token)=[^&\s\"']*(&?)", re.I)
@@ -364,7 +365,8 @@ def may_see(user, iid, download=False):
 def stream(path: str, request: Request, user=Depends(me)):
     if len(path) > 300 or not ALLOWED.fullmatch(path):
         raise HTTPException(404, "No such stream")
-    if "/Images/" not in path:  # pictures are let through unchecked: a page of cards would mean a lookup each
+    image = bool(IMAGE.fullmatch(path))
+    if not image:  # pictures are let through unchecked: a page of cards would mean a lookup each
         may_see(user, path.split("/")[1], download=path.endswith("/Download"))
     params = [(k, v) for k, v in request.query_params.multi_items() if k.lower() not in DROP]
     headers = {"Accept-Encoding": "identity"}  # a compressed body would make Content-Length lie
@@ -386,7 +388,6 @@ def stream(path: str, request: Request, user=Depends(me)):
                 raise HTTPException(502, "Jellyfin sent a playlist that's too big")
         r.close()
         return Response(strip_key(body.decode("utf-8", "replace")), status_code=200, media_type=ctype, headers={"Cache-Control": "no-store"})
-    image = path.startswith("Items/") and "/Images/" in path
     headers = {"Cache-Control": "private, max-age=3600" if image else "no-store"}
     headers.update({n: r.headers[n] for n in PASS if n in r.headers})
     return StreamingResponse(r.iter_content(64 * 1024), status_code=r.status_code, media_type=ctype, headers=headers,

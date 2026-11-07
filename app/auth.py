@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from core import (COOKIE, _digest, admin, check_password, db, drop_session, hash_password, me, new_session, one, rows,
                   set_cookie, set_setting, setting, valid_name, valid_password)
+import stack
 
 router = APIRouter(prefix="/api")
 
@@ -81,6 +82,8 @@ def setup(body: Login, request: Request, response: Response):
     except BaseException:
         con.execute("ROLLBACK")
         raise
+    if stack.on():  # yeerr's compose: set every app up with this name and password (kept in memory only)
+        stack.start(name, password, retries=10)
     return _signed_in(request, response, cur.lastrowid)
 
 

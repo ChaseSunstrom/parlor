@@ -411,6 +411,22 @@ a.ghost { display: inline-flex; align-items: center; }
 .vmeta .kept { color: var(--accent); font-weight: 600; }
 .vmeta .kept .i { width: 14px; height: 14px; }
 .vact [data-vkeep].on { color: var(--accent); }
+.svc-list { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 2px; }
+.svc { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid var(--line); }
+.svc small { display: block; margin-top: 2px; overflow-wrap: anywhere; }
+.svc .state { width: 10px; height: 10px; margin-top: 6px; border-radius: 50%; background: var(--bad); }
+.svc .state.up { background: var(--ok); box-shadow: 0 0 10px color-mix(in oklab, var(--ok) 70%, transparent); animation: breathe 3s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .55; } }
+.svc-steps { list-style: none; margin: 6px 0 0; padding: 0; font-size: .88rem; color: var(--dim); }
+.svc-steps li { padding: 2px 0 2px 14px; position: relative; }
+.svc-steps li::before { content: ""; position: absolute; left: 0; top: .6em; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); }
+.svc-steps li.done::before, .svc-steps li.ok::before { background: var(--ok); }
+.svc-steps li.failed::before { background: var(--bad); }
+.svc-steps li.failed { color: var(--text); }
+.svc-steps b { color: var(--text); font-weight: 600; }
+.spin-sm { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin 0.8s linear infinite; }
+#stackForm { align-items: end; margin-top: 14px; }
+#stackForm .grow { flex: 1; min-width: 220px; margin: 0; }
 .you-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-top: 28px; }
 .you-tile {
   display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line);

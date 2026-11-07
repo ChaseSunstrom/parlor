@@ -15,6 +15,7 @@ import yt
 
 class Accounts(unittest.TestCase):
     def test_1_first_run_setup_then_sign_in(self):
+        core.db().execute("DELETE FROM users")  # a brand-new install, whichever test file ran first
         c = client()
         self.assertTrue(c.get("/api/auth/state").json()["setup"])
         self.assertEqual(c.post("/api/auth/login", json={"name": "anyone", "password": "anything!"}, headers=H).status_code, 409,  # pragma: allowlist secret
