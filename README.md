@@ -163,6 +163,7 @@ Set these in `.env` (see `.env.example`).
 | `YT_PARALLEL` | `2` | Videos downloading at once |
 | `VIDEO_KEEP_DAYS` | `0` | Delete downloaded videos this many days after they're downloaded; `0` keeps them. Settings can change it. |
 | `UPDATE_HOURS` | `24` | How often yt-dlp is updated while running (it's also updated on every start). `0` turns both off. |
+| `HEAL` | `1` | When YouTube changes something and downloads start failing, update yt-dlp straight away instead of at the next check. `0` turns that off (so does `UPDATE_HOURS=0`). |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 
 music-fndr's own settings (`FORMAT`, `BITRATE`, `OUTPUT`, `THREADS`, `SYNC_HOURS`, `YT_DLP_ARGS`, `JELLYFIN_API_KEY`, `JELLYFIN_USER`) work as described in [its README](https://github.com/ChaseSunstrom/music-fndr#settings).
@@ -171,7 +172,11 @@ Per-device choices (playback quality, autoplay, captions language, SponsorBlock 
 
 ## Updating
 
-YouTube changes often, and a yt-dlp a few weeks old starts failing. Parlor updates yt-dlp every time it starts, checks again every `UPDATE_HOURS`, and when there's a new one it restarts between downloads to load it. Docker brings it back and the queues carry on. To update everything else:
+YouTube changes often, and a yt-dlp a few weeks old starts failing. Parlor updates yt-dlp every time it starts, checks again every `UPDATE_HOURS`, and when there's a new one it restarts between downloads to load it. Docker brings it back and the queues carry on.
+
+When YouTube changes something before then, there's nothing to do either. A download, video or search that fails because of it (not a rate limit, not a removed or private video) makes Parlor update yt-dlp straight away, at most once an hour, to yt-dlp's nightly build when the regular release has no fix yet; it moves back to the regular release once a newer one is out. Those downloads, videos and songs alike, show "YouTube changed something; waiting for a yt-dlp update" and wait instead of failing. yt-dlp is replaced only once the running downloads have finished, new ones hold until Parlor restarts to load it, then they all carry on (each waits at most three times before it's marked failed). `HEAL=0` turns this off. If yt-dlp can't be installed there (a read-only image), Parlor says so once in its log and stops trying until it restarts; without internet for a while, it simply tries again on the next failure an hour later.
+
+To update everything else:
 
 ```sh
 docker compose pull && docker compose build --pull && docker compose up -d

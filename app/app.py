@@ -78,6 +78,8 @@ async def startup():
 def start():
     core.db()  # creates the tables
     music.others_busy = yt.busy  # music's yt-dlp update waits for video downloads too
+    yt.heal_soon = music.heal_soon  # one yt-dlp healer for both
+    yt.restarting = lambda: music.healing.is_set() or music.restart_wanted.is_set()
     music.start_worker()  # a mounted app's own startup hook doesn't run
     yt.start()
     library.start()  # keeps the music index (for /rest) current

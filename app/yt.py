@@ -46,6 +46,10 @@ FORMAT_ID = re.compile(r"[A-Za-z0-9_-]{1,24}")
 
 # YouTube refusing this server for a while (same test as music-fndr's)
 LIMITED = re.compile(r"rate.?limit|HTTP Error 429|Too Many Requests|confirm you.?re not a bot", re.I)
+# app.py points these at music.py's: ask for a new yt-dlp when an error means YouTube changed
+# something (True when it does), and whether a restart to load the new one is coming
+heal_soon = lambda why: False  # noqa: E731
+restarting = lambda: False  # noqa: E731
 BASE = {"quiet": True, "no_warnings": True, "socket_timeout": 20, "extractor_retries": 2, "noprogress": True}
 
 
@@ -107,6 +111,9 @@ def extract(url, user_id=None, report=None, **extra):
             if LIMITED.search(low):
                 raise HTTPException(429, "YouTube is rate-limiting this server for now (too many requests from it). "
                                          "It usually clears within an hour.") from exc
+            if heal_soon(str(exc)):
+                raise HTTPException(503, "YouTube changed something; Parlor is updating yt-dlp to match. "
+                                         "Try again in a few minutes.") from exc
             if "sign in" in low and not has_cookies(user_id or 0):
                 raise HTTPException(403, f"{msg} Add your YouTube cookies in Settings to watch videos that need a sign-in.") from exc
             code = 404 if any(w in low for w in ("unavailable", "private", "not exist", "removed", "terminated", "404")) else 502
@@ -1045,6 +1052,9 @@ PARALLEL = int(os.environ.get("YT_PARALLEL", "2"))
 RUNNING = ("queued", "waiting", "downloading", "processing")
 LIMIT_WAIT = 15 * 60  # YouTube says "for up to an hour"
 MAX_WAITS = 8
+HEAL_WAIT = 60 * 60  # sooner when the new yt-dlp's restart picks waiting jobs back up
+MAX_HEALS = 3
+HOLD = 15 * 60
 jobs: list = []
 _jobs_lock = threading.Lock()
 _pending: queue.Queue = queue.Queue()
@@ -1085,15 +1095,15 @@ def restore_jobs():
         _pending.put(j)
 
 
-def wait_then_retry(job, delay=LIMIT_WAIT):
-    """YouTube is limiting this server: try the job again later instead of
-    failing it, up to MAX_WAITS times (about two hours)."""
+def wait_then_retry(job, delay=LIMIT_WAIT, why="YouTube is rate-limiting this server"):
+    """YouTube is limiting this server (or changed something): try the job again later
+    instead of failing it, up to MAX_WAITS times (about two hours)."""
     job["waits"] = job.get("waits", 0) + 1
     if job["waits"] > MAX_WAITS:
         job.update(status="failed", speed=None, eta=None, error="YouTube kept refusing this server for two hours; Retry later")
         return
     job.update(status="waiting", speed=None, eta=None, retry_at=time.time() + delay,
-               error=f"YouTube is rate-limiting this server; trying again at {time.strftime('%H:%M', time.localtime(time.time() + delay))}")
+               error=f"{why}; trying again at {time.strftime('%H:%M', time.localtime(time.time() + delay))}")
 
     def again():
         with _jobs_lock:
@@ -1175,7 +1185,7 @@ def retry_download(job_id: str, user=Depends(me)):
         job = own_job(job_id, user)
         if job["status"] in RUNNING and job["status"] != "waiting":
             raise HTTPException(409, "That download is already running")
-        job.update(status="queued", progress=0, error=None, stop=False, speed=None, eta=None, step=None, waits=0)
+        job.update(status="queued", progress=0, error=None, stop=False, speed=None, eta=None, step=None, waits=0, heals=0)
     _pending.put(job)
     save_jobs()
     return view(job)
@@ -1248,6 +1258,7 @@ def run_download(job):
     try:
         parsed = yt_dlp.parse_options(download_args(job))
         opts = {**parsed.ydl_opts, **BASE, "cachedir": str(core.DATA / "cache" / "yt-dlp"),
+                "ignoreerrors": False,  # the command line's default turns every error into a None info
                 "progress_hooks": [progress], "postprocessor_hooks": [processing]}
         with yt_dlp.YoutubeDL(opts) as y:
             info = y.extract_info(f"https://www.youtube.com/watch?v={job['id']}", download=True)
@@ -1275,6 +1286,9 @@ def run_download(job):
     except yt_dlp.utils.DownloadError as exc:
         if LIMITED.search(str(exc)):
             wait_then_retry(job)
+        elif job.get("heals", 0) < MAX_HEALS and heal_soon(str(exc)):
+            job["heals"] = job.get("heals", 0) + 1
+            wait_then_retry(job, HEAL_WAIT, "YouTube changed something; waiting for a yt-dlp update")
         else:
             job.update(status="failed", error=plain_error(exc), speed=None, eta=None)
     except Exception as exc:  # keep the worker alive; show why
@@ -1285,12 +1299,21 @@ def run_download(job):
         save_jobs()
 
 
+def serve(job):
+    held = time.time()
+    # a new yt-dlp is about to load: new downloads wait for it (and the restart requeues them),
+    # but not forever if the restart never comes (music's worker restarts Parlor between its own jobs)
+    while restarting() and time.time() - held < HOLD:
+        time.sleep(5)
+    if job.get("status") == "queued":
+        run_download(job)
+
+
 def download_worker():
     while True:
         job = _pending.get()
         try:
-            if job.get("status") == "queued":
-                run_download(job)
+            serve(job)
         except Exception:
             log.exception("download worker hiccup")
 
