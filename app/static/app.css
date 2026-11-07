@@ -677,3 +677,9 @@ a.ghost { display: inline-flex; align-items: center; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+
+/* Settings → Music apps: a new app password, shown once */
+.notice { border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 14px; margin: 6px 0 12px; }
+.notice p { margin: 0 0 8px; }
+code.secret { font: .95rem ui-monospace, monospace; padding: 6px 10px; border-radius: 8px; background: var(--sunk); user-select: all; word-break: break-all; }
+.svc.two { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }

@@ -110,6 +110,22 @@ async function drawVpn(t) {
   if (["starting", "connecting", "restarting"].includes(v.state)) setTimeout(() => t === ticket && drawVpn(t), 3000);
 }
 
+/* Settings → Music apps: app passwords for Subsonic clients; a new one is shown once */
+async function drawAppKeys(t, fresh) {
+  const keys = await api("/api/me/app-passwords").catch(() => null);
+  const box = $("#appKeyList");
+  if (!box || t !== ticket || !keys) return;
+  box.innerHTML = (fresh ? `<div class="notice"><p>The app password for <strong>${esc(fresh.name)}</strong>. Copy it now: it isn't shown again.</p>
+      <div class="actions"><code class="secret" id="freshKey">${esc(fresh.secret)}</code><button class="ghost" id="copyKey">Copy</button></div></div>` : "")
+    + (keys.length ? `<ul class="svc-list">${keys.map((k) => `<li class="svc two"><div><strong>${esc(k.name)}</strong>
+        <small class="dim">made ${since(k.created)}${k.used ? `, last used ${since(k.used)}` : ", not used yet"}</small></div>
+        <button class="ghost danger" data-drop-key="${k.id}">Delete</button></li>`).join("")}</ul>` : `<p class="dim">No app passwords yet.</p>`);
+  $("#copyKey")?.addEventListener("click", () => navigator.clipboard.writeText(fresh.secret).then(() => toast("Copied"), () => toast("Select it and copy")));
+  box.querySelectorAll("[data-drop-key]").forEach((b) => b.addEventListener("click", () =>
+    confirm("Delete this app password? The app using it stops working until you give it a new one.")
+      && del(`/api/me/app-passwords/${b.dataset.dropKey}`).then(() => drawAppKeys(t), (err) => toast(err.message))));
+}
+
 /* You: your lists, your library and settings in one place (the phone's "more" page) */
 async function showYou(t) {
   paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
@@ -180,6 +196,13 @@ async function showSettings(t) {
           <label class="ghost" style="cursor:pointer">Open cookies.txt<input type="file" id="cookieFile" accept=".txt" hidden></label>
           ${me.youtube_cookies ? `<button class="ghost danger" id="dropCookies">Remove them</button>` : ""}</div>
       </section>
+      <section class="panel" id="appKeys"><h3>Music apps</h3>
+        <p>Symfonium, Tempo, DSub, Feishin and other Subsonic apps can play your music folder straight from here. In the app, add a Subsonic server:
+          address <strong>${esc(location.origin)}</strong>, user <strong>${esc(me.name)}</strong>, and an app password made below (or your own password, if the app has no other choice).</p>
+        <div id="appKeyList">${SPIN}</div>
+        <form id="appKeyForm" class="actions"><label class="field grow"><span class="vh">Name</span><input id="appKeyName" maxlength="40" placeholder="Which app, like Symfonium on my phone" required></label>
+          <button class="primary small">Make an app password</button></form>
+      </section>
       <section class="panel"><h3>Your account</h3>
         ${me.local ? `<form id="pwForm"><label class="field"><span>Current password</span><input type="password" id="pwOld" autocomplete="current-password" required></label>
           <label class="field"><span>New password</span><input type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
@@ -201,6 +224,14 @@ async function showSettings(t) {
     setPref("skip", SB_CHOICES.map(([c]) => c).filter((c) => $(`#sb-${c}`).checked));
     toast("Saved");
   }));
+  drawAppKeys(t);
+  $("#appKeyForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    post("/api/me/app-passwords", { name: $("#appKeyName").value }).then((k) => {
+      $("#appKeyName").value = "";
+      drawAppKeys(t, k);
+    }, (err) => toast(err.message));
+  });
   $("#cookieFile").addEventListener("change", async (e) => { const f = e.target.files[0]; if (f) $("#cookieText").value = await f.text(); });
   $("#saveCookies").addEventListener("click", () => put("/api/me/youtube-cookies", { text: $("#cookieText").value })
     .then(async (r) => { toast(`Saved ${plural(r.cookies, "cookie")}`); ME = await api("/api/me"); route(); }, (e) => toast(e.message)));
