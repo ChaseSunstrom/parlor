@@ -23,3 +23,9 @@ assert.ok(html.includes('data-seek="125"') && html.includes('data-seek="600"'), 
 assert.ok(!html.includes('data-seek="83"'), "no button inside the link");
 assert.ok(!linkify("javascript:alert(1) 1:00", false).includes("<a"), "only http(s) links");
 console.log("ui helpers ok");
+
+// the page's scripts share one global scope: the same const in two files would stop the later one
+const order = [...fs.readFileSync(path.join(__dirname, "..", "app", "static", "index.html"), "utf8").matchAll(/<script src="js\/([\w-]+\.js)"/g)].map((m) => m[1]);
+assert.ok(order.length >= 6, order);
+new (require("vm").Script)(order.map(js).join("\n;\n"), { filename: "all-scripts.js" }); // throws on a clash
+console.log("scripts load together ok");
