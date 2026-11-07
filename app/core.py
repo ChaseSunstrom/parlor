@@ -73,6 +73,50 @@ CREATE TABLE IF NOT EXISTS videos (
   user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
   added REAL NOT NULL
 );
+-- the music folder's tag index (library.py); ids are hashes of the relative path, album and artist
+CREATE TABLE IF NOT EXISTS tracks (
+  id TEXT PRIMARY KEY,          -- tr-<hash of path>
+  path TEXT NOT NULL UNIQUE,    -- relative to the music folder
+  title TEXT NOT NULL, artist TEXT NOT NULL, album TEXT NOT NULL, album_artist TEXT NOT NULL,
+  album_id TEXT NOT NULL, artist_id TEXT NOT NULL,   -- al-<hash>, ar-<hash>
+  track INTEGER, disc INTEGER, year INTEGER, genre TEXT,
+  secs REAL NOT NULL DEFAULT 0, bitrate INTEGER, size INTEGER NOT NULL, mtime REAL NOT NULL, suffix TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS tracks_album ON tracks(album_id);
+CREATE INDEX IF NOT EXISTS tracks_artist ON tracks(artist_id);
+-- Subsonic API (subsonic.py): per-account stars, ratings and plays for tracks (tr-), albums (al-) and artists (ar-)
+CREATE TABLE IF NOT EXISTS sub_meta (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item TEXT NOT NULL,
+  starred REAL, rating INTEGER, plays INTEGER NOT NULL DEFAULT 0, played REAL,
+  PRIMARY KEY (user_id, item)
+);
+CREATE TABLE IF NOT EXISTS sub_playlists (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, comment TEXT, public INTEGER NOT NULL DEFAULT 0, created REAL NOT NULL, changed REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sub_playlist_tracks (
+  playlist_id INTEGER NOT NULL REFERENCES sub_playlists(id) ON DELETE CASCADE,
+  pos INTEGER NOT NULL, track_id TEXT NOT NULL,
+  PRIMARY KEY (playlist_id, pos)
+);
+CREATE TABLE IF NOT EXISTS sub_queue (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  tracks TEXT NOT NULL, current TEXT, position INTEGER, changed REAL NOT NULL, changed_by TEXT
+);
+CREATE TABLE IF NOT EXISTS sub_bookmarks (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  track_id TEXT NOT NULL, position INTEGER NOT NULL, comment TEXT, created REAL NOT NULL, changed REAL NOT NULL,
+  PRIMARY KEY (user_id, track_id)
+);
+-- passwords for music apps: the Subsonic token login (md5 of secret + salt) needs the secret itself, so these
+-- are random and separate from the account password; the secret also works as an OpenSubsonic apiKey
+CREATE TABLE IF NOT EXISTS app_passwords (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, secret TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created REAL NOT NULL, used REAL
+);
 """
 
 COLUMNS = [

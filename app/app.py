@@ -15,8 +15,10 @@ from pathlib import Path
 import auth
 import core
 import jf
+import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import seerr
+import subsonic
 import yt
 
 log = logging.getLogger("yeerr")
@@ -55,6 +57,7 @@ app.include_router(auth.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)
 app.include_router(jf.router)
+app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
 app.mount("/music", music.app)  # its API answers at /music/api/...
 
 
@@ -70,6 +73,7 @@ def start():
     music.others_busy = yt.busy  # music's yt-dlp update waits for video downloads too
     music.start_worker()  # a mounted app's own startup hook doesn't run
     yt.start()
+    library.start()  # keeps the music index (for /rest) current
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="ui")
