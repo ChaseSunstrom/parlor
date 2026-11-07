@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#1c1a24">
+<title>yeerr</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body data-section="home">
+<header class="bar">
+  <a class="brand" href="#/"><img src="logo.svg" alt=""><span>yeerr</span></a>
+  <nav class="nav" aria-label="Sections">
+    <a href="#/" data-nav="home"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Home</span></a>
+    <a href="#/yt" data-nav="watch"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z" fill="currentColor"/></svg><span>Watch</span></a>
+    <a href="#/media" data-nav="media"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 4v16M16.5 4v16M3.5 9h4M3.5 15h4M16.5 9h4M16.5 15h4" stroke="currentColor" stroke-width="2"/></svg><span>Movies &amp; TV</span></a>
+    <a href="#/music" data-nav="music"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg><span>Music</span></a>
+  </nav>
+  <form class="search" id="searchForm" role="search">
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <label class="vh" for="q">Search</label>
+    <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search videos, movies, shows and music">
+  </form>
+  <button class="queue-btn" id="openQueue" aria-controls="queue" aria-expanded="false" aria-label="Downloads">
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="label">Downloads</span><span class="eq" id="eq" hidden><i></i><i></i><i></i></span><span class="count" id="count" hidden></span>
+  </button>
+  <button class="avatar-btn" id="account" aria-haspopup="menu" aria-expanded="false" aria-label="Account">?</button>
+</header>
+<div class="menu" id="accountMenu" role="menu" hidden></div>
+
+<main id="main"></main>
+
+<aside class="queue" id="queue" aria-label="Downloads" inert>
+  <div class="queue-head">
+    <h2>Downloads</h2>
+    <button class="ghost" id="retryFailed" hidden>Retry failed</button>
+    <button class="ghost" id="clearDone">Clear finished</button>
+    <button class="icon-btn" id="closeQueue" aria-label="Close downloads">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+  <div class="jobs-scroll">
+    <h3>Videos</h3><ul class="jobs" id="videoJobs"></ul>
+    <h3>Music</h3><ul class="jobs" id="jobs"></ul>
+  </div>
+</aside>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span></span><button hidden>View</button></div>
+<div id="gate"></div>
+
+<script src="js/core.js"></script>
+<script src="js/music.js"></script>
+<script src="js/watch.js"></script>
+<script src="js/media.js"></script>
+<script src="js/drawer.js"></script>
+<script src="js/home.js"></script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+# yeerr and Seerr, in one file.
+#   1. cp .env.example .env, and set MUSIC_DIR and VIDEO_DIR in it
+#   2. docker compose up -d --build
+#   3. Seerr: open http://<server>:5055 once, connect it to Jellyfin/Plex and Radarr/Sonarr
+#   4. yeerr: open http://<server>:8800, create the admin account, then in Settings
+#      paste Seerr's API key (Seerr → Settings → General → API Key)
+# Already run Seerr, Overseerr or Jellyseerr? Delete the seerr service and set SEERR_URL.
+name: yeerr
+
+services:
+  yeerr:
+    build: .
+    image: yeerr:latest
+    init: true                 # passes stop signals on while the start-up yt-dlp update runs
+    network_mode: host         # reaches Seerr and Jellyfin on localhost, like music-fndr
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: ${PORT:-8800}
+      SEERR_URL: ${SEERR_URL:-http://localhost:5055}
+    volumes:
+      - ${MUSIC_DIR:-/data/music}:/music      # music-fndr's library (same folder music-fndr used)
+      - ${VIDEO_DIR:-/data/videos}:/videos    # downloaded videos
+      - yeerr-data:/data                      # accounts, subscriptions, history, settings
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8800'), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    restart: unless-stopped
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      LOG_LEVEL: info
+    ports:
+      - "5055:5055"
+    volumes:
+      - seerr-config:/app/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  yeerr-data:
+  seerr-config:

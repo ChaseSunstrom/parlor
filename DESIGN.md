@@ -1,0 +1,29 @@
+# Design
+
+## Direction
+
+music-fndr's look, grown into one app with three sections. The base is warm and
+dark: an aubergine background (`#1c1a24`), raised panels, and Bricolage
+Grotesque with tight, heavy display type. Every section keeps the same layout
+language and has its own accent:
+
+| Section | Accent | Used for |
+|---|---|---|
+| Home | amber `#ffb547` | the mix of all three |
+| Watch (YouTube) | coral `#ff6b6b` | video cards, the player glow, progress |
+| Movies & TV (Seerr) | violet `#a58bff` | posters, requests |
+| Music (music-fndr) | amber `#ffb547` | unchanged from music-fndr |
+| Settings | mint `#6be0c4` | forms |
+
+The accent is one CSS variable (`--accent`), switched by `body[data-section]`.
+
+The app always shows a little movement, which carries information where it can:
+
+- the logo record spins while anything downloads, and the Downloads button shows equalizer bars
+- download meters have a moving glint, and progress the server can't measure gets an indeterminate bar
+- a slow aurora drifts behind page heads; film backdrops slowly pan (Ken Burns)
+- cards rise in, staggered; loading shows shimmer skeletons shaped like the content
+- the player's seek map draws the YouTube "most replayed" heat curve, chapters and SponsorBlock segments under a live playhead
+
+All of it stops under `prefers-reduced-motion`. Light mode follows the system.
+On phones, the section nav becomes a bottom tab bar.

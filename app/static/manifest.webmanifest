@@ -1,0 +1,10 @@
+{
+  "name": "yeerr",
+  "short_name": "yeerr",
+  "description": "YouTube, movies and TV, and your music library in one place",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1c1a24",
+  "theme_color": "#1c1a24",
+  "icons": [{ "src": "logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
