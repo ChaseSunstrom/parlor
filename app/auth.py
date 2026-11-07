@@ -10,7 +10,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core import (COOKIE, _digest, admin, check_password, db, drop_session, hash_password, me, new_session, one, rows,
+from core import (COOKIE, OLD_COOKIE, session_cookie, _digest, admin, check_password, db, drop_session, hash_password, me, new_session, one, rows,
                   set_cookie, set_setting, setting, valid_name, valid_password)
 import stack
 
@@ -82,7 +82,7 @@ def setup(body: Login, request: Request, response: Response):
     except BaseException:
         con.execute("ROLLBACK")
         raise
-    if stack.on():  # yeerr's compose: set every app up with this name and password (kept in memory only)
+    if stack.on():  # Parlor's compose: set every app up with this name and password (kept in memory only)
         stack.start(name, password, retries=10)
     return _signed_in(request, response, cur.lastrowid)
 
@@ -123,8 +123,8 @@ def jellyfin_login(name: str, password: str) -> Optional[int]:
     """Sign in with a Jellyfin account; the first time, it gets an account here.
     Jellyfin admins are admins here too."""
     base = setting("jellyfin_url").rstrip("/")
-    device = uuid.uuid5(uuid.NAMESPACE_URL, f"yeerr:{name}").hex
-    auth = f'MediaBrowser Client="yeerr", Device="yeerr", DeviceId="{device}", Version="1.0"'
+    device = uuid.uuid5(uuid.NAMESPACE_URL, f"parlor:{name}").hex
+    auth = f'MediaBrowser Client="Parlor", Device="Parlor", DeviceId="{device}", Version="1.0"'
     try:
         r = requests.post(f"{base}/Users/AuthenticateByName", json={"Username": name, "Pw": password},
                           headers={"Authorization": auth}, timeout=15)
@@ -154,8 +154,9 @@ def jellyfin_login(name: str, password: str) -> Optional[int]:
 
 @router.post("/auth/logout")
 def logout(request: Request, response: Response):
-    drop_session(request.cookies.get(COOKIE, ""))
+    drop_session(session_cookie(request))
     response.delete_cookie(COOKIE, path="/")
+    response.delete_cookie(OLD_COOKIE, path="/")
     return {"ok": True}
 
 
@@ -187,7 +188,7 @@ def change_password(body: PasswordChange, request: Request, user=Depends(me)):
         raise HTTPException(403, "Your current password isn't right")
     db().execute("UPDATE users SET pw = ? WHERE id = ?", (hash_password(valid_password(body.new)), user["id"]))
     # other devices have to sign in again with the new password
-    keep = request.cookies.get(COOKIE, "")
+    keep = session_cookie(request)
     db().execute("DELETE FROM sessions WHERE user_id = ? AND token != ?", (user["id"], _digest(keep)))
     return {"ok": True}
 

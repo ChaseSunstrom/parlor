@@ -1,6 +1,6 @@
-"""Play your Jellyfin library in yeerr: browse, playback info, progress and a stream proxy.
+"""Play your Jellyfin library in Parlor: browse, playback info, progress and a stream proxy.
 
-yeerr holds one Jellyfin API key (an admin sets it). Everyone plays as a Jellyfin user: the one they signed in
+Parlor holds one Jellyfin API key (an admin sets it). Everyone plays as a Jellyfin user: the one they signed in
 with, else the one an admin linked to them, else the default. The key never reaches a browser: streams go
 through /api/jf/stream, which only serves a short whitelist of Jellyfin paths and adds the key itself."""
 
@@ -36,7 +36,7 @@ def _conf():
 def fetch(method, path, headers=None, **kw):
     """One request to Jellyfin with the key in the header; never follows a redirect (the key would go along)."""
     url, key = _conf()
-    auth = f'MediaBrowser Client="yeerr", Device="yeerr", DeviceId="yeerr", Version="1", Token="{key}"'
+    auth = f'MediaBrowser Client="Parlor", Device="Parlor", DeviceId="parlor", Version="1", Token="{key}"'
     try:
         return requests.request(method, url + path, headers={**(headers or {}), "Authorization": auth},
                                 timeout=(5, 60), allow_redirects=False, **kw)
@@ -52,7 +52,7 @@ def need(r):
     if r.status_code == 404:
         raise HTTPException(404, "Jellyfin doesn't have that")
     if r.status_code in (401, 403):
-        raise HTTPException(502, "Jellyfin refused yeerr's API key")
+        raise HTTPException(502, "Jellyfin refused Parlor's API key")
     raise HTTPException(502, f"Jellyfin answered {r.status_code}")
 
 
@@ -229,7 +229,7 @@ def item(iid: str, user=Depends(me)):
 def profile(hevc):
     """What this browser can play directly; anything else Jellyfin turns into h264/aac HLS."""
     video = "h264,hevc" if hevc else "h264"
-    return {"Name": "yeerr",
+    return {"Name": "Parlor",
             "DirectPlayProfiles": [{"Type": "Video", "Container": "mp4,m4v", "VideoCodec": video, "AudioCodec": "aac,mp3,opus"},
                                    {"Type": "Video", "Container": "webm", "VideoCodec": "vp8,vp9,av1", "AudioCodec": "vorbis,opus"},
                                    *({"Type": "Audio", "Container": c} for c in ("mp3", "flac", "opus", "m4a", "aac", "ogg", "wav", "webma"))],
@@ -276,7 +276,7 @@ def playback(iid: str, body: Play = Play(), user=Depends(me)):
     else:
         raise HTTPException(409, "Jellyfin offers no way to play this in a browser")
     if not url:
-        raise HTTPException(502, "Jellyfin sent a stream address yeerr won't serve")
+        raise HTTPException(502, "Jellyfin sent a stream address Parlor won't serve")
     streams = src.get("MediaStreams") or []
     return {"method": method, "url": url, "media_source": src["Id"], "play_session": info.get("PlaySessionId"),
             "runtime": secs(src.get("RunTimeTicks") or i.get("RunTimeTicks")), "position": position,

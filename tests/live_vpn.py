@@ -17,7 +17,7 @@ import tempfile
 import time
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="yeerr-vpn-"))
+TMP = Path(tempfile.mkdtemp(prefix="parlor-vpn-"))
 os.environ.setdefault("DATA_DIR", str(TMP / "data"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "app"))
 import stack  # noqa: E402
@@ -95,7 +95,7 @@ try:
        # no ICMP and no outside DNS here: health checks by TCP to an address, DNS through the server
        "-e", "DNS_UPSTREAM_RESOLVER_TYPE=plain", "-e", "DNS_UPSTREAM_PLAIN_ADDRESSES=10.66.0.1:53", "-e", "BLOCK_MALICIOUS=off",
        "-e", f"HEALTH_TARGET_ADDRESSES={OUT}:80", "-e", "HEALTH_SMALL_CHECK_TYPE=dns",
-       "-v", f"{G}:/gluetun", "--entrypoint", "/bin/sh", "qmcgaw/gluetun:latest", "/gluetun/yeerr-vpn.sh", check=True)
+       "-v", f"{G}:/gluetun", "--entrypoint", "/bin/sh", "qmcgaw/gluetun:latest", "/gluetun/front-door.sh", check=True)
 
     results["waits without a file"] = wait_state("waiting", limit=20)
     p = probe()
@@ -119,10 +119,10 @@ try:
     ex(GLUETUN, "for p in $(pidof gluetun-entrypoint); do [ \"$(cut -d' ' -f4 /proc/$p/stat)\" = 1 ] && kill -9 $p; done", check=False)
     results["Gluetun killed: closed, then started again"] = wait_state("restarting", limit=15) and wait_state("connected", limit=90)
 
-    starts = sh("docker", "logs", GLUETUN).stdout.count("yeerr-vpn: starting")
+    starts = sh("docker", "logs", GLUETUN).stdout.count("parlor-vpn: starting")
     stack.save_wireguard(conf.replace("[Peer]", "MTU = 1380\n\n[Peer]"), G)
     time.sleep(8)
-    results["a new file restarts Gluetun"] = sh("docker", "logs", GLUETUN).stdout.count("yeerr-vpn: starting") == starts + 1
+    results["a new file restarts Gluetun"] = sh("docker", "logs", GLUETUN).stdout.count("parlor-vpn: starting") == starts + 1
     results["and it connects again"] = wait_state("connected", limit=90) and "out" in probe()
     leaks = sh("docker", "logs", WATCH).stdout.split("\n")
     results["no leak at any moment"] = not any(ln.startswith("LEAK") for ln in leaks)

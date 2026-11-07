@@ -1,6 +1,6 @@
 """The *arr apps (Sonarr, Radarr, Lidarr, Prowlarr): where they are, their API keys, and calls to them.
 
-In yeerr's compose the apps run beside it under their service names, and their config
+In Parlor's compose the apps run beside it under their service names, and their config
 folders are mounted read-only under STACK, so the API keys are read from each app's
 config.xml and nobody copies them by hand. Settings (or SONARR_URL / SONARR_API_KEY...)
 point at apps that live somewhere else."""

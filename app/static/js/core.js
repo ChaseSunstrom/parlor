@@ -65,7 +65,7 @@ const SPIN = '<svg class="spin" viewBox="0 0 32 32" aria-hidden="true"><circle c
 
 async function api(path, options = {}) {
   // the server only accepts changes carrying this header (it blocks other websites)
-  const res = await fetch(path, { ...options, headers: { ...options.headers, "X-Requested-With": "yeerr" } });
+  const res = await fetch(path, { ...options, headers: { ...options.headers, "X-Requested-With": "parlor" } });
   const body = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     showGate();
@@ -89,11 +89,11 @@ const PREF_DEFAULTS = {
 };
 function pref(key) {
   try {
-    const v = JSON.parse(localStorage.getItem("yeerr:" + key));
+    const v = JSON.parse(localStorage.getItem("parlor:" + key) ?? localStorage.getItem("yeerr:" + key));  // compat: settings saved before the rename
     return v ?? PREF_DEFAULTS[key];
   } catch { return PREF_DEFAULTS[key]; }
 }
-function setPref(key, value) { try { localStorage.setItem("yeerr:" + key, JSON.stringify(value)); } catch { /* private mode */ } }
+function setPref(key, value) { try { localStorage.setItem("parlor:" + key, JSON.stringify(value)); } catch { /* private mode */ } }
 
 /* ---------- building blocks ---------- */
 

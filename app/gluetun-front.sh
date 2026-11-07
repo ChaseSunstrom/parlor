@@ -1,24 +1,25 @@
 #!/bin/sh
-# Gluetun's front door, copied here by yeerr's setup step at every start (edits are overwritten).
-# Until a WireGuard file is uploaded in yeerr (Settings -> Services -> VPN), nothing gets in or out
+# Gluetun's front door, copied here by Parlor's setup step at every start (edits are overwritten).
+# Until a WireGuard file is uploaded in Parlor (Settings -> Services -> VPN), nothing gets in or out
 # but your home network and the other containers. With a file, Gluetun runs with its own kill
-# switch and restarts whenever the file changes. Turning the VPN off in yeerr (it asks you to
-# confirm) lets traffic out directly. The state for yeerr's page is in yeerr-vpn.state; the
+# switch and restarts whenever the file changes. Turning the VPN off in Parlor (it asks you to
+# confirm) lets traffic out directly. The state for Parlor's page is in vpn.state; the
 # compose counts this container healthy (so qBittorrent may start) only once the firewall is up.
-DIR=${YEERR_VPN_DIR:-/gluetun}
+DIR=${FRONT_DIR:-/gluetun}
 ENTRY=${GLUETUN_ENTRYPOINT:-/gluetun-entrypoint}
-TICK=${YEERR_VPN_TICK:-3}
-BACKOFF=${YEERR_VPN_BACKOFF:-10}
+TICK=${FRONT_TICK:-3}
+BACKOFF=${FRONT_BACKOFF:-10}
 CONF=$DIR/wireguard/wg0.conf
-OFF=$DIR/yeerr-vpn-off
-STATE=$DIR/yeerr-vpn.state
+OFF=$DIR/vpn-off
+STATE=$DIR/vpn.state
+[ -e "$DIR/yeerr-vpn-off" ] && mv "$DIR/yeerr-vpn-off" "$OFF"  # compat: the off switch from before the rename
 NETS=$(echo "${FIREWALL_OUTBOUND_SUBNETS:-192.168.0.0/16,172.16.0.0/12}" | tr ',' ' ')
 IPT=iptables
 $IPT -L -n >/dev/null 2>&1 || IPT=iptables-legacy  # the same choice Gluetun makes
 IP6=$(echo "$IPT" | sed 's/^iptables/ip6tables/')
 child=
 
-say() { echo "$1" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; echo "yeerr-vpn: $1"; }
+say() { echo "$1" > "$STATE.tmp" && mv "$STATE.tmp" "$STATE"; echo "parlor-vpn: $1"; }
 now() { cat "$STATE" 2>/dev/null; }
 
 block() {  # policies first, so there's no moment when anything is open
@@ -93,6 +94,6 @@ while true; do
     stop_child; block; last=; say waiting
   fi
   ticks=$((ticks + 1))
-  [ $((ticks % 10)) -eq 0 ] && touch "$STATE"  # still here: yeerr notices when this stops
+  [ $((ticks % 10)) -eq 0 ] && touch "$STATE"  # still here: Parlor notices when this stops
   sleep "$TICK" & wait $!  # wait, not sleep: a stop signal is handled at once
 done

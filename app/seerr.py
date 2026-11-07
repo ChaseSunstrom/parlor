@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from core import admin, db, me, one, setting
 from yt import Cache
 
-log = logging.getLogger("yeerr.seerr")
+log = logging.getLogger("parlor.seerr")
 router = APIRouter(prefix="/api/seerr")
 IMG = "https://image.tmdb.org/t/p"
 

@@ -1,9 +1,9 @@
 """qBittorrent for admins: the torrents list, the everyday actions and speed limits through its API,
-and qBittorrent's own page at /qbit/ for everything else, behind yeerr's admin sign-in.
+and qBittorrent's own page at /qbit/ for everything else, behind Parlor's admin sign-in.
 
-In yeerr's compose qBittorrent lets yeerr in without a login (its setup step whitelists the
-containers). Anywhere else, QBITTORRENT_USER and QBITTORRENT_PASSWORD give yeerr a session that
-stays on the server: the browser never sees qBittorrent's login, and yeerr's own session cookie
+In Parlor's compose qBittorrent lets Parlor in without a login (its setup step whitelists the
+containers). Anywhere else, QBITTORRENT_USER and QBITTORRENT_PASSWORD give Parlor a session that
+stays on the server: the browser never sees qBittorrent's login, and Parlor's own session cookie
 never goes to qBittorrent."""
 import os
 import re
@@ -33,11 +33,11 @@ TORRENT = {"name", "state", "progress", "dlspeed", "upspeed", "eta", "size", "ca
 SERVER = {"dl_info_speed", "up_info_speed", "use_alt_speed_limits", "dl_rate_limit", "up_rate_limit", "free_space_on_disk",
           "connection_status", "alltime_dl", "alltime_ul"}
 HASH = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
-# yeerr's word: qBittorrent 5's name first, then qBittorrent 4's
+# Parlor's word: qBittorrent 5's name first, then qBittorrent 4's
 ACTIONS = {"pause": ("stop", "pause"), "resume": ("start", "resume"), "recheck": ("recheck",), "reannounce": ("reannounce",),
            "delete": ("delete",), "category": ("setCategory",)}
 EVERY = {"pause", "resume", "recheck", "reannounce"}  # the ones that may take "all"
-LOGIN_HELP = ("qBittorrent asks for a login. In yeerr's compose its setup step lets yeerr in; "
+LOGIN_HELP = ("qBittorrent asks for a login. In Parlor's compose its setup step lets Parlor in; "
               "elsewhere set QBITTORRENT_USER and QBITTORRENT_PASSWORD")
 
 
@@ -87,7 +87,7 @@ def ok(r):
     return r
 
 
-# --- the API yeerr's page uses ---------------------------------------------------------------------
+# --- the API Parlor's page uses ---------------------------------------------------------------------
 
 @router.get("/torrents")
 def torrents(rid: int = 0, _=Depends(admin)):
@@ -188,12 +188,12 @@ def to_page():
 
 @page.api_route("/qbit/{path:path}", methods=["GET", "POST"], include_in_schema=False)
 async def proxy(path: str, request: Request):
-    user = await anyio.to_thread.run_sync(core.session_user, request.cookies.get(core.COOKIE, ""))
+    user = await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request))
     if not user:
         raise HTTPException(401, "Sign in first")
     if not user["admin"]:
         raise HTTPException(403, "Only an admin can do that")
-    # yeerr speaks to qBittorrent as its own page, so the check qBittorrent would do happens here: a change must
+    # Parlor speaks to qBittorrent as its own page, so the check qBittorrent would do happens here: a change must
     # come from this site (Origin, or a browser's Sec-Fetch-Site); qBittorrent takes changes only as POST
     if request.method == "POST":
         origin = request.headers.get("origin")
@@ -213,7 +213,7 @@ async def proxy(path: str, request: Request):
     headers = {**{k: v for k, v in request.headers.items() if k.lower() in FORWARD}, "Accept-Encoding": "identity"}
     r = await anyio.to_thread.run_sync(lambda: send(request.method, f"{base()}/{path}", params=list(request.query_params.multi_items()),
                                                     data=body or None, headers=headers, stream=True))
-    out = {k: v for k, v in r.headers.items() if k.lower() in BACK}  # never its Set-Cookie: its session is yeerr's
+    out = {k: v for k, v in r.headers.items() if k.lower() in BACK}  # never its Set-Cookie: its session is Parlor's
     location = r.headers.get("Location")
     if location:
         out["Location"] = "/qbit" + location if location.startswith("/") else location

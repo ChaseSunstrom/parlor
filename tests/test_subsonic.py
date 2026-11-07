@@ -127,7 +127,7 @@ class Subsonic(unittest.TestCase):
         root = ET.fromstring(r.text)
         self.assertEqual((root.tag, root.get("status")), ("{http://subsonic.org/restapi}subsonic-response", "ok"))
         j = c.get("/rest.view/ping.view" if False else "/rest/ping.view", params={"f": "json"}).json()["subsonic-response"]
-        self.assertEqual((j["status"], j["version"], j["type"], j["openSubsonic"]), ("ok", "1.16.1", "yeerr", True))
+        self.assertEqual((j["status"], j["version"], j["type"], j["openSubsonic"]), ("ok", "1.16.1", "parlor", True))
         self.assertTrue(j["serverVersion"])
         self.assertTrue(self.call("getLicense")["license"]["valid"])
         names = {e["name"] for e in client().get("/rest/getOpenSubsonicExtensions", params={"f": "json"}).json()

@@ -1,5 +1,5 @@
-"""End-to-end check of yeerr's own compose: a brand-new folder, the real docker-compose.yml (Gluetun with
-yeerr's front door switched to "VPN off", since there's no VPN here; no published ports), yeerr built
+"""End-to-end check of Parlor's own compose: a brand-new folder, the real docker-compose.yml (Gluetun with
+Parlor's front door switched to "VPN off", since there's no VPN here; no published ports), Parlor built
 from this repo. Create the admin account over HTTP, wait for the automatic setup, check every app, then
 run setup again: it must change nothing. Exit 0 when all of that holds. The stack is removed at the end
 (--keep leaves it running for a look). Needs Docker and internet: python tests/live_stack.py [--keep]"""
@@ -14,15 +14,15 @@ from pathlib import Path
 import requests
 
 REPO = Path(__file__).resolve().parents[1]
-RUN = Path(tempfile.mkdtemp(prefix="yeerr-")) / f"e2e-{int(time.time())}"  # fresh every time
+RUN = Path(tempfile.mkdtemp(prefix="parlor-")) / f"e2e-{int(time.time())}"  # fresh every time
 NAME, PASSWORD = "stackadmin", "Live-setup-pass-42!"  # pragma: allowlist secret (a made-up password for a throwaway stack)
 with socket.socket() as _s:  # a free port, so a stack left running from an earlier run doesn't get in the way
     _s.bind(("127.0.0.1", 0))
     PORT = _s.getsockname()[1]
-BASE, H = f"http://127.0.0.1:{PORT}", {"X-Requested-With": "yeerr"}
+BASE, H = f"http://127.0.0.1:{PORT}", {"X-Requested-With": "parlor"}
 OVERRIDE = """
 services:
-  yeerr:
+  parlor:
     build: !reset null
     ports: !override ["127.0.0.1:{PORT}:8800"]
     environment:
@@ -67,9 +67,9 @@ RUN.mkdir()
 (RUN / "override.yml").write_text(OVERRIDE)
 (RUN / ".env").write_text(f"DATA={RUN / 'data'}\nPUID=1000\nPGID=1000\nTZ=Etc/UTC\n")
 (RUN / "gluetun").mkdir()
-(RUN / "gluetun" / "yeerr-vpn-off").write_text("live check: there's no VPN here\n")
-print("building yeerr", flush=True)
-sh("docker", "build", "-q", "-t", "yeerr:latest", str(REPO))
+(RUN / "gluetun" / "vpn-off").write_text("live check: there's no VPN here\n")
+print("building parlor", flush=True)
+sh("docker", "build", "-q", "-t", "parlor:latest", str(REPO))
 print("starting", RUN.name, flush=True)
 dc("up", "-d")
 for _ in range(120):
@@ -80,8 +80,8 @@ for _ in range(120):
         pass
     time.sleep(3)
 else:
-    print(dc("logs", "--tail", "40", "yeerr", check=False).stdout)
-    sys.exit("yeerr never answered")
+    print(dc("logs", "--tail", "40", "parlor", check=False).stdout)
+    sys.exit("Parlor never answered")
 
 s = requests.Session()
 t0 = time.time()

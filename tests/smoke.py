@@ -21,7 +21,7 @@ web = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
 def call(method, path, body=None, headers=None, raw=False):
     req = urllib.request.Request(BASE + path, method=method, data=None if body is None else json.dumps(body).encode(),
-                                 headers={"X-Requested-With": "yeerr", "content-type": "application/json", **(headers or {})})
+                                 headers={"X-Requested-With": "parlor", "content-type": "application/json", **(headers or {})})
     try:
         with web.open(req, timeout=120) as r:
             data = r.read()

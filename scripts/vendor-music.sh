@@ -1,6 +1,6 @@
 #!/bin/sh
-# Copy music-fndr's backend into yeerr as app/music.py, with the three changes
-# that let it run mounted inside yeerr. Run it again to pick up music-fndr updates:
+# Copy music-fndr's backend into Parlor as app/music.py, with the three changes
+# that let it run mounted inside Parlor. Run it again to pick up music-fndr updates:
 #   scripts/vendor-music.sh ../music-fndr
 set -eu
 src="${1:?usage: scripts/vendor-music.sh PATH-TO-music-fndr}"
@@ -12,11 +12,11 @@ from pathlib import Path
 
 src, out = Path(sys.argv[1]).read_text(), Path(sys.argv[2])
 edits = [
-    # 1. yeerr's UI sends its own header (yeerr's guard checks it before this app sees the request)
-    ('!= "music-findr":', 'not in ("music-findr", "yeerr"):'),
-    # 2. yeerr starts the worker itself; a mounted app's startup hook doesn't run
+    # 1. Parlor's UI sends its own header (Parlor's guard checks it before this app sees the request)
+    ('!= "music-findr":', 'not in ("music-findr", "parlor", "yeerr"):'),  # compat: yeerr was Parlor's first name
+    # 2. Parlor starts the worker itself; a mounted app's startup hook doesn't run
     ('@app.on_event("startup")\ndef start_worker():', 'def start_worker():'),
-    # 3. yeerr serves the UI; music-fndr's own page isn't mounted
+    # 3. Parlor serves the UI; music-fndr's own page isn't mounted
     ('app.mount(\n    "/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="ui"\n)\n', ''),
     ("from fastapi.staticfiles import StaticFiles\n", ""),
 ]

@@ -48,7 +48,7 @@ async function showDashboard(t) {
   (libraryOnce ||= loadLibrary().catch(() => { libraryOnce = null; })).then((songs) => { if (songs?.length) { stats.songs = songs.length; drawStats(); } });
 }
 
-/* Settings → Services: the apps yeerr's compose runs, and the setup that wires them together */
+/* Settings → Services: the apps Parlor's compose runs, and the setup that wires them together */
 const SETUP_STEP = { ok: ["available", "Already set"], done: ["done", "Set up"], skipped: ["pending", "Waiting"], failed: ["failed", "Failed"] };
 async function drawServices(t) {
   const box = $("#services");
@@ -64,7 +64,7 @@ async function drawServices(t) {
   };
   const when = s.run.running ? "Setting up now…" : s.run.finished ? `Last set up ${since(s.run.finished)}.` : "Not set up yet.";
   box.innerHTML = `<section class="panel"><div class="head"><div><h3>Services</h3>
-      <p>The apps that run beside yeerr. Setup reads their API keys, turns off logins on your home network, and connects
+      <p>The apps that run beside Parlor. Setup reads their API keys, turns off logins on your home network, and connects
         qBittorrent, Prowlarr's indexers, Jellyfin, Seerr, Bazarr and Cleanuparr. It only ever adds what's missing. ${when}</p></div>
       ${s.run.running ? `<span class="spin-sm" aria-label="Running"></span>` : ""}</div>
     <ul class="svc-list">${s.apps.map(row).join("")}</ul>
@@ -354,12 +354,12 @@ async function showGate(mode) {
   ME = null;
   const state = await fetch("/api/auth/state").then((r) => r.json()).catch(() => ({}));
   mode ||= state.setup ? "setup" : "login";
-  const titles = { setup: ["Welcome to yeerr", "Create the admin account. You can add everyone else after."], login: ["Sign in", state.jellyfin ? "Use your yeerr or Jellyfin account." : ""], signup: ["Create an account", ""] };
+  const titles = { setup: ["Welcome to Parlor", "Create the admin account. You can add everyone else after."], login: ["Sign in", state.jellyfin ? "Use your Parlor or Jellyfin account." : ""], signup: ["Create an account", ""] };
   const [title, blurb] = titles[mode];
   const pwHint = mode === "login" ? "current-password" : "new-password"; // the browser's autocomplete hint  pragma: allowlist secret
   $("#gate").innerHTML = `<div class="gate">${aurora}
     <form id="gateForm" autocomplete="on">
-      <div class="brand"><img src="logo.svg" alt=""><span>yeerr</span></div>
+      <div class="brand"><img src="logo.svg" alt=""><span>Parlor</span></div>
       <h1>${esc(title)}</h1>${blurb ? `<p>${esc(blurb)}</p>` : ""}
       <label class="field"><span>Name</span><input id="gName" name="username" autocomplete="username" required maxlength="40" autofocus></label>
       <label class="field"><span>Password</span><input id="gPw" name="password" type="password" autocomplete="${pwHint}" required ${mode === "login" ? "" : 'minlength="8"'}></label>

@@ -67,7 +67,7 @@ class Api(unittest.TestCase):
         self.c = signed_in("admin")
 
     def test_upload_replace_remove(self):
-        (self.g / "yeerr-vpn.state").write_text("waiting\n")
+        (self.g / "vpn.state").write_text("waiting\n")
         r = self.c.get("/api/stack/vpn").json()
         self.assertEqual((r["state"], r["file"], r["off"]), ("waiting", False, False))
         self.assertIn("not the internet", r["words"])
@@ -88,7 +88,7 @@ class Api(unittest.TestCase):
     def test_off_needs_confirming_and_a_new_file_turns_it_back_on(self):
         r = self.c.put("/api/stack/vpn/off", json={"off": True}, headers=H)
         self.assertEqual(r.status_code, 400)
-        self.assertFalse((self.g / "yeerr-vpn-off").exists())
+        self.assertFalse((self.g / "vpn-off").exists())
         self.assertTrue(self.c.put("/api/stack/vpn/off", json={"off": True, "confirm": True}, headers=H).json()["off"])
         self.assertFalse(self.c.put("/api/stack/vpn/off", json={"off": False}, headers=H).json()["off"], "turning it back on needs no confirming")
         self.c.put("/api/stack/vpn/off", json={"off": True, "confirm": True}, headers=H)
@@ -97,7 +97,7 @@ class Api(unittest.TestCase):
     def test_what_the_page_says(self):
         (self.g / "wireguard").mkdir()
         (self.g / "wireguard" / "wg0.conf").write_bytes(b"[Peer]\nEndpoint\n\xff\xfe junk\n")
-        state = self.g / "yeerr-vpn.state"
+        state = self.g / "vpn.state"
         state.write_text("broken: no firewall (is NET_ADMIN given?)\n")
         r = self.c.get("/api/stack/vpn").json()
         self.assertEqual((r["endpoint"], r["words"]), (None, "Can't run the VPN: no firewall (is NET_ADMIN given?)"), "a mangled file doesn't break the page")
@@ -122,7 +122,7 @@ class Api(unittest.TestCase):
         done = stack.init_files(root)
         self.assertIn("gluetun: front door in place", done)
         self.assertEqual((root / "gluetun" / "wireguard" / "wg0.conf").read_text(), GOOD, "the old compose's file moves where Gluetun reads it")
-        self.assertEqual((root / "gluetun" / "yeerr-vpn.sh").read_text(), stack.VPN_SCRIPT.read_text())
+        self.assertEqual((root / "gluetun" / "front-door.sh").read_text(), stack.VPN_SCRIPT.read_text())
         self.assertNotIn("gluetun: front door in place", stack.init_files(root), "a second run changes nothing")
 
 
@@ -147,9 +147,9 @@ class FrontDoor(unittest.TestCase):
         (self.d / "entry").write_text(f'#!/bin/sh\n[ "$1" = healthcheck ] && exit 0\necho start >> {self.d}/starts\n' + self.entry)
         for f in [*(self.d / "bin").iterdir(), self.d / "entry"]:
             f.chmod(0o755)
-        env = {**os.environ, "PATH": f"{self.d / 'bin'}:{os.environ['PATH']}", "YEERR_VPN_DIR": str(self.d / "g"),
-               "GLUETUN_ENTRYPOINT": str(self.d / "entry"), "YEERR_VPN_TICK": "0.1", "YEERR_VPN_BACKOFF": "0.2", "FIREWALL_OUTBOUND_SUBNETS": "192.168.7.0/24,172.16.0.0/12"}
-        (self.d / "g" / "yeerr-vpn.state").write_text("connected\n")  # left from before a restart
+        env = {**os.environ, "PATH": f"{self.d / 'bin'}:{os.environ['PATH']}", "FRONT_DIR": str(self.d / "g"),
+               "GLUETUN_ENTRYPOINT": str(self.d / "entry"), "FRONT_TICK": "0.1", "FRONT_BACKOFF": "0.2", "FIREWALL_OUTBOUND_SUBNETS": "192.168.7.0/24,172.16.0.0/12"}
+        (self.d / "g" / "vpn.state").write_text("connected\n")  # left from before a restart
         self.p = subprocess.Popen(["sh", str(stack.VPN_SCRIPT)], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(self.stop)
 

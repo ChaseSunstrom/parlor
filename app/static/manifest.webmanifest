@@ -1,6 +1,6 @@
 {
-  "name": "yeerr",
-  "short_name": "yeerr",
+  "name": "Parlor",
+  "short_name": "Parlor",
   "description": "YouTube, movies and TV, and your music library in one place",
   "start_url": "./",
   "display": "standalone",

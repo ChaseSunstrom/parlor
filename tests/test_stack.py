@@ -661,6 +661,18 @@ class InitFiles(unittest.TestCase):
         self.assertIn("AuthSubnetWhitelist=10.1.2.0/24, 172.16.0.0/12\n", text, "only your network and the containers, not every private range")
         self.assertEqual(list(conf.parent.glob("*.tmp")), [], "written whole, then swapped in")
 
+    def test_settings_from_before_the_rename_move_with_it(self):
+        root = TMP / "rename"
+        (root / "yeerr" / "config").mkdir(parents=True, exist_ok=True)
+        (root / "yeerr" / "config" / "yeerr.db").write_text("accounts")
+        (root / "parlor" / "config").mkdir(parents=True, exist_ok=True)  # empty: Docker made it first
+        self.assertIn("moved ./yeerr/config to ./parlor/config (formerly yeerr)", stack.init_files(root))
+        self.assertEqual((root / "parlor" / "config" / "yeerr.db").read_text(), "accounts")
+        (root / "yeerr" / "config").mkdir()
+        (root / "yeerr" / "config" / "other.db").write_text("x")
+        stack.init_files(root)
+        self.assertEqual((root / "parlor" / "config" / "yeerr.db").read_text(), "accounts", "both full: nothing is moved over the new one")
+
     def test_a_first_start_gets_a_whole_file(self):
         root = TMP / "init2"
         stack.init_files(root)

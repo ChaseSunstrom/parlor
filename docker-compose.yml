@@ -1,12 +1,12 @@
-# yeerr and everything around it, in one file:
+# Parlor and everything around it, in one file:
 #   1. cp .env.example .env, and set DATA (your media folder) in it
 #   2. docker compose up -d --build
-#   3. open http://<server>:8800 and create your account. yeerr then sets up every app for you:
+#   3. open http://<server>:8800 and create your account. Parlor then sets up every app for you:
 #      no logins at home, no API keys to copy, indexers added, Jellyfin and Seerr ready.
 #      Upload your VPN's WireGuard file in Settings → Services → VPN; until then nothing downloads.
 # Each app keeps its config in ./<app>/config, like a hand-made *arr compose, so an existing
 # one can be dropped in. Settings → Services shows what was set up and runs it again.
-name: yeerr
+name: parlor
 
 x-app: &app
   restart: unless-stopped
@@ -16,9 +16,9 @@ x-app: &app
     TZ: ${TZ:-Etc/UTC}
 
 services:
-  yeerr:
+  parlor:
     build: .
-    image: yeerr:latest
+    image: parlor:latest
     init: true                 # passes stop signals on while the start-up yt-dlp update runs
     depends_on:
       setup:
@@ -28,8 +28,8 @@ services:
         required: false
     environment:
       <<: *env
-      STACK: "1"               # the apps below run beside yeerr: it sets them up
-      DATA_DIR: /config        # yeerr's own data: accounts, subscriptions, settings
+      STACK: "1"               # the apps below run beside Parlor: it sets them up
+      DATA_DIR: /config        # Parlor's own data: accounts, subscriptions, settings
       MUSIC_DIR: /data/music
       VIDEO_DIR: /data/youtube
       SEERR_URL: http://seerr:5055
@@ -37,9 +37,9 @@ services:
     ports:
       - "${PORT:-8800}:8800"
     volumes:
-      - ./yeerr/config:/config
+      - ./parlor/config:/config
       - ${DATA:-/data}:/data
-      # the apps' config folders, read-only: yeerr reads their API keys from them
+      # the apps' config folders, read-only: Parlor reads their API keys from them
       - ./sonarr/config:/stack/sonarr:ro
       - ./radarr/config:/stack/radarr:ro
       - ./lidarr/config:/stack/lidarr:ro
@@ -56,8 +56,8 @@ services:
     restart: unless-stopped
 
   setup:                       # runs once first: makes the config folders, lets qBittorrent skip its login at home
-    build: .                   # the same image as yeerr (never pulled: there's no yeerr on Docker Hub)
-    image: yeerr:latest
+    build: .                   # the same image as Parlor (never pulled: there's no parlor image on Docker Hub)
+    image: parlor:latest
     working_dir: /app
     command: ["python", "stack.py", "init"]
     environment:
@@ -67,7 +67,7 @@ services:
       - .:/compose
     restart: "no"
 
-  gluetun:                     # the VPN; qBittorrent's only way out. Upload your WireGuard file in yeerr
+  gluetun:                     # the VPN; qBittorrent's only way out. Upload your WireGuard file in Parlor
                                # (Settings → Services → VPN): until then nothing gets out at all
     image: qmcgaw/gluetun:latest
     cap_add: [NET_ADMIN]
@@ -75,7 +75,7 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully
-    entrypoint: ["/bin/sh", "/gluetun/yeerr-vpn.sh"]   # yeerr's front door: blocks, waits for the file, runs Gluetun
+    entrypoint: ["/bin/sh", "/gluetun/front-door.sh"]   # Parlor's front door: blocks, waits for the file, runs Gluetun
     environment:
       TZ: ${TZ:-Etc/UTC}
       VPN_SERVICE_PROVIDER: custom
@@ -86,7 +86,7 @@ services:
     ports:
       - "8080:8080"            # qBittorrent's page
     healthcheck:               # healthy once its firewall is up (tunnel or not): only then may qBittorrent start
-      test: ["CMD-SHELL", "grep -qv '^broken' /gluetun/yeerr-vpn.state"]
+      test: ["CMD-SHELL", "grep -qv '^broken' /gluetun/vpn.state"]
       interval: 10s
       timeout: 5s
       start_period: 10s

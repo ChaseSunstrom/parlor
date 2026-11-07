@@ -1,5 +1,5 @@
 """A Subsonic API (1.16.1) with the OpenSubsonic extensions at /rest/*, over the music folder's index (library.py),
-so Symfonium, Tempo, Feishin, DSub and the like can use yeerr as their music server. Every account has its own
+so Symfonium, Tempo, Feishin, DSub and the like can use Parlor as their music server. Every account has its own
 stars, ratings, plays, playlists, play queue and bookmarks; the music is shared. Not behind the session
 cookie (apps don't have one): each call logs in with u+p, u+t+s (token) or apiKey, and the token and key
 logins use per-account app passwords, made at /api/me/app-passwords."""
@@ -52,7 +52,7 @@ SIZES = (64, 128, 256, 512, 1024)  # the cover sizes we make
 PW_TTL = 300
 _pw_key = secrets.token_bytes(32)
 _pw_ok: dict = {}  # HMAC of (account, stored hash, password) -> until when the password is known good
-log = logging.getLogger("yeerr.subsonic")
+log = logging.getLogger("parlor.subsonic")
 
 
 class Fail(Exception):
@@ -143,7 +143,7 @@ def element(tag, value):
 
 
 def reply(p, payload, status="ok", http=200):
-    body = clean({"status": status, "version": API, "type": "yeerr", "serverVersion": VERSION, "openSubsonic": True,
+    body = clean({"status": status, "version": API, "type": "parlor", "serverVersion": VERSION, "openSubsonic": True,
                   **payload})
     fmt = p.get("f", "xml")
     if fmt in ("json", "jsonp"):
@@ -247,7 +247,7 @@ def check(p, key, name):
     token, password = p.get("t"), p.get("p")
     if token:
         if not apps:
-            raise Fail(41, "Token login needs an app password: make one in yeerr's settings, or send a password instead")
+            raise Fail(41, "Token login needs an app password: make one in Parlor's settings, or send a password instead")
         salt = p.get("s", "")
         hit = next((a for a in apps if same(hashlib.md5((a["secret"] + salt).encode()).hexdigest(), token.lower())), None)
     elif password is not None:

@@ -16,8 +16,10 @@ from fastapi import HTTPException, Request
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
 VIDEOS = Path(os.environ.get("VIDEO_DIR", "/videos"))
 SESSION_DAYS = 30
-COOKIE = "yeerr_session"
-HEADER = "yeerr"  # X-Requested-With value every change must carry (other sites can't send it)
+COOKIE = "parlor_session"
+OLD_COOKIE = "yeerr_session"  # compat: the cookie from before the rename still signs you in
+HEADER = "parlor"  # X-Requested-With value every change must carry (other sites can't send it)
+HEADERS = {HEADER, "yeerr"}  # compat: a page loaded before the rename sends the old value
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -131,7 +133,7 @@ _ready: set = set()
 
 def db() -> sqlite3.Connection:
     """This thread's connection (sqlite connections can't be shared across threads)."""
-    path = DATA / "yeerr.db"
+    path = DATA / "yeerr.db"  # compat: the database keeps its first name
     conn = getattr(_local, "db", None)
     if conn is None or getattr(_local, "path", None) != path:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,6 +246,10 @@ def set_cookie(response, request: Request, token: str):
 
 
 # --- request helpers ------------------------------------------------------------
+
+def session_cookie(request: Request) -> str:
+    return request.cookies.get(COOKIE) or request.cookies.get(OLD_COOKIE) or ""
+
 
 def me(request: Request) -> dict:
     """The signed-in user (the middleware already refused anyone else)."""

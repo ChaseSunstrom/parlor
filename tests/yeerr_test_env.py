@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import app as yeerr  # noqa: E402
 import core  # noqa: E402
 
-H = {"X-Requested-With": "yeerr"}
+H = {"X-Requested-With": "parlor"}
 
 
 def client():

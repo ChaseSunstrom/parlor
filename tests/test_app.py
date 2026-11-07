@@ -40,6 +40,19 @@ class Accounts(unittest.TestCase):
         token = c.cookies.get(core.COOKIE)
         stored = [r["token"] for r in core.rows("SELECT token FROM sessions")]
         self.assertNotIn(token, stored)
+        self.assertEqual(core.COOKIE, "parlor_session")
+
+    def test_2b_an_install_from_before_the_rename_keeps_working(self):
+        c = signed_in("admin")
+        token = c.cookies.get(core.COOKIE)
+        old = client()
+        old.cookies.set("yeerr_session", token)  # a browser still holding yeerr's cookie (compat)
+        self.assertEqual(old.get("/api/me").status_code, 200, "the old session cookie still signs you in")
+        self.assertEqual(old.post("/api/me/later", json={"id": "dQw4w9WgXcQ"}, headers={"X-Requested-With": "yeerr"}).status_code, 200,
+                         "a page loaded before the update still sends the old header (compat)")
+        self.assertEqual(c.post("/api/me/later", json={"id": "dQw4w9WgXcQ"}, headers={"X-Requested-With": "parlor"}).status_code, 200)
+        self.assertEqual(old.post("/api/auth/logout", headers=H).status_code, 200)
+        self.assertEqual(old.get("/api/me").status_code, 401, "signing out ends the old cookie's session too")
 
     def test_3_guessing_is_throttled(self):
         c = client()
@@ -133,7 +146,7 @@ class Assembly(unittest.TestCase):
     def test_ui_is_served(self):
         r = client().get("/")
         self.assertEqual(r.status_code, 200)
-        self.assertIn("<title>yeerr</title>", r.text)
+        self.assertIn("<title>Parlor</title>", r.text)
         self.assertEqual(client().get("/api/health").json(), {"ok": True})
 
     def test_startup_starts_one_music_worker(self):

@@ -34,7 +34,7 @@ from starlette.background import BackgroundTask
 import core
 from core import admin, db, dumps, me, one, rows
 
-log = logging.getLogger("yeerr.yt")
+log = logging.getLogger("parlor.yt")
 router = APIRouter(prefix="/api")
 
 # whole-string, ASCII-only matches (used with .fullmatch)
@@ -928,7 +928,7 @@ def export_subs(user=Depends(me)):
                      f'xmlUrl="https://www.youtube.com/feeds/videos.xml?channel_id={s["channel_id"]}"/>')
     lines += ["</outline>", "</body>", "</opml>"]
     return Response("\n".join(lines) + "\n", media_type="text/x-opml; charset=utf-8",
-                    headers={"Content-Disposition": 'attachment; filename="yeerr-subscriptions.opml"'})
+                    headers={"Content-Disposition": 'attachment; filename="parlor-subscriptions.opml"'})
 
 
 # --- history, resume, watch later -------------------------------------------------------

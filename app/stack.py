@@ -1,10 +1,10 @@
 """Setting up the whole stack so nobody signs in to each app, copies API keys or adds indexers:
 Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent (behind Gluetun), FlareSolverr, Jellyfin, Seerr,
-Bazarr and Cleanuparr, as yeerr's compose runs them.
+Bazarr and Cleanuparr, as Parlor's compose runs them.
 
 Every step looks first and changes only what's missing, then says what it did: "ok" (already
 right), "done" (changed), "skipped" (waiting for something, like your password) or "failed"
-(why, in plain words). yeerr runs it at start-up (the steps that need no password) and when the
+(why, in plain words). Parlor runs it at start-up (the steps that need no password) and when the
 admin account is created; Settings → Services runs it again any time.
 
 `python stack.py init` runs before the apps start (a one-shot in the compose): it opens
@@ -35,7 +35,7 @@ import arr
 import core
 from core import admin, one, setting
 
-log = logging.getLogger("yeerr.stack")
+log = logging.getLogger("parlor.stack")
 router = APIRouter(prefix="/api/stack")
 
 STACK = arr.STACK
@@ -45,11 +45,11 @@ HOME_NETS = [n.strip() for n in os.environ.get("LAN_SUBNET", "192.168.0.0/16").s
 INDEXERS = [x.strip() for x in os.environ.get("PUBLIC_INDEXERS", "yts,eztv,thepiratebay,1337x,limetorrents,nyaasi,knaben").split(",") if x.strip() and x.strip() != "none"]
 LIBRARIES = [("Movies", "movies", "/data/movies"), ("Shows", "tvshows", "/data/shows"), ("Music", "music", "/data/music"),
              ("YouTube", "homevideos", "/data/youtube"), ("Books", "books", "/data/books")]
-JF_AUTH = 'MediaBrowser Client="yeerr", Device="yeerr", DeviceId="yeerr-setup", Version="1"'
+JF_AUTH = 'MediaBrowser Client="Parlor", Device="Parlor", DeviceId="parlor-setup", Version="1"'
 
 
 def on() -> bool:
-    """yeerr's compose sets STACK=1: the apps run beside yeerr under their service names."""
+    """Parlor's compose sets STACK=1: the apps run beside Parlor under their service names."""
     return os.environ.get("STACK") == "1"
 
 
@@ -76,7 +76,7 @@ class Fail(Exception):
 def need(r, what="it"):
     """A response, or Fail with what the app said."""
     if r.status_code in (401, 403):
-        raise Fail(f"{what} refused yeerr ({r.status_code})")
+        raise Fail(f"{what} refused Parlor ({r.status_code})")
     if not r.ok:
         raise Fail(f"{what} said {r.status_code}: {arr.problem(r)}")
     return r
@@ -88,7 +88,7 @@ def http(method, url, **kw):
 
 
 def make_dir(path: str):
-    """A media folder under /data, owned by the user the apps run as (yeerr itself runs as root)."""
+    """A media folder under /data, owned by the user the apps run as (Parlor itself runs as root)."""
     folder = DATA / path.removeprefix("/data/").lstrip("/")
     folder.mkdir(parents=True, exist_ok=True)
     uid, gid = os.environ.get("PUID"), os.environ.get("PGID")
@@ -107,9 +107,9 @@ def arr_login(app, name, password):
         raise Wait("needs your password once: Settings → Services → Set up")
     arr.call(app, "PUT", "/config/host", json={
         **host, "authenticationMethod": "forms", "authenticationRequired": "disabledForLocalAddresses",
-        "allowedHosts": ",".join(dict.fromkeys(["localhost", app, "yeerr"])),
+        "allowedHosts": ",".join(dict.fromkeys(["localhost", app, "parlor", "yeerr"])),  # compat: yeerr is the old service name
         "username": name, "password": password, "passwordConfirmation": password})
-    return "done", "no sign-in at home; your yeerr name and password from outside"
+    return "done", "no sign-in at home; your Parlor name and password from outside"
 
 
 def roots(app) -> list:
@@ -249,8 +249,8 @@ def _when(stamp) -> float:
 
 
 def refresh_indexers(now: Optional[float] = None) -> Optional[dict]:
-    """Twice a day: public indexers that work are added (up to MAX_OURS of yeerr's, TRIES new ones a run),
-    yeerr's that have failed for three days are switched off, and ones it switched off come back once they
+    """Twice a day: public indexers that work are added (up to MAX_OURS of Parlor's, TRIES new ones a run),
+    Parlor's that have failed for three days are switched off, and ones it switched off come back once they
     answer again. One you deleted or switched off yourself stays that way; a Prowlarr with only its own
     indexers is left alone. Returns what changed, or None when it wasn't due."""
     now = now or time.time()
@@ -340,7 +340,7 @@ def _ensure(lines, section, pairs):
     return changed or bool(insert)
 
 
-CONFIG_DIRS = ["yeerr", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent"]
+CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent"]
 
 
 def _own(*paths):
@@ -357,6 +357,13 @@ def init_files(root: Optional[Path] = None) -> list:
     skips its login for home addresses (it reads its config only at start and rewrites it on
     exit, so this can't be done later)."""
     root, done = root or Path(os.environ.get("COMPOSE_DIR", "/compose")), []
+    old, new = root / "yeerr" / "config", root / "parlor" / "config"  # Parlor was formerly yeerr: its settings move with the name
+    if old.is_dir() and any(old.iterdir()) and not (new.is_dir() and any(new.iterdir())):
+        if new.is_dir():
+            new.rmdir()  # empty: Docker made it while creating the containers, before this ran
+        new.parent.mkdir(exist_ok=True)
+        os.replace(old, new)
+        done.append("moved ./yeerr/config to ./parlor/config (formerly yeerr)")
     for app in CONFIG_DIRS:
         folder = root / app / "config"
         if not folder.is_dir():
@@ -401,23 +408,23 @@ def jellyfin_wizard(name, password):
             ("POST", "/Startup/RemoteAccess", {"EnableRemoteAccess": True, "EnableAutomaticPortMapping": False}),
             ("POST", "/Startup/Complete", None)):
         need(jf(method, path, json=body), "Jellyfin")
-    return "done", f"admin {name}, with your yeerr password"
+    return "done", f"admin {name}, with your Parlor password"
 
 
 def jellyfin_key(name, password):
     key = setting("jellyfin_key")
     if key and jf("GET", "/System/Info", key=key).ok:
-        return "ok", "yeerr has an API key"
+        return "ok", "Parlor has an API key"
     if not password:
         raise Wait("needs your password once to make an API key")
     r = jf("POST", "/Users/AuthenticateByName", json={"Username": name, "Pw": password})
     if r.status_code == 401:
-        raise Fail(f"Jellyfin doesn't take {name} with your yeerr password; add a Jellyfin API key in Settings instead")
+        raise Fail(f"Jellyfin doesn't take {name} with your Parlor password; add a Jellyfin API key in Settings instead")
     token = need(r, "Jellyfin").json()["AccessToken"]
-    mine = lambda: next((k for k in need(jf("GET", "/Auth/Keys", token=token), "Jellyfin").json()["Items"] if k.get("AppName") == "yeerr"), None)  # noqa: E731
+    mine = lambda: next((k for k in need(jf("GET", "/Auth/Keys", token=token), "Jellyfin").json()["Items"] if k.get("AppName") in ("Parlor", "yeerr")), None)  # compat: keys made before the rename  # noqa: E731
     found = mine()
     if not found:
-        need(jf("POST", "/Auth/Keys", token=token, params={"app": "yeerr"}), "Jellyfin")
+        need(jf("POST", "/Auth/Keys", token=token, params={"app": "Parlor"}), "Jellyfin")
         found = mine()
     core.set_setting("jellyfin_key", found["AccessToken"])
     if not setting("jellyfin_url"):
@@ -493,7 +500,7 @@ def seerr_setup(name, password):
             raise
     seerr_apps()
     seerr("POST", "/settings/initialize")
-    # you are Seerr's first user (its admin) and Jellyfin's admin: link your yeerr account to both
+    # you are Seerr's first user (its admin) and Jellyfin's admin: link your Parlor account to both
     core.db().execute("UPDATE users SET seerr_id = COALESCE(seerr_id, 1), jf_user = COALESCE(jf_user, ?) WHERE name = ?", (name, name))
     return "done", f"signed in as {name} through Jellyfin; libraries, Radarr and Sonarr connected"
 
@@ -549,7 +556,7 @@ def best_profile(app, make=True) -> Optional[int]:
 
 def _targets():
     """What decides the quality of new downloads: Seerr's Radarr and Sonarr, and Lidarr's root folder
-    (yeerr's music requests use its default). Each: (key, app, label, current id, set(id))."""
+    (Parlor's music requests use its default). Each: (key, app, label, current id, set(id))."""
     for app in ("radarr", "sonarr"):
         if setting("seerr_key"):
             for s in seerr("GET", f"/settings/{app}").json():
@@ -607,7 +614,7 @@ def recheck(now: Optional[float] = None) -> list:
 
 
 def rechecker():
-    """Started with yeerr in the stack: looks every hour whether the weekly upgrade search is due."""
+    """Started with Parlor in the stack: looks every hour whether the weekly upgrade search is due."""
     def loop():
         while True:
             time.sleep(3600)
@@ -659,7 +666,7 @@ def cleanuparr(name, password):
             need(http("POST", f"{base}/api/auth/setup/complete", json={}), "Cleanuparr")
         r = http("POST", f"{base}/api/auth/login", json={"username": name, "password": password})
         if r.status_code == 401:
-            raise Fail(f"Cleanuparr has its own login and doesn't take {name} with your yeerr password")
+            raise Fail(f"Cleanuparr has its own login and doesn't take {name} with your Parlor password")
         token = need(r, "Cleanuparr").json()["tokens"]["accessToken"]
         key = need(http("GET", f"{base}/api/account/api-key", headers={"Authorization": f"Bearer {token}"}), "Cleanuparr").json()["apiKey"]
         core.set_setting("cleanuparr_key", key)
@@ -804,7 +811,7 @@ def run(name=None, password=None, into=None) -> list:
             status, detail = "failed", f"didn't answer ({type(exc).__name__})"
         except Exception:  # one app's surprise mustn't stop the rest
             log.exception("stack step %s/%s", app, step)
-            status, detail = "failed", "unexpected error; yeerr's log has the details"
+            status, detail = "failed", "unexpected error; Parlor's log has the details"
         results.append({"app": app, "step": step, "status": status, "detail": detail, "seconds": round(time.time() - started, 1)})
         if status in ("done", "failed"):
             log.info("stack %s %s: %s (%s)", app, step, status, detail)
@@ -862,7 +869,7 @@ VPN_WORDS = {
     "connected": "Connected: qBittorrent's traffic goes through the VPN only",
     "off": "VPN off: qBittorrent's traffic goes out directly",
 }
-OFF_FLAG = "yeerr-vpn-off"
+OFF_FLAG = "vpn-off"
 QUIET = 120  # the front door touches its state file every 30 s; this long without means it isn't running
 
 
@@ -936,7 +943,7 @@ def check_wireguard(text: str) -> str:
 def vpn_state(folder: Optional[Path] = None) -> dict:
     """What the front door last said, the server, and the switches; never the file's keys."""
     g = folder or gluetun_dir()
-    conf, state = g / "wireguard" / "wg0.conf", g / "yeerr-vpn.state"
+    conf, state = g / "wireguard" / "wg0.conf", g / "vpn.state"
     try:
         raw, age = state.read_text(errors="replace").strip(), time.time() - state.stat().st_mtime
     except OSError:
@@ -946,7 +953,7 @@ def vpn_state(folder: Optional[Path] = None) -> dict:
         endpoint = next((ln.split("=", 1)[1].strip() for ln in conf.read_text(errors="replace").splitlines()
                          if "=" in ln and ln.split("=", 1)[0].strip().lower() == "endpoint"), None)
     if not raw:
-        words = "Gluetun hasn't started yet (or is from before this yeerr)"
+        words = "Gluetun hasn't started yet (or is from before this Parlor)"
     elif age > QUIET:
         raw, words = "stopped", f"Gluetun isn't running: nothing heard from it for {int(age // 60)} minutes"
     elif raw.startswith("broken"):
@@ -979,7 +986,7 @@ def save_wireguard(text: str, folder: Optional[Path] = None) -> dict:
 def vpn_off(off: bool, folder: Optional[Path] = None) -> dict:
     g = folder or gluetun_dir()
     if off:
-        (g / OFF_FLAG).write_text("Turned off in yeerr; delete this file (or turn the VPN on in yeerr) to block again\n")
+        (g / OFF_FLAG).write_text("Turned off in Parlor; delete this file (or turn the VPN on in Parlor) to block again\n")
     else:
         (g / OFF_FLAG).unlink(missing_ok=True)
     return vpn_state(g)
@@ -993,7 +1000,7 @@ def install_vpn_script(root: Path) -> bool:
     old, new = g / "wg0.conf", g / "wireguard" / "wg0.conf"
     if old.is_file() and not new.exists():
         os.replace(old, new)
-    dest = g / "yeerr-vpn.sh"
+    dest = g / "front-door.sh"
     script = VPN_SCRIPT.read_text()
     if dest.is_file() and dest.read_text() == script:
         return False
@@ -1003,7 +1010,7 @@ def install_vpn_script(root: Path) -> bool:
 
 def _vpn_ready():
     if not on() or not gluetun_dir().is_dir():
-        raise HTTPException(409, "The VPN is set here only in yeerr's own compose (./gluetun isn't mounted)")
+        raise HTTPException(409, "The VPN is set here only in Parlor's own compose (./gluetun isn't mounted)")
 
 
 @router.get("/vpn")
@@ -1109,4 +1116,4 @@ def setup(body: Setup, user=Depends(admin)):
 if __name__ == "__main__" and sys.argv[1:] == ["init"]:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     for line in init_files() or ["nothing to change"]:
-        log.info("yeerr setup: %s", line)
+        log.info("Parlor setup: %s", line)

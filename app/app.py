@@ -1,4 +1,4 @@
-"""yeerr: YouTube, movies and TV (Seerr) and your music library (music-fndr) in one app.
+"""Parlor: YouTube, movies and TV (Seerr) and your music library (music-fndr) in one app.
 
 Run from the music folder (music-fndr writes relative to the working directory):
     cd /music && uvicorn --app-dir /app app:app
@@ -24,8 +24,8 @@ import activity
 import stack
 import yt
 
-log = logging.getLogger("yeerr")
-app = FastAPI(title="yeerr", docs_url=None, redoc_url=None, openapi_url=None)
+log = logging.getLogger("parlor")
+app = FastAPI(title="Parlor", docs_url=None, redoc_url=None, openapi_url=None)
 PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup"}
 
 
@@ -35,10 +35,10 @@ async def guard(request: Request, call_next):
     websites can't send without a CORS preflight (which is never granted)."""
     path = request.url.path
     if path.startswith(("/api/", "/music/api/")):
-        if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") != core.HEADER:
+        if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") not in core.HEADERS:
             return JSONResponse({"detail": f"Missing X-Requested-With: {core.HEADER}"}, status_code=403)
         if path not in PUBLIC:
-            user = await anyio.to_thread.run_sync(core.session_user, request.cookies.get(core.COOKIE, ""))
+            user = await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request))
             if not user:
                 return JSONResponse({"detail": "Sign in first"}, status_code=401)
             request.state.user = user

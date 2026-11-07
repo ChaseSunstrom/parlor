@@ -425,7 +425,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-/* ---------- yeerr: the Music section's routes ---------- */
+/* ---------- Parlor: the Music section's routes ---------- */
 
 const musicChips = () => subnav();
 

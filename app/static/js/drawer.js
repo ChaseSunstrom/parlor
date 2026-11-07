@@ -1,4 +1,4 @@
-/* The downloads drawer: video downloads (yeerr) and music downloads (music-fndr). */
+/* The downloads drawer: video downloads (Parlor) and music downloads (music-fndr). */
 
 function setDrawer(open) {
   drawer.classList.toggle("open", open);

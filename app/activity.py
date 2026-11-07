@@ -13,7 +13,7 @@ from pydantic import BaseModel
 import arr
 from core import me
 
-log = logging.getLogger("yeerr.activity")
+log = logging.getLogger("parlor.activity")
 router = APIRouter(prefix="/api/arr")
 MEDIA = ("sonarr", "radarr", "lidarr")
 INCLUDE = {"sonarr": {"includeSeries": "true", "includeEpisode": "true"}, "radarr": {"includeMovie": "true"},
@@ -24,7 +24,7 @@ EVENTS = {"grabbed": "Grabbed", "downloadFolderImported": "Imported", "trackFile
 
 
 def present():
-    """The media apps yeerr can talk to (it has their keys)."""
+    """The media apps Parlor can talk to (it has their keys)."""
     return [a for a in MEDIA if arr.key(a)]
 
 

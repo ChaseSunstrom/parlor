@@ -9,7 +9,7 @@ OUT.mkdir(exist_ok=True)
 if P.startswith("http"):  # a yeerr already running (a dev server): its address
     BASE = P
 else:
-    port = subprocess.run(["docker", "port", f"{P}-yeerr-1", "8800"], capture_output=True, text=True).stdout.split(":")[-1].strip()
+    port = subprocess.run(["docker", "port", f"{P}-parlor-1", "8800"], capture_output=True, text=True).stdout.split(":")[-1].strip()
     BASE = f"http://127.0.0.1:{port}"
 NAME, PASSWORD = os.environ.get("YEERR_NAME", "stackadmin"), os.environ.get("YEERR_PASSWORD", "Live-setup-pass-42!")  # pragma: allowlist secret
 MAGNET = "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny"  # Blender's film, CC-BY

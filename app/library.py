@@ -13,7 +13,7 @@ from mutagen import File as AudioFile
 
 import core
 
-log = logging.getLogger("yeerr.library")
+log = logging.getLogger("parlor.library")
 AUDIO = {".mp3", ".flac", ".ogg", ".opus", ".m4a", ".wav"}  # the same as music-fndr's
 EVERY = 10 * 60
 _lock = threading.Lock()  # one scan at a time

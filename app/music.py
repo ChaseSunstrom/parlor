@@ -85,7 +85,7 @@ app = FastAPI(title="music-findr")
 async def same_site_only(request: Request, call_next):
     """Changes need a header other websites can't send without a CORS preflight
     (which this app never grants), so a page you visit can't drive it."""
-    if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") not in ("music-findr", "yeerr"):
+    if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") not in ("music-findr", "parlor", "yeerr"):
         return JSONResponse({"detail": "Missing X-Requested-With: music-findr"}, status_code=403)
     return await call_next(request)
 
