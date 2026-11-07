@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
   admin INTEGER NOT NULL DEFAULT 0,
   jellyfin_id TEXT UNIQUE,
   seerr_id INTEGER,             -- the Seerr user requests are made as
+  jf_user TEXT,                 -- the Jellyfin user (name or id) they play as, set by an admin
   created REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -76,6 +77,7 @@ CREATE TABLE IF NOT EXISTS videos (
 
 COLUMNS = [
     ("videos", "keep", "INTEGER NOT NULL DEFAULT 0"),  # 1: never deleted by the retention rule
+    ("users", "jf_user", "TEXT"),  # the Jellyfin user (name or id) they play as, set by an admin
 ]
 
 _local = threading.local()
@@ -98,7 +100,10 @@ def db() -> sqlite3.Connection:
                 conn.executescript(SCHEMA)
                 for table, column, decl in COLUMNS:  # columns added after a table first shipped
                     if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
-                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                        try:
+                            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+                        except sqlite3.OperationalError:  # another process added it first
+                            pass
                 _ready.add(path)
         _local.db, _local.path = conn, path
     return conn
@@ -119,6 +124,8 @@ ENV_DEFAULTS = {
     "seerr_url": "SEERR_URL",
     "seerr_key": "SEERR_API_KEY",
     "jellyfin_url": "JELLYFIN_URL",
+    "jellyfin_key": "JELLYFIN_API_KEY",
+    "jellyfin_user": "JELLYFIN_USER",
     "open_signup": "OPEN_SIGNUP",
     "video_keep_days": "VIDEO_KEEP_DAYS",
 }

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import auth
 import core
+import jf
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import seerr
 import yt
@@ -53,6 +54,7 @@ def health():
 app.include_router(auth.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)
+app.include_router(jf.router)
 app.mount("/music", music.app)  # its API answers at /music/api/...
 
 
