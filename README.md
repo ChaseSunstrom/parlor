@@ -6,22 +6,53 @@ YouTube, movies and TV, and your music library, in one self-hosted app with acco
 - **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. Trailers play in the ad-free player.
 - **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying.
 
-One `docker compose` file runs yeerr and Seerr.
+One `docker compose` file runs yeerr and the whole stack around it: Sonarr, Radarr, Lidarr, Prowlarr, FlareSolverr, qBittorrent behind a Gluetun VPN, Bazarr, Jellyfin, Seerr and Cleanuparr. **yeerr sets them all up itself**: you don't sign in to each app, copy API keys or add indexers.
 
 ## Run it
 
 ```sh
-cp .env.example .env        # set MUSIC_DIR and VIDEO_DIR
+cp .env.example .env        # set DATA (your media folder), PUID/PGID, TZ and your WireGuard file
 docker compose up -d --build
 ```
 
-1. **Seerr**: open `http://<server>:5055` and do its setup (sign in with Jellyfin, Plex or Emby; add Radarr and Sonarr). Copy the API key from Seerr → Settings → General.
-2. **yeerr**: open `http://<server>:8800` and create the admin account. In Settings, paste Seerr's API key and choose Save and test.
-3. Add everyone else in Settings → People, or let them sign in with Jellyfin (see below).
+Open `http://<server>:8800` and create your account. yeerr then, in the background:
 
-Already running Seerr, Overseerr or Jellyseerr? Delete the `seerr` service from `docker-compose.yml` and set `SEERR_URL` to it. All three speak the same API.
+- reads every app's API key from its config folder;
+- turns off logins **on your home network** in Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent and Cleanuparr (from outside, the others take your yeerr name and password; qBittorrent keeps its own, which it prints in its log the first time);
+- gives Sonarr, Radarr and Lidarr their folders (`/data/shows`, `/data/movies`, `/data/music`) and qBittorrent as their download client, each with its own category, saving to `/data/downloads`;
+- connects Prowlarr to all three, adds FlareSolverr for sites behind Cloudflare, and adds public indexers, keeping only the ones that answer (tried again on every run);
+- finishes Jellyfin's first-run setup with **your name and password** as its admin and adds libraries for movies, shows, music, YouTube downloads and books;
+- sets up Seerr through that Jellyfin account, with its libraries, Radarr and Sonarr;
+- connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent.
 
-Coming from music-fndr? Stop its container first: yeerr uses the same port (8800) and the same music folder, and picks up music-fndr's queue and synced playlists from `/music/.music-findr/`.
+**Settings → Services** shows each app, whether it answers, and what setup did, step by step. **Set up again** re-checks everything and puts back anything that went missing. It only ever adds what's missing and never touches a login you set yourself. On later restarts yeerr re-checks what it can without your password.
+
+Your media folder ends up like this (the same `/data` inside every container, so moves are instant):
+
+```
+DATA/
+  downloads/   qBittorrent, a folder per category
+  movies/  shows/  music/  youtube/  books/
+```
+
+### Moving over from your own compose
+
+The compose keeps each app's config in `./<app>/config`, the usual hand-made layout. Stop your old stack (`docker compose down` in its folder), copy those `config` folders and your `wg0.conf` next to this compose, set `DATA` to the folder you mounted as `/data` before, and start this one. Everything you set up stays; yeerr adds only what's missing: an app that already has a root folder, indexers or a login keeps them, and an indexer you delete stays deleted.
+
+Upgrading from an earlier yeerr (the one with the `yeerr-data` volume)? Its accounts and Seerr's settings were in Docker volumes; copy them into the new folders once, before the first start (`docker volume ls` shows the exact names):
+
+```sh
+docker compose down
+mkdir -p yeerr/config seerr/config
+docker run --rm -v yeerr_yeerr-data:/from -v "$PWD/yeerr/config:/to" alpine sh -c 'cp -a /from/. /to/ && chown -R 1000:1000 /to'
+docker run --rm -v yeerr_seerr-config:/from -v "$PWD/seerr/config:/to" alpine sh -c 'cp -a /from/. /to/ && chown -R 1000:1000 /to'
+```
+
+Then move your music to `$DATA/music` and downloaded videos to `$DATA/youtube` (use your `PUID:PGID` if they aren't 1000).
+
+Not using a VPN? Delete the `gluetun` service, remove `network_mode` and `depends_on: gluetun` from `qbittorrent`, give it `ports: ["8080:8080"]`, and set `QBITTORRENT_URL=http://qbittorrent:8080` in `.env`.
+
+Coming from music-fndr? Stop its container first: yeerr uses the same port (8800). Point `DATA` at the folder that holds your music as `music/`; yeerr picks up music-fndr's queue and synced playlists from `music/.music-findr/`.
 
 ## Accounts
 
@@ -87,12 +118,15 @@ Set these in `.env` (see `.env.example`).
 
 | Variable | Default | What it does |
 |---|---|---|
-| `MUSIC_DIR` | `/data/music` | Your music folder (music-fndr's library) |
-| `VIDEO_DIR` | `/data/videos` | Where downloaded videos go |
-| `PORT` | `8800` | yeerr's port. It uses the host's network, like music-fndr. |
-| `SEERR_URL` | `http://localhost:5055` | Seerr's address, from the server's point of view. Settings can change it. |
-| `SEERR_API_KEY` | | Seerr's API key. Settings can set it instead. |
-| `JELLYFIN_URL` | | Turns on sign-in with Jellyfin. music-fndr also uses it, with `JELLYFIN_API_KEY`, to make playlists in Jellyfin. |
+| `DATA` | `/data` | Your media folder. Every app sees it as `/data`; music is `DATA/music`, YouTube downloads `DATA/youtube`. |
+| `PUID`, `PGID` | `1000` | The user and group that own `DATA` (`id` shows yours). The apps run as them, and folders yeerr makes belong to them. |
+| `WIREGUARD_CONF` | `./gluetun/wg0.conf` | Your VPN provider's WireGuard file, for Gluetun |
+| `LAN_SUBNET` | `192.168.0.0/16` | Your home network (comma-separated for more than one): qBittorrent's page is reachable through the VPN from it and skips its login there |
+| `PUBLIC_INDEXERS` | `yts,eztv,thepiratebay,1337x,limetorrents,nyaasi,knaben` | Public indexers Prowlarr gets (Prowlarr's names); `none` adds none |
+| `PORT` | `8800` | yeerr's port |
+| `SEERR_URL`, `SEERR_API_KEY` | set by the compose | For a Seerr, Overseerr or Jellyseerr elsewhere. Settings can set them. |
+| `JELLYFIN_URL` | set by the compose | Turns on sign-in with Jellyfin. music-fndr also uses it, with `JELLYFIN_API_KEY`, to make playlists in Jellyfin. |
+| `SONARR_URL`, `SONARR_API_KEY` (and `RADARR_`, `LIDARR_`, `PROWLARR_`, `QBITTORRENT_URL`) | the compose's services | For apps that run somewhere else |
 | `OPEN_SIGNUP` | `0` | `1` lets anyone who can reach yeerr create an account |
 | `YT_PARALLEL` | `2` | Videos downloading at once |
 | `VIDEO_KEEP_DAYS` | `0` | Delete downloaded videos this many days after they're downloaded; `0` keeps them. Settings can change it. |
@@ -118,6 +152,7 @@ docker compose pull && docker compose build --pull && docker compose up -d
 - Wrong passwords are throttled per name and per address.
 - Changing a password signs out your other devices; Settings also has **Sign out everywhere**.
 - Put yeerr behind HTTPS (a reverse proxy) if it's reachable from outside your home. The session cookie is marked secure when the proxy says the request came over HTTPS.
+- The *arrs skip their logins for any private address, qBittorrent only for `LAN_SUBNET` and the other containers. Anyone on your home network can use them, so keep untrusted devices on a guest network, and don't forward their ports to the internet; from outside, they ask for a name and password. Your password is used for setup only while it runs, and never stored.
 
 ## Development
 

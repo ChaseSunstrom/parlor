@@ -17,4 +17,4 @@ EXPOSE 8800
 # a yt-dlp older than a few weeks fails YouTube downloads: update it on every start
 # (and every UPDATE_HOURS while running; UPDATE_HOURS=0 turns both off). Offline,
 # this gives up within a minute and starts with the yt-dlp it has.
-CMD ["sh", "-c", "[ \"${UPDATE_HOURS:-24}\" = 0 ] || timeout 60 pip install -q -U --no-cache-dir --disable-pip-version-check --root-user-action=ignore --timeout 15 --retries 2 'yt-dlp[default]' || echo 'yt-dlp update skipped'; exec uvicorn --app-dir /app app:app --host 0.0.0.0 --port $PORT"]
+CMD ["sh", "-c", "[ \"${UPDATE_HOURS:-24}\" = 0 ] || timeout 60 pip install -q -U --no-cache-dir --disable-pip-version-check --root-user-action=ignore --timeout 15 --retries 2 'yt-dlp[default]' || echo 'yt-dlp update skipped'; mkdir -p \"$MUSIC_DIR\" && cd \"$MUSIC_DIR\" && exec uvicorn --app-dir /app app:app --host 0.0.0.0 --port $PORT"]

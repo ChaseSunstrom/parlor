@@ -1,56 +1,181 @@
-# yeerr and Seerr, in one file.
-#   1. cp .env.example .env, and set MUSIC_DIR and VIDEO_DIR in it
+# yeerr and everything around it, in one file:
+#   1. cp .env.example .env, and set DATA (your media folder) and your WireGuard file in it
 #   2. docker compose up -d --build
-#   3. Seerr: open http://<server>:5055 once, connect it to Jellyfin/Plex and Radarr/Sonarr
-#   4. yeerr: open http://<server>:8800, create the admin account, then in Settings
-#      paste Seerr's API key (Seerr → Settings → General → API Key)
-# Already run Seerr, Overseerr or Jellyseerr? Delete the seerr service and set SEERR_URL.
+#   3. open http://<server>:8800 and create your account. yeerr then sets up every app for you:
+#      no logins at home, no API keys to copy, indexers added, Jellyfin and Seerr ready.
+# Each app keeps its config in ./<app>/config, like a hand-made *arr compose, so an existing
+# one can be dropped in. Settings → Services shows what was set up and runs it again.
 name: yeerr
+
+x-app: &app
+  restart: unless-stopped
+  environment: &env
+    PUID: ${PUID:-1000}
+    PGID: ${PGID:-1000}
+    TZ: ${TZ:-Etc/UTC}
 
 services:
   yeerr:
     build: .
     image: yeerr:latest
     init: true                 # passes stop signals on while the start-up yt-dlp update runs
-    network_mode: host         # reaches Seerr and Jellyfin on localhost, like music-fndr
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     env_file:
       - path: .env
         required: false
     environment:
-      PORT: ${PORT:-8800}
-      SEERR_URL: ${SEERR_URL:-http://localhost:5055}
+      <<: *env
+      STACK: "1"               # the apps below run beside yeerr: it sets them up
+      DATA_DIR: /config        # yeerr's own data: accounts, subscriptions, settings
+      MUSIC_DIR: /data/music
+      VIDEO_DIR: /data/youtube
+      SEERR_URL: http://seerr:5055
+      JELLYFIN_URL: http://jellyfin:8096
+    ports:
+      - "${PORT:-8800}:8800"
     volumes:
-      - ${MUSIC_DIR:-/data/music}:/music      # music-fndr's library (same folder music-fndr used)
-      - ${VIDEO_DIR:-/data/videos}:/videos    # downloaded videos
-      - yeerr-data:/data                      # accounts, subscriptions, history, settings
+      - ./yeerr/config:/config
+      - ${DATA:-/data}:/data
+      # the apps' config folders, read-only: yeerr reads their API keys from them
+      - ./sonarr/config:/stack/sonarr:ro
+      - ./radarr/config:/stack/radarr:ro
+      - ./lidarr/config:/stack/lidarr:ro
+      - ./prowlarr/config:/stack/prowlarr:ro
+      - ./bazarr/config:/stack/bazarr:ro
+      - ./seerr/config:/stack/seerr:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/api/health' % os.environ.get('PORT', '8800'), timeout=5)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/api/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       start_period: 120s
       retries: 3
     restart: unless-stopped
 
+  setup:                       # runs once first: makes the config folders, lets qBittorrent skip its login at home
+    build: .                   # the same image as yeerr (never pulled: there's no yeerr on Docker Hub)
+    image: yeerr:latest
+    working_dir: /app
+    command: ["python", "stack.py", "init"]
+    environment:
+      <<: *env
+      LAN_SUBNET: ${LAN_SUBNET:-192.168.0.0/16}
+    volumes:
+      - .:/compose
+    restart: "no"
+
+  gluetun:                     # the VPN; qBittorrent's only way out
+    image: qmcgaw/gluetun:latest
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+      VPN_SERVICE_PROVIDER: custom
+      VPN_TYPE: wireguard
+      FIREWALL_OUTBOUND_SUBNETS: ${LAN_SUBNET:-192.168.0.0/16},172.16.0.0/12   # home network and the other containers
+    volumes:
+      - ${WIREGUARD_CONF:-./gluetun/wg0.conf}:/gluetun/wireguard/wg0.conf:ro
+    ports:
+      - "8080:8080"            # qBittorrent's page
+    restart: unless-stopped
+
+  qbittorrent:
+    <<: *app
+    image: lscr.io/linuxserver/qbittorrent:latest
+    network_mode: service:gluetun   # other apps reach it at gluetun:8080
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    environment:
+      <<: *env
+      WEBUI_PORT: 8080
+    volumes:
+      - ./qbittorrent/config:/config
+      - ${DATA:-/data}:/data
+
+  prowlarr:
+    <<: *app
+    image: lscr.io/linuxserver/prowlarr:latest
+    ports: ["9696:9696"]
+    volumes:
+      - ./prowlarr/config:/config
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    environment:
+      LOG_LEVEL: info
+      TZ: ${TZ:-Etc/UTC}
+    ports: ["8191:8191"]
+    restart: unless-stopped
+
+  sonarr:
+    <<: *app
+    image: lscr.io/linuxserver/sonarr:latest
+    ports: ["8989:8989"]
+    volumes:
+      - ./sonarr/config:/config
+      - ${DATA:-/data}:/data
+
+  radarr:
+    <<: *app
+    image: lscr.io/linuxserver/radarr:latest
+    ports: ["7878:7878"]
+    volumes:
+      - ./radarr/config:/config
+      - ${DATA:-/data}:/data
+
+  lidarr:
+    <<: *app
+    image: lscr.io/linuxserver/lidarr:latest
+    ports: ["8686:8686"]
+    volumes:
+      - ./lidarr/config:/config
+      - ${DATA:-/data}:/data
+
+  bazarr:
+    <<: *app
+    image: lscr.io/linuxserver/bazarr:latest
+    ports: ["6767:6767"]
+    volumes:
+      - ./bazarr/config:/config
+      - ${DATA:-/data}:/data
+
+  jellyfin:
+    <<: *app
+    image: lscr.io/linuxserver/jellyfin:latest
+    ports: ["8096:8096"]
+    volumes:
+      - ./jellyfin/config:/config
+      - ${DATA:-/data}:/data
+    # for hardware transcoding, pass your GPU through, e.g. devices: ["/dev/dri:/dev/dri"]
+
   seerr:
     image: ghcr.io/seerr-team/seerr:latest
     init: true
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
     environment:
       TZ: ${TZ:-Etc/UTC}
       LOG_LEVEL: info
-    ports:
-      - "5055:5055"
+    ports: ["5055:5055"]
     volumes:
-      - seerr-config:/app/config
+      - ./seerr/config:/app/config
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1"]
       interval: 30s
       timeout: 5s
       start_period: 30s
       retries: 3
-    security_opt:
-      - no-new-privileges:true
     restart: unless-stopped
 
-volumes:
-  yeerr-data:
-  seerr-config:
+  cleanuparr:
+    <<: *app
+    image: ghcr.io/cleanuparr/cleanuparr:latest
+    ports: ["11011:11011"]
+    volumes:
+      - ./cleanuparr/config:/config
