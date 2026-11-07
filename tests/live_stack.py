@@ -106,7 +106,7 @@ def show(label, st):
 show("after the admin account was made", first)
 show("second run", second)
 bad = [x for x in first["run"]["results"] if x["status"] in ("failed", "skipped") and x["step"] != "indexers"]
-changed = [x for x in second["run"]["results"] if x["status"] == "done"]
+changed = [x for x in second["run"]["results"] if x["status"] == "done" and x["step"] != "indexers"]  # public sites come and go
 down = [a["label"] for a in second["apps"] if not a["up"]]
 indexers = next(x for x in first["run"]["results"] if x["step"] == "indexers")
 

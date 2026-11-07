@@ -120,6 +120,7 @@ function renderJobs() {
   const failedJobs = retryable().length + videoJobs.filter((j) => ["failed", "stopped"].includes(j.status)).length;
   $("#retryFailed").hidden = !failedJobs;
   $("#retryFailed").textContent = `Retry ${failedJobs} failed`;
+  $("#torrentsLink").hidden = !ME?.admin;
   $("#count").hidden = !active;
   $("#count").textContent = active;
   $("#eq").hidden = !videoJobs.some((j) => j.status === "downloading") && !jobs.some((j) => j.status === "downloading");

@@ -3,3 +3,16 @@ __pycache__/
 *.pyc
 .venv/
 .claude/worktrees/
+# a stack run from this folder keeps each app's settings, databases and keys here: never commit them
+/yeerr/
+/parlor/
+/sonarr/
+/radarr/
+/lidarr/
+/prowlarr/
+/bazarr/
+/jellyfin/
+/seerr/
+/cleanuparr/
+/qbittorrent/
+/gluetun/

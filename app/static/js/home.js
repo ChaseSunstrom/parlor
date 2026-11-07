@@ -58,7 +58,7 @@ async function drawServices(t) {
   const row = (a) => {
     const mine = steps(a.app), worst = ["failed", "skipped", "done", "ok"].find((st) => mine.some((r) => r.status === st));
     return `<li class="svc"><span class="state ${a.up ? "up" : "down"}" title="${a.up ? "Answering" : "Not answering"}"></span>
-      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}</small>
+      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}${a.app === "qbittorrent" ? ` · <a href="#/torrents">manage torrents</a>` : ""}</small>
         ${mine.length ? `<ul class="svc-steps">${mine.map((r) => `<li class="${r.status}"><b>${esc(r.step)}</b> ${esc(r.detail)}</li>`).join("")}</ul>` : ""}</div>
       ${worst ? pill(...SETUP_STEP[worst]) : ""}</li>`;
   };

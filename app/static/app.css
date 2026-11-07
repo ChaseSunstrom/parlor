@@ -683,3 +683,17 @@ a.ghost { display: inline-flex; align-items: center; }
 .notice p { margin: 0 0 8px; }
 code.secret { font: .95rem ui-monospace, monospace; padding: 6px 10px; border-radius: 8px; background: var(--sunk); user-select: all; word-break: break-all; }
 .svc.two { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+
+/* Torrents (admins) */
+.job.torrent { grid-template-columns: minmax(0, 1fr) auto; }
+.torrent strong { overflow-wrap: anywhere; }
+.tmenu { position: relative; }
+.tmenu > summary { list-style: none; cursor: pointer; }
+.tmenu > summary::-webkit-details-marker { display: none; }
+.tmenu-list { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: grid; gap: 2px; min-width: 240px; padding: 6px;
+  background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 32px rgb(0 0 0 / .35); }
+.tmenu-list button, .tmenu-list label { text-align: left; padding: 8px 10px; border-radius: 8px; background: none; border: 0; font: inherit; color: inherit; }
+.tmenu-list button:hover { background: var(--sunk); }
+.tmenu-list button.danger { color: var(--bad); }
+.tmenu-list label { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.torrents-link { margin: 4px 0 8px; }

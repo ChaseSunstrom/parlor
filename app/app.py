@@ -18,6 +18,7 @@ import jf
 import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import seerr
+import qbit
 import subsonic
 import activity
 import stack
@@ -62,6 +63,8 @@ app.include_router(stack.router)
 app.include_router(activity.router)
 app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
+app.include_router(qbit.router)
+app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
 app.mount("/music", music.app)  # its API answers at /music/api/...
 
 
