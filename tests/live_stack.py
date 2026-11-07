@@ -120,6 +120,9 @@ qb = sh("docker", "exec", f"{RUN.name}-sonarr-1", "curl", "-s", "-o", "/dev/null
 checks["qBittorrent answers at home without a login"] = qb.stdout == "200"
 ui = sh("docker", "exec", f"{RUN.name}-radarr-1", "curl", "-s", "http://sonarr:8989/initialize.json", check=False)
 checks["Sonarr's page needs no login at home"] = '"apiKey"' in ui.stdout
+ln = sh("docker", "exec", "-u", "abc", f"{RUN.name}-radarr-1", "sh", "-c", "mkdir -p /data/downloads /data/movies && touch /data/downloads/.ln "
+        "&& ln /data/downloads/.ln /data/movies/.ln && rm /data/downloads/.ln /data/movies/.ln", check=False)
+checks["Radarr can hardlink a download into the library (one /data mount)"] = ln.returncode == 0
 for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 ok = not bad and not changed and not down and indexers["status"] in ("done", "ok") and all(checks.values())

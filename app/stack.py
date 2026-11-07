@@ -107,10 +107,24 @@ def make_dir(path: str):
     """A media folder under /data, owned by the user the apps run as (Parlor itself runs as root)."""
     folder = DATA / path.removeprefix("/data/").lstrip("/")
     folder.mkdir(parents=True, exist_ok=True)
-    uid, gid = os.environ.get("PUID"), os.environ.get("PGID")
-    if uid and gid and hasattr(os, "geteuid") and os.geteuid() == 0:
-        os.chown(folder, int(uid), int(gid))
+    hand_over(folder)
     return folder
+
+
+def hand_over(folder: Path) -> bool:
+    """Give an empty folder that Parlor or Docker just made (it's ours: both run as root) to the
+    user the apps run as. A link, a folder with anything in it, or someone else's is left alone,
+    and a folder that refuses (a network share) is too. True when it was handed over."""
+    try:
+        if folder.is_symlink() or not folder.is_dir() or any(folder.iterdir()):
+            return False
+        owner, uid = folder.stat().st_uid, os.environ.get("PUID")
+        if not uid or not hasattr(os, "geteuid") or owner != os.geteuid() or str(owner) == uid:
+            return False
+        _own(folder)
+        return True
+    except OSError:
+        return False
 
 
 # --- Sonarr, Radarr, Lidarr, Prowlarr ------------------------------------------------------
@@ -366,7 +380,7 @@ def _own(*paths):
     uid, gid = os.environ.get("PUID"), os.environ.get("PGID")
     if uid and gid and hasattr(os, "geteuid") and os.geteuid() == 0:
         for p in paths:
-            os.chown(p, int(uid), int(gid))
+            os.chown(p, int(uid), int(gid), follow_symlinks=False)
 
 
 def init_files(root: Optional[Path] = None) -> list:
@@ -389,15 +403,9 @@ def init_files(root: Optional[Path] = None) -> list:
             folder.mkdir(parents=True)
             _own(folder.parent, folder)
             done.append(f"{app}: made its config folder")
-    uid = os.environ.get("PUID")
-    for kind in KINDS:  # Docker makes a missing media folder root's when it mounts it: hand an empty one to the apps' user
-        folder = DATA / kind
-        try:
-            if uid and folder.is_dir() and folder.stat().st_uid != int(uid) and not any(folder.iterdir()):
-                _own(folder)
-                done.append(f"{kind}: folder handed to the apps' user")
-        except OSError:  # a read-only or network folder: leave it as it is
-            pass
+    for kind in KINDS:  # Docker makes a missing media folder root's when it mounts it
+        if hand_over(DATA / kind):
+            done.append(f"{kind}: folder handed to the apps' user")
     conf = root / "qbittorrent" / "config" / "qBittorrent" / "qBittorrent.conf"
     text = conf.read_text() if conf.is_file() else QBIT_NEW
     lines = text.rstrip().splitlines()

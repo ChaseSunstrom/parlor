@@ -17,6 +17,8 @@ cp .env.example .env        # set DATA (your media folder), PUID/PGID and TZ
 docker compose up -d --build
 ```
 
+It needs Docker Compose 2.24.3 or newer (`docker compose version` says which you have).
+
 Open `http://<server>:8800`, create your account, and upload your VPN's WireGuard file in **Settings → Services → VPN** ([more](#the-vpn)). Parlor then, in the background:
 
 - reads every app's API key from its config folder;
@@ -41,6 +43,8 @@ DATA/
   movies/  shows/  music/  youtube/  books/  games/
 ```
 
+`games/` is kept for the games apps to come; nothing uses it yet.
+
 ### Folders per kind
 
 Each kind can live somewhere else, such as another disk or a library you already have. Set any of `MOVIES`, `SHOWS`, `MUSIC`, `BOOKS`, `GAMES`, `YOUTUBE` and `DOWNLOADS` in `.env`; each defaults to `DATA/<kind>`. Inside every container that uses it, the folder still appears at `/data/<kind>`, so the apps' settings (root folders, Jellyfin libraries, qBittorrent's save path) don't change.
@@ -52,7 +56,12 @@ MOVIES=/mnt/bigdisk/films  # an existing library: Radarr, Jellyfin and Bazarr fi
 
 To use a library you already have, point its kind at it (`MOVIES=/path/to/your/movies`) and run `docker compose up -d`; the apps' root folders and Jellyfin's libraries already point at `/data/<kind>`, so they find what's there (Settings → Services → Set up again re-checks them). The folder must be readable and writable by `PUID:PGID`.
 
-**Moves between different disks are copies, not instant.** A finished download reaching your library (`downloads` to `movies`, `shows` or `music`) is a copy and a delete when the two folders are on different disks, and no hardlink is made, so the file takes twice the space until the torrent is removed after seeding. Linux also treats two separate mounts as different places even on one disk, so with these folders mounted one by one the same is true there too.
+**Moves between different disks are copies, not instant.** Left unset, every kind is a folder inside `DATA`, all in one mount, so a finished download reaching your library (`downloads` to `movies`, `shows` or `music`) is an instant move or a hardlink that takes no extra space while it seeds. A kind set in `.env` is mounted on its own, and Linux treats two mounts as different places even on one disk: moving into or out of it copies the file, and while the torrent seeds it takes twice the space. So set a kind only for a folder outside `DATA`, such as another disk or an existing library; a folder already inside `DATA` is simply `/data/<that folder>`.
+
+Two things to do before you set one:
+
+- **Mount the disk first.** If the path isn't there when the stack starts, Docker makes an empty folder at it on your system disk, and downloads fill that disk instead.
+- **Move what's already in `DATA/<kind>` there.** Once a kind is set, the apps see only its new folder; what's left in `DATA/<kind>` is hidden from them, and Radarr or Sonarr would think it's missing and search for it again.
 
 ### Moving over from your own compose
 

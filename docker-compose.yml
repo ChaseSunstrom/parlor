@@ -40,12 +40,14 @@ services:
     volumes:
       - ./parlor/config:/config
       - ${DATA:-/data}:/data
-      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
-      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
-      - ${MUSIC:-${DATA:-/data}/music}:/data/music
-      - ${BOOKS:-${DATA:-/data}/books}:/data/books
-      - ${GAMES:-${DATA:-/data}/games}:/data/games
-      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
+      # a kind set in .env is mounted over /data/<kind>; unset, its line repeats the /data mount above and
+      # Compose (2.24.3 or newer) drops it, so everything stays one mount: imports are instant and hardlinked
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}
+      - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}
+      - ${BOOKS:-${DATA:-/data}}:/data${BOOKS:+/books}
+      - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
+      - ${YOUTUBE:-${DATA:-/data}}:/data${YOUTUBE:+/youtube}
       # the apps' config folders, read-only: Parlor reads their API keys from them
       - ./sonarr/config:/stack/sonarr:ro
       - ./radarr/config:/stack/radarr:ro
@@ -72,13 +74,13 @@ services:
       LAN_SUBNET: ${LAN_SUBNET:-192.168.0.0/16}
     volumes:
       - .:/compose
-      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies        # the media folders, so a missing one can be handed to PUID:PGID
-      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
-      - ${MUSIC:-${DATA:-/data}/music}:/data/music
-      - ${BOOKS:-${DATA:-/data}/books}:/data/books
-      - ${GAMES:-${DATA:-/data}/games}:/data/games
-      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
-      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}        # the media folders, so a missing one can be handed to PUID:PGID
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}
+      - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}
+      - ${BOOKS:-${DATA:-/data}}:/data${BOOKS:+/books}
+      - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
+      - ${YOUTUBE:-${DATA:-/data}}:/data${YOUTUBE:+/youtube}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
     restart: "no"
 
   gluetun:                     # the VPN; qBittorrent's only way out. Upload your WireGuard file in Parlor
@@ -121,7 +123,7 @@ services:
     volumes:
       - ./qbittorrent/config:/config
       - ${DATA:-/data}:/data
-      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
 
   prowlarr:
     <<: *app
@@ -145,8 +147,8 @@ services:
     volumes:
       - ./sonarr/config:/config
       - ${DATA:-/data}:/data
-      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
-      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
 
   radarr:
     <<: *app
@@ -155,8 +157,8 @@ services:
     volumes:
       - ./radarr/config:/config
       - ${DATA:-/data}:/data
-      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
-      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
 
   lidarr:
     <<: *app
@@ -165,8 +167,8 @@ services:
     volumes:
       - ./lidarr/config:/config
       - ${DATA:-/data}:/data
-      - ${MUSIC:-${DATA:-/data}/music}:/data/music
-      - ${DOWNLOADS:-${DATA:-/data}/downloads}:/data/downloads
+      - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
 
   bazarr:
     <<: *app
@@ -175,8 +177,8 @@ services:
     volumes:
       - ./bazarr/config:/config
       - ${DATA:-/data}:/data
-      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
-      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}
 
   jellyfin:
     <<: *app
@@ -185,11 +187,11 @@ services:
     volumes:
       - ./jellyfin/config:/config
       - ${DATA:-/data}:/data
-      - ${MOVIES:-${DATA:-/data}/movies}:/data/movies
-      - ${SHOWS:-${DATA:-/data}/shows}:/data/shows
-      - ${MUSIC:-${DATA:-/data}/music}:/data/music
-      - ${YOUTUBE:-${DATA:-/data}/youtube}:/data/youtube
-      - ${BOOKS:-${DATA:-/data}/books}:/data/books
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}
+      - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}
+      - ${YOUTUBE:-${DATA:-/data}}:/data${YOUTUBE:+/youtube}
+      - ${BOOKS:-${DATA:-/data}}:/data${BOOKS:+/books}
     # for hardware transcoding, pass your GPU through, e.g. devices: ["/dev/dri:/dev/dri"]
 
   seerr:

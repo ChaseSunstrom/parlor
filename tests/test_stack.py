@@ -678,6 +678,17 @@ class InitFiles(unittest.TestCase):
         self.assertNotIn(media / "shows", owned, "an existing library is never touched")
         self.assertNotIn(media / "music", owned, "a folder that isn't mounted isn't made")
         self.assertIn("movies: folder handed to the apps' user", done)
+        # setting up a root folder over an existing library never re-owns it; links aren't followed
+        owned.clear()
+        (media / "films").symlink_to(media / "movies")
+        with mock.patch.object(stack, "DATA", media), mock.patch.object(stack, "_own", lambda *p: owned.extend(p)), \
+                mock.patch.dict(os.environ, {"PUID": other, "PGID": other}):
+            stack.make_dir("/data/shows")
+            stack.make_dir("/data/films")
+            stack.make_dir("/data/books")
+            with mock.patch.object(stack.os, "geteuid", lambda: os.getuid() + 2):  # someone else's empty folder
+                stack.make_dir("/data/games")
+        self.assertEqual(owned, [media / "books"], "only the folder it just made")
 
     def test_qbittorrent_opens_to_the_home_network_once_and_keeps_your_password(self):
         root = TMP / "init"
