@@ -445,6 +445,9 @@ class Proxy(Base):
         before = len(self.fake.calls)
         self.assertEqual(self.stream(f"Videos/{hidden}/stream").status_code, 404)
         self.assertFalse([c for c in self.fake.calls[before:] if "/Videos/" in c.get("url", "")], "nothing was streamed")
+        for sneaky in (f"Videos/{hidden}/hls1/Images/0.ts", f"Audio/{hidden}/hls1/Images/main.m3u8"):
+            self.assertEqual(self.stream(sneaky).status_code, 404, "a playlist named Images is still a stream")
+        self.assertFalse([c for c in self.fake.calls[before:] if "/hls1/" in c.get("url", "")], "nothing was streamed")
         jf._users.put("all", [{**u, "Policy": {"EnableContentDownloading": False}} for u in jf._users.get("all") or jf.call("GET", "/Users").json()])
         self.assertEqual(self.stream(f"Items/{MOVIE}/Download").status_code, 403)
 
