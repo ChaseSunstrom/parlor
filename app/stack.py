@@ -11,6 +11,7 @@ admin account is created; Settings → Services runs it again any time.
 qBittorrent to the home network, which has to be in its config file before it starts."""
 
 import base64
+import calendar
 import ipaddress
 import json
 import logging
@@ -183,36 +184,109 @@ def prowlarr_indexers():
         return "ok", f"{len(have)} indexers"
     # Cardigann definitions are lower-case ("yts"); Prowlarr's built-in ones aren't ("Knaben")
     schemas = {(s.get("definitionName") or "").lower(): s for s in arr.call("prowlarr", "GET", "/indexer/schema", timeout=60)}
-    tag, profile = flaresolverr_tag(), arr.call("prowlarr", "GET", "/appprofile")[0]["id"]
-
-    def tried(d):
-        """(name, tags that work) or (name, why not); a slow site can take a minute, so all at once."""
-        s = schemas.get(d.lower())
-        if not s:
-            return d, None, "Prowlarr has no such indexer"
-        s.update(enable=True, appProfileId=profile, priority=25)
-        for tags in ([], [tag]):  # straight, then through FlareSolverr
-            try:
-                arr.call("prowlarr", "POST", "/indexer/test", json={**s, "tags": tags}, timeout=90)
-                return d, tags, None
-            except arr.ArrError as exc:
-                why = str(exc).split(": ", 1)[-1]
-        return s["name"], None, why
-
-    added, broken = [], []
-    with ThreadPoolExecutor(4) as pool:
-        for d, tags, why in pool.map(tried, want):
-            if why:
-                broken.append(f"{d} ({why})")
-                continue
-            s = {**schemas[d.lower()], "tags": tags}
-            arr.call("prowlarr", "POST", "/indexer?forceSave=true", json=s, timeout=90)
-            added.append(s["name"] + (" via FlareSolverr" if tags else ""))
-            ours.add(d.lower())
-            core.set_setting("indexers_added", json.dumps(sorted(ours)))
+    missing = [d for d in want if d.lower() not in schemas]
+    added, broken = _add_working([schemas[d.lower()] for d in want if d.lower() in schemas], ours)
+    broken += [f"{d} (Prowlarr has no such indexer)" for d in missing]
     if broken:
         raise Fail(f"added {', '.join(added) or 'none'}; couldn't reach {', '.join(broken)}. The next run tries again.")
     return "done", "added " + ", ".join(added)
+
+
+def _add_working(defs, ours, room=None):
+    """Try each definition (straight, then through FlareSolverr; a slow site can take a minute, so four
+    at once) and add the ones that answer, up to `room`. Returns (added, broken)."""
+    tag, profile = flaresolverr_tag(), arr.call("prowlarr", "GET", "/appprofile")[0]["id"]
+
+    def tried(s):
+        s = {**s, "enable": True, "appProfileId": profile, "priority": 25}
+        why = "no answer"
+        for tags in ([], [tag]):
+            try:
+                arr.call("prowlarr", "POST", "/indexer/test", json={**s, "tags": tags}, timeout=90)
+                return s, tags, None
+            except arr.ArrError as exc:
+                why = str(exc).split(": ", 1)[-1]
+        return s, None, why
+
+    added, broken = [], []
+    with ThreadPoolExecutor(4) as pool:
+        for s, tags, why in pool.map(tried, defs):
+            if why:
+                broken.append(f"{s['name']} ({why})")
+                continue
+            if room is not None and len(added) >= room:
+                break
+            arr.call("prowlarr", "POST", "/indexer?forceSave=true", json={**s, "tags": tags}, timeout=90)
+            added.append(s["name"] + (" via FlareSolverr" if tags else ""))
+            ours.add(s["definitionName"].lower())
+            core.set_setting("indexers_added", json.dumps(sorted(ours)))
+    return added, broken
+
+
+REFRESH, MAX_OURS, TRIES, DEAD = 12 * 3600, 15, 8, 3 * 86400
+MEDIA = {2000, 3000, 5000}  # Newznab's movies, music and TV
+ADULT = re.compile(r"hentai|xxx|porn|adult", re.I)
+
+
+def _cats(s) -> set:
+    return {c["id"] // 1000 * 1000 for c in (s.get("capabilities") or {}).get("categories", []) if isinstance(c.get("id"), int)}
+
+
+def candidates(schemas) -> list:
+    """Public torrent sites in English that carry movies, TV or music, the broadest first."""
+    fit = [s for s in schemas if s.get("privacy") == "public" and s.get("protocol") == "torrent"
+           and (s.get("language") or "en-US").startswith("en") and _cats(s) & MEDIA
+           and not ADULT.search(f"{s.get('definitionName')} {s.get('name')} {s.get('description')}")]
+    return sorted(fit, key=lambda s: (-len(_cats(s) & MEDIA), (s.get("definitionName") or "").lower()))
+
+
+def _when(stamp) -> float:
+    """Seconds since 1970 from an *arr's UTC time."""
+    try:
+        return float(calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S")))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def refresh_indexers(now: Optional[float] = None) -> Optional[dict]:
+    """Twice a day: public indexers that work are added (up to MAX_OURS of yeerr's, TRIES new ones a run),
+    yeerr's that have failed for three days are switched off, and ones it switched off come back once they
+    answer again. One you deleted or switched off yourself stays that way; a Prowlarr with only its own
+    indexers is left alone. Returns what changed, or None when it wasn't due."""
+    now = now or time.time()
+    if not INDEXERS or not arr.key("prowlarr") or now - float(setting("indexers_refreshed") or 0) < REFRESH:
+        return None
+    core.set_setting("indexers_refreshed", str(now))
+    have = {(i.get("definitionName") or "").lower(): i for i in arr.call("prowlarr", "GET", "/indexer")}
+    ours, off = set(json.loads(setting("indexers_added") or "[]")), set(json.loads(setting("indexers_off") or "[]"))
+    report = {"at": now, "added": [], "off": [], "on": [], "note": ""}
+    if have and not ours:
+        report["note"] = "your own indexers: left alone"
+    else:
+        failing = {s["indexerId"]: _when(s.get("initialFailure")) for s in arr.call("prowlarr", "GET", "/indexerstatus") if s.get("initialFailure")}
+        for d, i in have.items():
+            if d not in ours:
+                continue
+            if i.get("enable") and failing.get(i["id"]) and now - failing[i["id"]] > DEAD:
+                arr.call("prowlarr", "PUT", f"/indexer/{i['id']}?forceSave=true", json={**i, "enable": False})
+                off.add(d)
+                report["off"].append(i["name"])
+            elif not i.get("enable") and d in off:
+                try:
+                    arr.call("prowlarr", "POST", "/indexer/test", json={**i, "enable": True}, timeout=90)
+                except arr.ArrError:
+                    continue
+                arr.call("prowlarr", "PUT", f"/indexer/{i['id']}", json={**i, "enable": True})
+                off.discard(d)
+                report["on"].append(i["name"])
+        core.set_setting("indexers_off", json.dumps(sorted(off)))
+        room = MAX_OURS - len(ours & set(have))
+        if room > 0:
+            fresh = [s for s in candidates(arr.call("prowlarr", "GET", "/indexer/schema", timeout=60))
+                     if (s.get("definitionName") or "").lower() not in set(have) | ours][:TRIES]
+            report["added"], _ = _add_working(fresh, ours, room)
+    core.set_setting("indexers_report", json.dumps(report))
+    return report
 
 
 # --- qBittorrent -----------------------------------------------------------------------------
@@ -537,10 +611,11 @@ def rechecker():
     def loop():
         while True:
             time.sleep(3600)
-            try:
-                recheck()
-            except Exception:  # never let one bad hour stop the next
-                log.exception("upgrade search")
+            for chore in (recheck, refresh_indexers):
+                try:
+                    chore()
+                except Exception:  # never let one bad hour stop the next
+                    log.exception("stack chore %s", chore.__name__)
     threading.Thread(target=loop, daemon=True, name="stack-recheck").start()
 
 
@@ -993,7 +1068,8 @@ def status():
 
 @router.get("")
 def services(_=Depends(admin)):
-    return {"on": on(), "apps": status(), "run": state, "quality": "best" if best_on() else "default"}
+    return {"on": on(), "apps": status(), "run": state, "quality": "best" if best_on() else "default",
+            "indexers": json.loads(setting("indexers_report") or "null")}
 
 
 class Quality(BaseModel):

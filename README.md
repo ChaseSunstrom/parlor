@@ -20,7 +20,7 @@ Open `http://<server>:8800`, create your account, and upload your VPN's WireGuar
 - reads every app's API key from its config folder;
 - turns off logins **on your home network** in Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent and Cleanuparr (from outside, the others take your yeerr name and password; qBittorrent keeps its own, which it prints in its log the first time);
 - gives Sonarr, Radarr and Lidarr their folders (`/data/shows`, `/data/movies`, `/data/music`) and qBittorrent as their download client, each with its own category, saving to `/data/downloads`;
-- connects Prowlarr to all three, adds FlareSolverr for sites behind Cloudflare, and adds public indexers, keeping only the ones that answer (tried again on every run);
+- connects Prowlarr to all three, adds FlareSolverr for sites behind Cloudflare, and adds public indexers, keeping only the ones that answer (tried again on every run); then **keeps the list fresh by itself**: twice a day it tries more of the public torrent sites Prowlarr knows (Prowlarr updates its own list of them), adds ones that work, up to 15, switches off ones that have failed for three days and turns them back on once they answer. One you delete or switch off yourself stays that way, and a Prowlarr that only has indexers of your own is left alone;
 - finishes Jellyfin's first-run setup with **your name and password** as its admin and adds libraries for movies, shows, music, YouTube downloads and books;
 - sets up Seerr through that Jellyfin account, with its libraries, Radarr and Sonarr;
 - connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent;

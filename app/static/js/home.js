@@ -68,6 +68,8 @@ async function drawServices(t) {
         qBittorrent, Prowlarr's indexers, Jellyfin, Seerr, Bazarr and Cleanuparr. It only ever adds what's missing. ${when}</p></div>
       ${s.run.running ? `<span class="spin-sm" aria-label="Running"></span>` : ""}</div>
     <ul class="svc-list">${s.apps.map(row).join("")}</ul>
+    ${s.indexers ? `<p class="dim">Indexers refreshed ${since(s.indexers.at)}${s.indexers.note ? `: ${esc(s.indexers.note)}` : ""}${[["added", s.indexers.added], ["switched off", s.indexers.off], ["back on", s.indexers.on]]
+      .filter(([, l]) => l.length).map(([w, l]) => `; ${w} ${esc(l.join(", "))}`).join("")}. Twice a day, new public ones that work are added and dead ones rest.</p>` : ""}
     <label class="field"><span>Download quality</span><select id="stackQuality">
       <option value="best"${s.quality === "best" ? " selected" : ""}>Best available, and better copies as they appear</option>
       <option value="default"${s.quality === "default" ? " selected" : ""}>Each app's own profile</option></select>

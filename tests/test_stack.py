@@ -42,6 +42,7 @@ class FakeStack:
         self.clients = {a: [] for a in ("sonarr", "radarr", "lidarr")}
         self.apps, self.proxies, self.tags, self.indexers = [], [], [], list(indexers)
         self.profiles = {a: [{"id": 1, "name": "Any"}] for a in KEYS}
+        self.status = []  # Prowlarr's /indexerstatus: indexers that are failing
         self.commands = []
         self.broken, self.needs_fs = set(broken_indexers), set(needs_flaresolverr)
         self.qbit = {"open": qbit_open, "save_path": "/downloads/", "categories": {}}
@@ -145,8 +146,20 @@ class FakeStack:
                 self.proxies.append(body)
                 return Resp(201, body)
             return Resp(200, self.proxies)
-        if path == "/indexer/schema":
-            return Resp(200, [{"definitionName": d, "name": d.upper(), "fields": [{"name": "baseUrl"}]} for d in ("yts", "eztv", "1337x", "Nyaasi")])
+        if path == "/indexer/schema":  # Prowlarr knows hundreds; a few of each kind
+            d = lambda name, privacy="public", lang="en-US", cats=(2000, 5000), desc="": {  # noqa: E731
+                "definitionName": name, "name": name.upper(), "fields": [{"name": "baseUrl"}], "privacy": privacy, "protocol": "torrent",
+                "language": lang, "description": desc, "capabilities": {"categories": [{"id": c} for c in cats]}}
+            return Resp(200, [d("yts", cats=(2000,)), d("eztv", cats=(5000,)), d("1337x", cats=(2000, 3000, 5000, 6000)), d("Nyaasi", cats=(5000,)),
+                              d("kickass", cats=(2000, 3000, 5000)), d("musicsite", cats=(3000,)), d("bookbay", cats=(7000,)),
+                              d("rutracker", privacy="private"), d("zhsite", lang="zh-CN"), d("pictures", desc="hentai and more"),
+                              *[d(f"extra{i}") for i in range(20)]])
+        if path == "/indexerstatus":
+            return Resp(200, self.status)
+        m = re.fullmatch(r"/indexer/(\d+)", path)
+        if m and method == "PUT":
+            next(i for i in self.indexers if i["id"] == int(m[1])).update(body)
+            return Resp(202, body)
         if path == "/appprofile":
             return Resp(200, [{"id": 1, "name": "Standard"}])
         if path == "/indexer" and method == "GET":
@@ -156,7 +169,7 @@ class FakeStack:
             if d in self.broken or (d in self.needs_fs and not body.get("tags")):
                 return Resp(400, [{"errorMessage": "Unable to connect to indexer"}])
             if path == "/indexer":
-                self.indexers.append(body)
+                self.indexers.append({**body, "id": len(self.indexers) + 1})
             return Resp(201 if path == "/indexer" else 200, body)
         return Resp(404, text="no such route")
 
@@ -344,7 +357,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),
@@ -502,6 +515,53 @@ class Indexers(Base):
         self.assertEqual(set(added), {"yts", "eztv", "nyaasi"})
         self.assertEqual(added["nyaasi"], [self.fake.tags[0]["id"]], "only the one that needed it goes through FlareSolverr")
         self.assertEqual(added["yts"], [])
+
+
+class FreshIndexers(Base):
+    def test_new_working_ones_added_dead_ones_rest_and_come_back(self):
+        f = self.fake
+        self.run_all()
+        start = len(f.indexers)
+        report = stack.refresh_indexers(now=1_000_000)
+        names = [i["definitionName"] for i in f.indexers[start:]]
+        self.assertEqual(names[:2], ["kickass", "extra0"], "the broadest first")
+        self.assertEqual(len(names), stack.TRIES, "a few new tries per run")
+        stack.refresh_indexers(now=1_000_000 + 13 * 3600)
+        self.assertEqual(len(f.indexers), stack.MAX_OURS, "and no more than this many of yeerr's")
+        self.assertNotIn("musicsite", names, "music-only ones come after the broad ones")
+        for skipped in ("rutracker", "zhsite", "pictures", "bookbay"):
+            self.assertNotIn(skipped, {i["definitionName"] for i in f.indexers}, "private, other languages, adult and books stay out")
+        self.assertEqual(report["added"][0], "KICKASS")
+        self.assertIsNone(stack.refresh_indexers(now=1_000_000 + 14 * 3600), "twice a day at most")
+
+        yts = next(i for i in f.indexers if i["definitionName"] == "yts")
+        f.status = [{"indexerId": yts["id"], "initialFailure": "1970-01-08T00:00:00Z", "mostRecentFailure": "1970-01-12T00:00:00Z"}]
+        f.broken.add("yts")
+        report = stack.refresh_indexers(now=1_000_000 + 26 * 3600)
+        self.assertFalse(yts["enable"], "failing for more than three days: switched off")
+        self.assertEqual(report["off"], ["YTS"])
+        f.broken.discard("yts")
+        f.status = []
+        report = stack.refresh_indexers(now=1_000_000 + 39 * 3600)
+        self.assertTrue(yts["enable"])
+        self.assertEqual(report["on"], ["YTS"])
+
+    def test_one_you_switched_off_or_deleted_stays_that_way(self):
+        f = self.fake
+        self.run_all()
+        stack.refresh_indexers(now=1_000_000)
+        mine = f.indexers[0]
+        mine["enable"] = False  # you switched it off
+        f.indexers[:] = [i for i in f.indexers if i["definitionName"] != "kickass"]  # and deleted one
+        stack.refresh_indexers(now=1_000_000 + 13 * 3600)
+        self.assertFalse(mine["enable"])
+        self.assertNotIn("kickass", {i["definitionName"] for i in f.indexers})
+
+    def test_shown_in_services(self):
+        self.run_all()
+        stack.refresh_indexers(now=1_000_000)
+        r = signed_in("admin").get("/api/stack").json()["indexers"]
+        self.assertEqual((r["at"], r["added"][0]), (1_000_000, "KICKASS"))
 
 
 class QbitClosed(Base):
