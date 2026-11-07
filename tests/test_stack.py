@@ -46,7 +46,15 @@ class FakeStack:
         self.jf = {"wizard": False, "user": None, "keys": [], "libs": []}
         self.seerr = {"initialized": False, "key": "SEERRKEY", "libs": [{"id": "m1", "name": "Movies", "enabled": False}], "radarr": [], "sonarr": []}
         self.bazarr = {"use_sonarr": False, "use_radarr": False, "sonarr_key": "", "radarr_key": ""}
-        self.cleanup = {"setup": False, "instances": {"sonarr": [], "radarr": [], "lidarr": []}, "clients": [], "local": False}
+        self.cleanup = {"setup": False, "instances": {"sonarr": [], "radarr": [], "lidarr": []}, "clients": [], "local": False,
+                        # Cleanuparr's jobs as a fresh one has them (shapes copied from Cleanuparr 2.x)
+                        "queue_cleaner": {"enabled": False, "cronExpression": "0 0/5 * * * ?", "failedImport": {"maxStrikes": 0, "ignorePrivate": False,
+                                          "deletePrivate": False, "patterns": [], "patternMode": "Include"}, "downloadingMetadataMaxStrikes": 0,
+                                          "errored": {"maxStrikes": 0, "ignorePrivate": False, "deletePrivate": False}},
+                        "malware_blocker": {"enabled": False, "ignorePrivate": False, "deleteIfAnyFileBlocked": False,
+                                            **{a: {"enabled": False, "blocklistType": "Blacklist", "blocklistPath": None} for a in ("sonarr", "radarr", "lidarr", "readarr")}},
+                        "download_cleaner": {"enabled": False, "cronExpression": "0 0 * * * ?"},
+                        "stall": [], "slow": [], "seeding": {}}
 
     def writes(self):
         return [c for c in self.calls if c[0] in ("POST", "PUT", "DELETE")]
@@ -263,6 +271,29 @@ class FakeStack:
                 self.cleanup["instances"][m[1]].append(body)
                 return Resp(201, body)
             return Resp(200, {"instances": self.cleanup["instances"][m[1]]})
+        if path in ("/api/configuration/queue_cleaner", "/api/configuration/malware_blocker", "/api/configuration/download_cleaner"):
+            job = path.rsplit("/", 1)[1]
+            if method == "PUT":
+                fi = body.get("failedImport") or {}
+                if body["enabled"] and fi.get("maxStrikes") and fi.get("patternMode") == "Include" and not fi.get("patterns"):
+                    return Resp(400, {"detail": "At least one pattern must be specified when using the Include pattern mode"})
+                self.cleanup[job] = body
+                return Resp(200, {"message": "updated"})
+            out = dict(self.cleanup[job])
+            if job == "download_cleaner":
+                out["clients"] = [{"downloadClientId": f"dc{i}", "downloadClientTypeName": c["typeName"], "seedingRules": self.cleanup["seeding"].get(f"dc{i}", [])}
+                                  for i, c in enumerate(self.cleanup["clients"])]
+            return Resp(200, out)
+        m = re.fullmatch(r"/api/queue-rules/(stall|slow)", path)
+        if m:
+            if method == "POST":
+                self.cleanup[m[1]].append({**body, "id": f"r{len(self.cleanup[m[1]])}"})
+                return Resp(201, self.cleanup[m[1]][-1])
+            return Resp(200, self.cleanup[m[1]])
+        m = re.fullmatch(r"/api/seeding-rules/(dc\d+)", path)
+        if m and method == "POST":
+            self.cleanup["seeding"].setdefault(m[1], []).append(body)
+            return Resp(201, body)
         if path == "/api/configuration/download_client":
             if method == "POST":
                 self.cleanup["clients"].append(body)
@@ -288,7 +319,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),
@@ -337,6 +368,19 @@ class Everything(Base):
         self.assertTrue(f.cleanup["local"])
         self.assertEqual({k: len(v) for k, v in f.cleanup["instances"].items()}, {"sonarr": 1, "radarr": 1, "lidarr": 1})
         self.assertEqual(len(f.cleanup["clients"]), 1)
+        # Cleanuparr's jobs: failed, stalled and slow downloads go and are searched again; malware blocked; seeding cleared
+        q = f.cleanup["queue_cleaner"]
+        self.assertTrue(q["enabled"])
+        self.assertEqual((q["failedImport"]["maxStrikes"], q["failedImport"]["patternMode"], q["downloadingMetadataMaxStrikes"], q["errored"]["maxStrikes"]), (3, "Exclude", 3, 3))
+        self.assertEqual([(r["name"], r["maxStrikes"]) for r in f.cleanup["stall"]], [("Stalled", 3)])
+        self.assertEqual(f.cleanup["slow"][0]["minSpeed"], "20KB")
+        mb = f.cleanup["malware_blocker"]
+        self.assertTrue(mb["enabled"] and not mb["deleteIfAnyFileBlocked"], "junk files are skipped; a torrent goes only when everything in it is blocked")
+        self.assertEqual({a for a in ("sonarr", "radarr", "lidarr", "readarr") if mb[a]["enabled"]}, {"sonarr", "radarr", "lidarr"})
+        self.assertEqual(mb["radarr"]["blocklistPath"], stack.BLOCKLIST)
+        rule = f.cleanup["seeding"]["dc0"][0]
+        self.assertEqual((rule["categories"], rule["maxRatio"], rule["action"]), (["tv-sonarr", "radarr", "lidarr"], 2, "Delete"))
+        self.assertTrue(f.cleanup["download_cleaner"]["enabled"])
 
         before = len(f.writes())
         again = self.run_all()
@@ -365,6 +409,18 @@ class Everything(Base):
         r = self.run_all()
         self.assertEqual(r[("radarr", "login")]["status"], "ok")
         self.assertEqual(self.fake.host["radarr"]["username"], "theirs")
+
+
+class CleanuparrYourWay(Base):
+    def test_your_own_cleanup_settings_and_deletions_stay(self):
+        self.run_all()
+        f = self.fake
+        f.cleanup["queue_cleaner"] = {**f.cleanup["queue_cleaner"], "enabled": False}  # you turned it off
+        f.cleanup["stall"].clear()  # and deleted the stall rule
+        before = len(f.writes())
+        r = self.run_all()[("cleanuparr", "cleanup jobs")]
+        self.assertEqual(r["status"], "ok", r["detail"])
+        self.assertEqual(f.writes()[before:], [], "nothing put back that you took away")
 
 
 class HalfDone(Base):

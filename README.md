@@ -23,7 +23,8 @@ Open `http://<server>:8800`, create your account, and upload your VPN's WireGuar
 - connects Prowlarr to all three, adds FlareSolverr for sites behind Cloudflare, and adds public indexers, keeping only the ones that answer (tried again on every run);
 - finishes Jellyfin's first-run setup with **your name and password** as its admin and adds libraries for movies, shows, music, YouTube downloads and books;
 - sets up Seerr through that Jellyfin account, with its libraries, Radarr and Sonarr;
-- connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent.
+- connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent;
+- turns on Cleanuparr's cleaners: downloads that fail to import, stall, crawl (an hour under 20 KB/s) or never get their metadata are removed, blocklisted and **searched for again**; junk and malware files in torrents are blocked (Cleanuparr's own list), and a torrent goes only if all of it is junk; finished torrents are cleared after seeding to ratio 2 or for two weeks (your library keeps its copy). Each is set up once: change or delete it in Cleanuparr and it stays that way.
 
 **Settings → Services** shows each app, whether it answers, and what setup did, step by step. **Set up again** re-checks everything and puts back anything that went missing. It only ever adds what's missing and never touches a login you set yourself. On later restarts yeerr re-checks what it can without your password.
 

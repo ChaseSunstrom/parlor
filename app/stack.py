@@ -510,6 +510,87 @@ def cleanuparr(name, password):
     return ("done", "connected " + ", ".join(changed)) if changed else ("ok", "watches the *arrs and qBittorrent")
 
 
+BLOCKLIST = "https://cleanuparr.pages.dev/static/blacklist"  # Cleanuparr's own list of junk and malware file types
+STALL_RULE = {"name": "Stalled", "enabled": True, "maxStrikes": 3, "privacyType": "Public", "minCompletionPercentage": 0,
+              "maxCompletionPercentage": 100, "resetStrikesOnProgress": True, "minimumProgress": None,
+              "deletePrivateTorrentsFromClient": False, "changeCategory": False}
+SLOW_RULE = {"name": "Too slow", "enabled": True, "maxStrikes": 12, "minSpeed": "20KB", "maxTimeHours": 0, "privacyType": "Public",
+             "minCompletionPercentage": 0, "maxCompletionPercentage": 100, "resetStrikesOnProgress": False,
+             "ignoreWhileAltSpeedActive": True, "deletePrivateTorrentsFromClient": False, "changeCategory": False}  # an hour under 20 KB/s
+SEEDING_RULE = {"name": "Done seeding", "categories": ["tv-sonarr", "radarr", "lidarr"], "trackerPatterns": [], "tagsAny": [], "tagsAll": [],
+                "privacyType": "Public", "maxRatio": 2, "minSeedTime": 0, "maxSeedTime": 336, "minSeeders": 0, "maxInactiveDays": -1,
+                "action": "Delete", "deleteSourceFiles": True}  # ratio 2 or two weeks; the library keeps its own hard link
+
+
+def cleanuparr_jobs():
+    """Cleanuparr's jobs, each set up once and only where you haven't set it yourself: failed, stalled,
+    slow and stuck downloads are removed, blocklisted and searched for again; junk and malware files
+    are blocked; finished torrents go after seeding. What you change or delete later stays that way."""
+    key = setting("cleanuparr_key")
+    if not key:
+        raise Wait("needs Cleanuparr connected first")
+    base, headers = cleanuparr_url(), {"X-Api-Key": key}
+    call = lambda method, path, body=None: need(http(method, base + path, headers=headers, json=body), "Cleanuparr")  # noqa: E731
+    get = lambda path: call("GET", path).json()  # noqa: E731
+    added = set(json.loads(setting("cleanuparr_added") or "[]"))
+    done = []
+
+    def once(what, fn):
+        if what not in added:
+            if fn():
+                done.append(what)
+            added.add(what)
+            core.set_setting("cleanuparr_added", json.dumps(sorted(added)))
+
+    def queue_cleaner():
+        q = get("/api/configuration/queue_cleaner")
+        fi, errored = q.get("failedImport") or {}, q.get("errored") or {}
+        if q.get("enabled") or fi.get("maxStrikes") or q.get("downloadingMetadataMaxStrikes") or errored.get("maxStrikes"):
+            return False  # yours
+        fi.update(maxStrikes=3, ignorePrivate=True, deletePrivate=False)
+        if not fi.get("patterns"):
+            fi["patternMode"] = "Exclude"  # no patterns: every failed import counts
+        q.update(enabled=True, failedImport=fi, downloadingMetadataMaxStrikes=3, errored={**errored, "maxStrikes": 3, "ignorePrivate": True})
+        call("PUT", "/api/configuration/queue_cleaner", q)
+        return True
+
+    def rule(kind, body):
+        if get(f"/api/queue-rules/{kind}"):
+            return False
+        call("POST", f"/api/queue-rules/{kind}", body)
+        return True
+
+    def malware():
+        m = get("/api/configuration/malware_blocker")
+        if m.get("enabled") or any((m.get(a) or {}).get("enabled") for a in ("sonarr", "radarr", "lidarr")):
+            return False
+        m.update(enabled=True, ignorePrivate=True, deleteIfAnyFileBlocked=False)  # skip junk files; drop a torrent only if all of it is junk
+        for a in ("sonarr", "radarr", "lidarr"):
+            m[a] = {**(m.get(a) or {}), "enabled": True, "blocklistType": "Blacklist", "blocklistPath": BLOCKLIST}
+        call("PUT", "/api/configuration/malware_blocker", m)
+        return True
+
+    def seeding():
+        d = get("/api/configuration/download_cleaner")
+        client = next((c for c in d.get("clients", []) if c.get("downloadClientTypeName") == "qBittorrent"), None)
+        if not client:
+            raise Wait("needs qBittorrent in Cleanuparr first")
+        if d.get("enabled") or client.get("seedingRules"):
+            return False
+        call("POST", f"/api/seeding-rules/{client['downloadClientId']}", SEEDING_RULE)
+        call("PUT", "/api/configuration/download_cleaner", {k: v for k, v in {**d, "enabled": True}.items() if k != "clients"})
+        return True
+
+    once("removes failed and stuck downloads", queue_cleaner)
+    once("stalled ones", lambda: rule("stall", STALL_RULE))
+    once("slow ones", lambda: rule("slow", SLOW_RULE))
+    once("blocks malware", malware)
+    once("clears torrents after seeding", seeding)
+    if done:
+        return "done", ", ".join(done) + "; each is searched for again"
+    return "ok", "cleans failed, stalled and slow downloads, blocks malware, clears seeded torrents"
+
+
 # --- running it ----------------------------------------------------------------------------------
 
 def steps(name, password):
@@ -528,6 +609,7 @@ def steps(name, password):
     yield "seerr", "radarr and sonarr", seerr_apps
     yield "bazarr", "sonarr and radarr", bazarr
     yield "cleanuparr", "connections", lambda: cleanuparr(name, password)
+    yield "cleanuparr", "cleanup jobs", cleanuparr_jobs
     yield "prowlarr", "indexers", prowlarr_indexers  # last: trying each site can take a minute
 
 
