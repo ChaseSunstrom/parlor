@@ -50,12 +50,12 @@ assert.strictEqual(subnavHtml(navAt("#/", "home")), "", "Home has no page row");
 assert.ok(!sideHtml(navAt("#/", "home")).includes("<script"), "labels are escaped");
 
 // a new section is one entry: it shows up everywhere with no other wiring
-const more = load('NAV.splice(4, 0, { key: "books", label: "Books", icon: "book", pages: [["Reading now", "#/books"], ["Library", "#/books/all"]] });');
+const more = load('NAV.splice(5, 0, { key: "books", label: "Books", icon: "book", pages: [["Reading now", "#/books"], ["Library", "#/books/all"]] });');
 const b = more.navAt("#/books/all", "books");
 assert.deepStrictEqual([b.group, b.href], ["books", "#/books/all"]);
 assert.ok(more.sideHtml(b).includes(">Books<") && more.subnavHtml(b).includes("Reading now"));
 assert.ok(more.youHtml().includes('href="#/books/all"'), "a section without a tab is on the You page");
 const moreTabs = more.tabsHtml(b);
-assert.strictEqual((moreTabs.match(/<a /g) || []).length, 5, "the phone keeps five tabs");
+assert.strictEqual((moreTabs.match(/<a /g) || []).length, 6, "the phone keeps six tabs");
 assert.ok(/data-nav="you" aria-label="You" aria-current="page"/.test(moreTabs), "Books lights You on a phone");
 console.log("nav ok");

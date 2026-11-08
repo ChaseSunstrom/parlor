@@ -239,15 +239,31 @@ function showLocalAlbum(t, songs, artist, album) {
   const year = list.find((s) => s.year)?.year;
   const folder = list[0].path.split("/").slice(0, -1).join("/") || "The top of your music folder";
   const meta = `<span><a href="#/library">${esc(artist)}</a></span><span>${esc(year || "")}</span><span>${plural(list.length, "song")}, ${minutes(list)} min</span>`;
-  const row = (s) => `<li class="row">
-    <span class="num">${esc(s.track ?? "")}</span>
-    <span class="what"><span class="title">${esc(s.name)}</span><span class="by">${esc(s.artists.join(", "))}</span></span>
+  const row = (s, i) => `<li class="row" data-src="${esc(localSrc(s))}">
+    <span class="num"><span class="n">${esc(s.track ?? "")}</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span></span>
+    <span class="what"><button class="title linkish" data-local-play="${i}">${esc(s.name)}</button><span class="by">${esc(s.artists.join(", "))}</span></span>
     <span class="alb" title="${esc(s.path)}">${esc(s.path.split("/").pop())}</span>
-    <span class="dur">${mmss(s.ms)}</span><span></span>
+    <span class="dur">${mmss(s.ms)}</span><button class="icon-btn" data-local-play="${i}" aria-label="Play ${esc(s.name)}">${ICON.play}</button>
   </li>`;
-  paint(t, hero({ kind: "In your library", title: album || "Songs without an album tag", image: art && coverUrl(art), meta, action: `<small>${esc(folder)}</small>` }) +
-    `<div class="wrap">${section("Songs", `<ol class="rows">${list.map(row).join("")}</ol>`)}</div>`);
+  localAlbum = list.map((s) => ({ src: localSrc(s), title: s.name, by: s.artists.join(", "), album, image: s.art ? coverUrl(s) : art && coverUrl(art),
+    href: libHref(artist, album), runtime: (s.ms || 0) / 1000 }));
+  paint(t, hero({ kind: "In your library", title: album || "Songs without an album tag", image: art && coverUrl(art), meta,
+      action: `<button class="primary" data-local-play="0">${ICON.play}Play</button><small>${esc(folder)}</small>` }) +
+    `<div class="wrap">${section("Songs", `<ol class="rows jtracks">${list.map(row).join("")}</ol>`)}</div>`);
+  markPlaying();
 }
+/* songs in your music folder play in the dock, straight from the disk */
+const localSrc = (s) => "/api/jf/music/" + s.path.split("/").map(encodeURIComponent).join("/");
+let localAlbum = [];
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-local-play]");
+  if (b) dockPlay(localAlbum, +b.dataset.localPlay);
+});
+function markPlaying() {
+  const src = dock.queue[dock.at]?.src;
+  document.querySelectorAll(".jtracks .row[data-src]").forEach((r) => r.classList.toggle("now", !!src && r.dataset.src === src));
+}
+dock.audio.addEventListener("play", markPlaying);
 
 function movesList(items, total) {
   const more = total > items.length ? `<li>…and ${total - items.length} more</li>` : "";

@@ -150,7 +150,8 @@ async function showTitle(t, kind, [id]) {
     canAsk ? `<span data-media="${mediaData(x)}"><button class="primary" data-request>${kind === "tv" && st ? "Request more seasons" : "Request"}</button></span>` : "",
     !x.can_request && !st ? `<small>Your account isn't linked to Seerr yet; ask an admin.</small>` : "",
     x.trailer ? `<a class="ghost" href="#/watch/${esc(x.trailer.id)}">${ICON.play}Watch the trailer</a>` : "",
-    /^https?:\/\//.test(x.url || "") ? `<a class="ghost" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${ICON.out}Watch in your library</a>` : "",
+    x.jellyfin && libraryOpen() ? `<a class="primary" href="#/jf/${kind === "movie" ? "play" : "item"}/${esc(x.jellyfin)}">${ICON.play}${kind === "movie" ? "Play" : "Watch"}</a>`
+      : /^https?:\/\//.test(x.url || "") ? `<a class="ghost" href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${ICON.out}Watch in your library</a>` : "",
   ].join("");
   const seasons = kind === "tv" && x.seasons.length ? `<h2>Seasons</h2><ul class="seasons" id="seasons">${x.seasons.map((s) => `<li>
       <input type="checkbox" value="${s.number}" ${s.status === "missing" ? "" : "disabled checked"} aria-label="${esc(s.name)}">

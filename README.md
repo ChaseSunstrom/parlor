@@ -4,6 +4,7 @@ _Formerly yeerr._ A room for watching, listening and playing: YouTube, films and
 
 YouTube, movies and TV, and your music library, in one self-hosted app with accounts.
 
+- **Library**: play what's in Jellyfin right here: films and shows with resume, next up and watched marks kept in your Jellyfin account, music in a player that keeps going while you look around, audiobooks, and books in a reader.
 - **Watch**: YouTube without ads, in up to 4K. Search, channels, playlists, your subscriptions feed, recommendations, continue watching, watch later and history. Fast downloads with chapters, subtitles and the thumbnail built in, or just the audio, straight into your music library.
 - **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. Trailers play in the ad-free player.
 - **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying.
@@ -123,6 +124,17 @@ Settings → People → **Access** sets, for each member, what they can use:
 **Private items.** Anyone can make a video they downloaded private (the lock button on Downloaded): it leaves the shared video folder and is encrypted with a key of its own, which is sealed to the people it's for. Each person turns this on once in Settings → Private items, which makes them a key pair: the private half is sealed by their password, and by a **recovery code shown once**. Parlor opens it only in memory, for a signed-in session, so after a restart the page asks for the password again. The owner shares it by name with people who have it turned on, and taking someone off re-encrypts the file with a new key, so a key they kept opens nothing. Nobody else sees it, its title included, and an admin can't open it without being given it. Changing your password in Parlor keeps it; an admin resetting your password (or a Jellyfin account's password changing in Jellyfin) can't open it, and your recovery code then seals it to the new password (without the code it's lost). Private videos play in Parlor, with seeking, and stay out of Jellyfin's and the music apps' reach; the thumbnail and subtitle files are left behind (deleted), and deleting an account deletes its private files. **Back to the shared library** decrypts one into the video folder again. A deleted file can linger on an SSD until it's overwritten, so for the strongest protection encrypt the disk as well (see [Encrypted at rest](#encrypted-at-rest)).
 
 Admins always have everything, and accounts from before this have everything until you change it. The apps' own pages (Sonarr, qBittorrent and the rest) are admin tools outside these settings; keep their ports to your home network.
+
+## The Library: playing Jellyfin in Parlor
+
+Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person plays as their Jellyfin user (their Jellyfin sign-in, the user an admin linked, or the default in Settings), so resume points, watched marks, favourites and Next up are the same here as in Jellyfin's own apps.
+
+- **Films and shows**: Continue watching, Next up and what's new in each library; every film, show, album and book with sorting (A–Z, recently added, year, rating, shuffle) and filters (new to you, in progress, favourites); a show's seasons and episodes. **Play** resumes where you stopped; **From the start** doesn't. Your place is saved every few seconds and when you pause; near the end it's marked watched and the next episode starts after a countdown.
+- **Playback**: Jellyfin sends the file as it is when the browser can play it (H.264 or HEVC in MP4, VP9 or AV1 in WebM) and converts it otherwise; the quality menu asks for a lower bitrate when you're away from home. Audio tracks, subtitles and chapters have menus. Keys: Space or K, J and L or ← and → for 10 s, F for full screen, M to mute, Shift+N for the next episode.
+- **Music and audiobooks** play in the bar along the bottom, which keeps playing as you move around Parlor and answers the lock screen's and keyboard's media keys. Albums play in order or shuffled; an audiobook carries on from where you stopped, on any device. Songs in your own music folder (Music → Your library → an album) play there too.
+- **Books**: EPUB books open in a reader (pages, contents, text size; it remembers your page on that device), PDFs in the browser's own viewer. Reading needs your Jellyfin user to be allowed to download.
+- **Movies & TV** shows **Play** (or **Watch**, for a show) on a title Jellyfin has, straight into the Library.
+- **The Jellyfin key stays on the server.** Streams, pictures and books go through Parlor, which adds the key itself and checks each one against what your Jellyfin user may see.
 
 ## Watching YouTube
 

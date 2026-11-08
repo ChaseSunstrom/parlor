@@ -262,5 +262,14 @@ class Seerr(unittest.TestCase):
         self.assertEqual(c.get("/api/seerr/discover").status_code, 503)
 
 
+
+class SeerrJellyfinLink(unittest.TestCase):
+    def test_a_title_jellyfin_has_carries_its_jellyfin_id(self):
+        import seerr
+        jid = "0123456789abcdef0123456789abcdef"
+        self.assertEqual(seerr.status_of({"status": 5, "jellyfinMediaId": jid})["jellyfin"], jid)
+        self.assertIsNone(seerr.status_of({"status": 5, "jellyfinMediaId": "../x"})["jellyfin"], "only a real Jellyfin id")
+        self.assertIsNone(seerr.status_of(None)["jellyfin"])
+
 if __name__ == "__main__":
     unittest.main()

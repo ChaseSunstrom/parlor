@@ -59,6 +59,13 @@ const ICON = {
   wide: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   full: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   disc: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
+  pause: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 5.5h3v13h-3zM13.5 5.5h3v13h-3z" fill="currentColor"/></svg>',
+  next: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6v12l8.5-6zM16.5 6h2.2v12h-2.2z" fill="currentColor"/></svg>',
+  prev: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6v12L9.5 12zM5.3 6h2.2v12H5.3z" fill="currentColor"/></svg>',
+  shuffle: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3.5c4.5 0 4.5 10 9 10H20M4 17h3.5c1.6 0 2.6-1.3 3.4-3M20 7h-3.5c-1.6 0-2.6 1.3-3.4 3M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  shelf: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5v15M9.5 4.5v15M14 6l4.3 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3.5 20h17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  book: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C10 5 7.5 4.5 4 4.8v13.5c3.5-.3 6 .2 8 1.7 2-1.5 4.5-2 8-1.7V4.8c-3.5-.3-6 .2-8 1.7zM12 6.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  heart: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
 };
 const SPIN = '<svg class="spin" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="var(--accent)"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="var(--accent-ink)" stroke-opacity=".3"/><circle cx="16" cy="16" r="4.5" fill="var(--accent-ink)"/><circle cx="20" cy="9" r="1.6" fill="var(--accent-ink)" fill-opacity=".5"/></svg>';
 
@@ -108,6 +115,12 @@ const grid = (html, cls = "grid") => (html ? `<div class="${cls}">${html}</div>`
 const shelf = (title, body, more) => (body ? `<div class="shelf-head"><h2>${esc(title)}</h2>${more ? `<a class="more" href="${more}">See all</a>` : ""}</div>${body}` : "");
 const skeletons = (n, kind = "v", cls = "vgrid") =>
   `<div class="${cls}">${Array.from({ length: n }, () => `<div><div class="skel ${kind}"></div><div class="skel line"></div><div class="skel line short"></div></div>`).join("")}</div>`;
+/** a vendored script, loaded once, when a page first needs it */
+const scripts = {};
+const loadScript = (src) => (scripts[src] ??= new Promise((ok, fail) => {
+  const el = Object.assign(document.createElement("script"), { src, onload: ok, onerror: () => { delete scripts[src]; fail(new Error(`Couldn't load ${src}`)); } });
+  document.head.append(el);
+}));
 const aurora = '<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>';
 /** a CSS url() for an image address: quotes and brackets can't end it early */
 const cssUrl = (u) => `url("${encodeURI(u || "").replace(/["'()\\]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase())}")`;
@@ -150,9 +163,10 @@ const SECTIONS = {
   watch: "Search YouTube, or paste a link",
   media: "Search movies, shows and people",
   music: "Artists, albums, songs, playlists or a Spotify link",
+  library: "Search your films, shows, music and books",
   settings: "Search videos, movies, shows and music",
 };
-const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", settings: "#/search/" };
+const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/" };
 let ticket = 0, current = "home";
 const paint = (t, html) => { if (t === ticket) main.innerHTML = html; };
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }

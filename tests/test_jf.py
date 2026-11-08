@@ -25,7 +25,7 @@ def hid(n):
 ALICE, BOB, FAMILY = hid(0xA), hid(0xB), hid(0xF)
 USERS = [{"Id": ALICE, "Name": "alice"}, {"Id": BOB, "Name": "Bob"}, {"Id": FAMILY, "Name": "family"}]
 VIEWS, MOVIE, SERIES, SEASON, EP, EP2, ALBUM, TRACK = (hid(n) for n in (0x20, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16))
-MS = hid(0x99)
+MS, ARTIST, BOOK = hid(0x99), hid(0x17), hid(0x18)
 MOVIE_JSON = {"Id": MOVIE, "Name": "Heat", "Type": "Movie", "ProductionYear": 1995, "Overview": "Cops and robbers.",
               "RunTimeTicks": 170 * 60 * T, "ImageTags": {"Primary": "tagP"}, "BackdropImageTags": ["tagB"],
               "Path": "/secret/media/heat.mkv", "Genres": ["Crime"], "CommunityRating": 8.3, "OfficialRating": "R",
@@ -41,7 +41,9 @@ ITEMS = {MOVIE: MOVIE_JSON, EP: EP_JSON, TRACK: TRACK_JSON,
          SERIES: {"Id": SERIES, "Name": "Show", "Type": "Series", "ImageTags": {"Primary": "t"}, "UserData": {}},
          SEASON: {"Id": SEASON, "Name": "Season 1", "Type": "Season", "SeriesId": SERIES, "IndexNumber": 1, "UserData": {}},
          ALBUM: {"Id": ALBUM, "Name": "Record", "Type": "MusicAlbum", "AlbumArtist": "Band", "UserData": {}},
-         EP2: {**EP_JSON, "Id": EP2}}
+         EP2: {**EP_JSON, "Id": EP2},
+         ARTIST: {"Id": ARTIST, "Name": "Band", "Type": "MusicArtist", "ImageTags": {"Primary": "ar"}, "UserData": {}},
+         BOOK: {"Id": BOOK, "Name": "A Book", "Type": "Book", "MediaType": "Book", "ImageTags": {"Primary": "bk"}, "UserData": {}}}
 
 
 class Resp:
@@ -93,8 +95,8 @@ class FakeJellyfin:
             ("GET", "/Users", lambda *a: USERS),
             ("GET", "/UserViews", lambda m, q, b, h: {"Items": [{"Id": VIEWS, "Name": "Movies", "Type": "CollectionFolder", "CollectionType": "movies"}]}),
             ("GET", uid + "/Views", lambda m, q, b, h: {"Items": [{"Id": VIEWS, "Name": "OldMovies", "Type": "CollectionFolder"}]}),
-            ("GET", "/Items", lambda m, q, b, h: {"Items": [TRACK_JSON] if q.get("includeitemtypes") == "Audio" else [MOVIE_JSON, EP_JSON],
-                                                  "TotalRecordCount": 7}),
+            ("GET", "/Items", lambda m, q, b, h: {"Items": {"Audio": [TRACK_JSON], "MusicAlbum": [ITEMS[ALBUM]]}.get(
+                q.get("includeitemtypes"), [MOVIE_JSON, EP_JSON]), "TotalRecordCount": 7}),
             ("GET", "/Items/Latest", lambda *a: [MOVIE_JSON]),
             ("GET", uid + "/Items/Latest", lambda *a: [MOVIE_JSON]),
             ("GET", "/UserItems/Resume", listing([MOVIE_JSON])),
@@ -136,7 +138,7 @@ class FakeJellyfin:
         src = {"Id": MS, "Name": "1080p", "Container": "mp4", "ETag": "etag", "RunTimeTicks": 170 * 60 * T, "MediaStreams": streams,
                "DefaultAudioStreamIndex": 1, "SupportsDirectPlay": m["id"] in (MOVIE, TRACK), "SupportsTranscoding": True}
         if m["id"] == EP:
-            src["TranscodingUrl"] = (f"/videos/{EP}/master.m3u8?DeviceId=d&MediaSourceId={MS}&PlaySessionId=ps2&api_key={KEY}"
+            src["TranscodingUrl"] = (f"/videos/{getattr(self, 'dashed', None) or EP}/master.m3u8?DeviceId=d&MediaSourceId={MS}&PlaySessionId=ps2&api_key={KEY}"
                                      "&VideoCodec=h264&AudioCodec=aac")
         if m["id"] == EP2:
             return {"MediaSources": [src], "ErrorCode": "NoCompatibleStream"}
@@ -253,7 +255,7 @@ class Browse(Base):
         self.assertNotIn("/secret", r.text, "Jellyfin's own fields don't leak")
         self.assertNotIn(KEY, r.text)
         ep = body["items"][1]
-        self.assertEqual((ep["series"], ep["series_id"], ep["season"], ep["episode"], ep["played"]), ("Show", SERIES, 1, 2, True))
+        self.assertEqual((ep["series"], ep["series_id"], ep["season_id"], ep["season"], ep["episode"], ep["played"]), ("Show", SERIES, SEASON, 1, 2, True))
         self.assertEqual(ep["image"], f"/api/jf/stream/Items/{SERIES}/Images/Primary?tag=sp&maxWidth=600", "an episode without a picture shows its series'")
         self.get("/api/jf/items")
         q = self.fake.last("/Items")["q"]
@@ -291,6 +293,15 @@ class Browse(Base):
         t = self.get(f"/api/jf/item/{TRACK}").json()
         self.assertEqual((t["album"], t["album_id"]), ("Record", ALBUM))
         self.assertEqual(t["image"], f"/api/jf/stream/Items/{ALBUM}/Images/Primary?tag=ap&maxWidth=600")
+        ar = self.get(f"/api/jf/item/{ARTIST}").json()
+        self.assertEqual([x["name"] for x in ar["albums"]], ["Record"])
+        q = self.fake.last("/Items")["q"]
+        self.assertEqual((q["artistids"], q["includeitemtypes"], q["recursive"]), (ARTIST, "MusicAlbum", "true"))
+        self.assertEqual(s["next_up"]["name"], "Pilot", "a show says which episode is next")
+        self.assertEqual(self.fake.last("/Shows/NextUp")["q"]["seriesid"], SERIES)
+        b = self.get(f"/api/jf/item/{BOOK}").json()
+        self.assertEqual((b["type"], b["image"]), ("Book", f"/api/jf/stream/Items/{BOOK}/Images/Primary?tag=bk&maxWidth=600"))
+        self.assertEqual(self.get("/api/jf/items?types=Book,AudioBook").status_code, 200, "books and audiobooks can be listed")
         self.assertEqual(self.get("/api/jf/item/nothex").status_code, 422)
         self.assertEqual(self.get(f"/api/jf/item/{hid(0x777)}").status_code, 404)
 
@@ -333,6 +344,15 @@ class Playback(Base):
         self.assertEqual(p["url"], f"/api/jf/stream/Videos/{EP}/master.m3u8?DeviceId=d&MediaSourceId={MS}&PlaySessionId=ps2&VideoCodec=h264&AudioCodec=aac")
         body = self.fake.last(f"/Items/{EP}/PlaybackInfo")["json"]
         self.assertEqual((body["MediaSourceId"], body["AudioStreamIndex"], body["MaxStreamingBitrate"]), (MS, 2, 4_000_000))
+        dashed = f"{EP[:8]}-{EP[8:12]}-{EP[12:16]}-{EP[16:20]}-{EP[20:]}"  # Jellyfin 10.11 writes ids with dashes in its links
+        self.fake.dashed = dashed
+        p = self.play(EP).json()
+        self.assertEqual(p["url"].split("?")[0], f"/api/jf/stream/Videos/{EP}/master.m3u8", "the same id, in the one form the proxy serves")
+        self.fake.dashed = None
+        me = self.admin.get("/api/me").json()["id"]
+        self.assertIn(f'DeviceId="parlor-{me}"', self.fake.last(f"/Items/{EP}/PlaybackInfo")["headers"]["Authorization"], "a Jellyfin device per person")
+        self.get(p["url"])
+        self.assertIn(f'DeviceId="parlor-{me}"', self.fake.calls[-1]["headers"]["Authorization"])
         forced = self.play(MOVIE, transcode=True)
         self.assertEqual(forced.status_code, 409, "forcing a transcode where Jellyfin offers none is an error, not a direct play")
         self.assertFalse(self.fake.last(f"/Items/{MOVIE}/PlaybackInfo")["json"]["EnableDirectPlay"])

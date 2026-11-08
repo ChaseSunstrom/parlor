@@ -4,6 +4,7 @@ Parlor holds one Jellyfin API key (an admin sets it). Everyone plays as a Jellyf
 with, else the one an admin linked to them, else the default. The key never reaches a browser: streams go
 through /api/jf/stream, which only serves a short whitelist of Jellyfin paths and adds the key itself."""
 
+import logging
 import mimetypes
 import re
 from pathlib import Path
@@ -21,6 +22,7 @@ from music import AUDIO
 from yt import Cache, send_file
 
 router = APIRouter(prefix="/api/jf")
+log = logging.getLogger("parlor.jf")
 T = 10_000_000  # Jellyfin ticks per second
 _users = Cache(60, 2)  # Jellyfin's user list, so a page of requests asks once
 
@@ -33,10 +35,11 @@ def _conf():
     return url, key
 
 
-def fetch(method, path, headers=None, **kw):
-    """One request to Jellyfin with the key in the header; never follows a redirect (the key would go along)."""
+def fetch(method, path, headers=None, device="parlor", **kw):
+    """One request to Jellyfin with the key in the header; never follows a redirect (the key would go along).
+    Playback names a device per person, so Jellyfin keeps their streams apart."""
     url, key = _conf()
-    auth = f'MediaBrowser Client="Parlor", Device="Parlor", DeviceId="parlor", Version="1", Token="{key}"'
+    auth = f'MediaBrowser Client="Parlor", Device="Parlor", DeviceId="{device}", Version="1", Token="{key}"'
     try:
         return requests.request(method, url + path, headers={**(headers or {}), "Authorization": auth},
                                 timeout=(5, 60), allow_redirects=False, **kw)
@@ -116,7 +119,7 @@ def card(i):
     return {"id": i["Id"], "type": i.get("Type"), "name": i.get("Name"), "year": i.get("ProductionYear"),
             "overview": i.get("Overview"), "runtime": secs(i.get("RunTimeTicks")), "played": bool(data.get("Played")),
             "position": secs(data.get("PlaybackPositionTicks")), "favourite": bool(data.get("IsFavorite")),
-            "series": i.get("SeriesName"), "series_id": i.get("SeriesId"), "season": i.get("ParentIndexNumber"),
+            "series": i.get("SeriesName"), "series_id": i.get("SeriesId"), "season_id": i.get("SeasonId"), "season": i.get("ParentIndexNumber"),
             "episode": i.get("IndexNumber"), "artists": i.get("Artists") or ([i["AlbumArtist"]] if i.get("AlbumArtist") else []),
             "album": i.get("Album"), "album_id": i.get("AlbumId"), "image": image,
             "backdrop": art(i["Id"], back, "Backdrop/0"), "collection": i.get("CollectionType")}
@@ -151,7 +154,8 @@ def views(user=Depends(me)):
     return cards(either("GET", "/UserViews", f"/Users/{uid}/Views", params={"userId": uid}))
 
 
-TYPES = {"Movie", "Series", "Season", "Episode", "Audio", "MusicAlbum", "MusicArtist", "BoxSet", "Playlist", "Video", "Folder"}
+TYPES = {"Movie", "Series", "Season", "Episode", "Audio", "MusicAlbum", "MusicArtist", "BoxSet", "Playlist", "Video", "Folder",
+         "Book", "AudioBook"}
 SORTS = {"SortName", "DateCreated", "PremiereDate", "ProductionYear", "CommunityRating", "Random", "DatePlayed", "PlayCount", "Runtime"}
 FILTERS = {"IsFavorite", "IsUnplayed", "IsPlayed", "IsResumable"}
 
@@ -221,8 +225,12 @@ def item(iid: str, user=Depends(me)):
             out["similar"] = []
     if kind == "Series":
         out["seasons"] = cards(call("GET", f"/Shows/{iid}/Seasons", params=params))
+        out["next_up"] = (cards(call("GET", "/Shows/NextUp", params={**params, "seriesId": iid, "limit": 1})) or [None])[0]
     elif kind == "Season":
         out["episodes"] = cards(call("GET", f"/Shows/{i['SeriesId']}/Episodes", params={**params, "seasonId": iid}))
+    elif kind == "MusicArtist":
+        out["albums"] = cards(call("GET", "/Items", params={**params, "artistIds": iid, "includeItemTypes": "MusicAlbum", "recursive": "true",
+                                                              "sortBy": "ProductionYear,SortName", "sortOrder": "Descending"}))
     elif kind == "MusicAlbum":
         out["tracks"] = cards(call("GET", "/Items", params={**params, "parentId": iid, "includeItemTypes": "Audio",
                                                               "sortBy": "ParentIndexNumber,IndexNumber"}))
@@ -266,7 +274,7 @@ def playback(iid: str, body: Play = Play(), user=Depends(me)):
     for key, value in (("MediaSourceId", body.media_source), ("AudioStreamIndex", body.audio_index)):
         if value is not None:
             ask[key] = value
-    info = call("POST", f"/Items/{iid}/PlaybackInfo", params={"userId": uid}, json=ask).json()
+    info = call("POST", f"/Items/{iid}/PlaybackInfo", params={"userId": uid}, json=ask, device=f"parlor-{user['id']}").json()
     if info.get("ErrorCode"):
         raise HTTPException(409, f"Jellyfin can't play this: {info['ErrorCode']}")
     sources = info.get("MediaSources") or []
@@ -281,6 +289,7 @@ def playback(iid: str, body: Play = Play(), user=Depends(me)):
     else:
         raise HTTPException(409, "Jellyfin offers no way to play this in a browser")
     if not url:
+        log.warning("Jellyfin's stream address isn't one Parlor serves: %s", (src.get("TranscodingUrl") or "").split("?")[0])  # the path only: the query has the key
         raise HTTPException(502, "Jellyfin sent a stream address Parlor won't serve")
     streams = src.get("MediaStreams") or []
     return {"method": method, "url": url, "media_source": src["Id"], "play_session": info.get("PlaySessionId"),
@@ -327,7 +336,8 @@ _PLAY = rf"(?:stream(?:\.\w+)?|master\.m3u8|main\.m3u8|hls1/{_SEGS})"
 ALLOWED = re.compile(rf"Videos/{_I}/(?:{_PLAY}|{_I}/Subtitles/\d+/(?:\d+/)?Stream\.(?:vtt|srt|ass))"
                      rf"|Audio/{_I}/(?:{_PLAY}|universal)"
                      rf"|Items/{_I}/(?:Images/(?:Primary|Backdrop|Thumb|Logo|Banner)(?:/\d+)?|Download)", re.ASCII)
-IMAGE = re.compile(rf"Items/{_I}/Images/[A-Za-z]+(?:/\d+)?", re.ASCII)  # within ALLOWED: only these skip the access check
+IMAGE = re.compile(rf"Items/{_I}/Images/[A-Za-z]+(?:/\d+)?", re.ASCII)  # within ALLOWED: pictures (cached longer)
+GUID = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
 KEYS = {"api_key", "apikey", "x-emby-token"}
 DROP = KEYS | {"userid", "deviceid"}  # never forwarded from the browser: the server decides who is asking
 _KEY = re.compile(r"([?&])(?:api_key|apikey|x-emby-token)=[^&\s\"']*(&?)", re.I)
@@ -343,7 +353,7 @@ def proxied(url: str):
     """Our address for a path Jellyfin gave us (no key), or None if the proxy wouldn't serve it."""
     path, _, query = url.lstrip("/").partition("?")
     head, _, rest = path.partition("/")
-    path = f"{head.capitalize()}/{rest}"  # Jellyfin writes /videos/... in transcoding urls
+    path = f"{head.capitalize()}/{GUID.sub(lambda m: m[0].replace('-', ''), rest)}"  # Jellyfin writes /videos/<id with dashes>/... in its links
     if not ALLOWED.fullmatch(path):
         return None
     query = strip_key("?" + query)[1:] if query else ""
@@ -376,7 +386,7 @@ def stream(path: str, request: Request, user=Depends(me)):
     headers = {"Accept-Encoding": "identity"}  # a compressed body would make Content-Length lie
     if request.headers.get("range"):
         headers["Range"] = request.headers["range"]
-    r = fetch("GET", "/" + path, params=params, headers=headers, stream=True)
+    r = fetch("GET", "/" + path, params=params, headers=headers, stream=True, device=f"parlor-{user['id']}")
     if r.status_code == 416:
         r.close()
         return Response(status_code=416, headers={"Content-Range": r.headers.get("Content-Range", "bytes */*")})

@@ -2,6 +2,7 @@
 search, details, people, and requests made as each person's own Seerr user."""
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Union
@@ -58,7 +59,8 @@ def status_of(media_info):
     m = media_info or {}
     return {"status": MEDIA.get(m.get("status"), "unknown"), "status4k": MEDIA.get(m.get("status4k"), "unknown"),
             "url": m.get("mediaUrl") or m.get("plexUrl") or m.get("jellyfinUrl"),
-            "requested": bool(m.get("requests"))}
+            "requested": bool(m.get("requests")),
+            "jellyfin": m.get("jellyfinMediaId") if re.fullmatch(r"[0-9a-f]{32}", m.get("jellyfinMediaId") or "") else None}
 
 
 def card(item):
