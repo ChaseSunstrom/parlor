@@ -19,6 +19,7 @@ import auth
 import core
 import jf
 import library
+import live
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
@@ -108,6 +109,7 @@ app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
 app.include_router(qbit.router)
 app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
+app.include_router(live.router)  # /api/live: YouTube lives and Twitch, in Parlor's player
 app.include_router(games.router)  # /api/games: Steam, retro games, streaming from a PC
 app.include_router(games.page)  # /games/stream/: the bridge to a gaming PC, behind the sign-in
 app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline

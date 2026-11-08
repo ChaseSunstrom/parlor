@@ -20,6 +20,7 @@ OPEN = ("open",)  # no session at all: part of the app itself, which has to load
 RULES = [
     ("/api/yt/downloads", ("watch", "downloads")), ("/api/yt/library", ("watch", "downloads")), ("/api/yt/file/", ("watch", "downloads")),
     ("/api/yt/", ("watch",)),
+    ("/api/live/", ("watch",)),  # YouTube lives and Twitch are part of Watch (live.py)
     ("/api/me/history", ("watch",)), ("/api/me/later", ("watch",)), ("/api/me/subs", ("watch",)), ("/api/me/topics", ("watch",)),
     ("/api/me/youtube-cookies", ("watch",)),
     ("/api/private", ("watch", "downloads")),  # private items are Parlor's own downloads, YouTube's for now

@@ -513,8 +513,8 @@ async function showWatch(t, [id, at]) {
           <div class="who"><a href="${chanHref(v)}">${esc(v.channel)}${v.verified ? " ✓" : ""}</a><span>${v.followers != null ? `${compact.format(v.followers)} subscribers` : ""}</span></div>
           ${subButton(v.channel_id, v.channel, null, v.subscribed)}
           <div class="btns" data-video="${cardData(card)}">
-            ${v.downloaded ? `<span class="ghost on">${ICON.ok}Downloaded</span>` : `<button class="ghost" data-vdl>${ICON.dl}Download</button>`}
-            <button class="ghost" data-tomusic>${ICON.note}Save audio to music</button>
+            ${v.live === "is_live" || v.live === "is_upcoming" ? "" : `${v.downloaded ? `<span class="ghost on">${ICON.ok}Downloaded</span>` : `<button class="ghost" data-vdl>${ICON.dl}Download</button>`}
+            <button class="ghost" data-tomusic>${ICON.note}Save audio to music</button>`}
             <button class="ghost${v.later ? " on" : ""}" data-later>${v.later ? ICON.ok : ICON.clock}<span>${v.later ? "Saved for later" : "Watch later"}</span></button>
             <button class="ghost" data-copy title="Copy a link at the current time">${ICON.link}Copy link</button>
             ${tvButton("data-cast-yt", v.id)}
@@ -559,9 +559,16 @@ function setupPlayer(v, card, segments, at) {
     $(".overlay", box)?.remove();
     if (html) box.insertAdjacentHTML("beforeend", `<div class="poster-bg"></div><div class="overlay">${html}</div>`);
   }
-  if (v.live === "is_live" || v.live === "is_upcoming") {
-    return overlay(`<strong>${v.live === "is_live" ? "This is a live stream" : "This hasn't started yet"}</strong><p>Live streams play on YouTube.</p>
-      <a class="primary" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer">${ICON.out}Open on YouTube</a>`);
+  if (v.live === "is_upcoming") {
+    return overlay(`<strong>This hasn't started yet</strong><p>${v.published ? `It starts ${esc(new Date(v.published * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }))}. ` : ""}Come back then: it plays here.</p>`);
+  }
+  if (v.live === "is_live") { // through Parlor, in hls.js: go back over its last hour, LIVE takes you to now (live.js)
+    for (const el of ["#quality", "#captions", "#sbToggle", "#highlight", "#seekmap", ".ptools .vol"]) { const x = $(el); if (x) x.hidden = true; } // the player's own controls do these
+    $("#theater").addEventListener("click", () => { const on = !pref("theater"); setPref("theater", on); $("#watch").classList.toggle("theater", on); });
+    state.mode = "live";
+    state.live = livePlayer(box, video, `/api/live/yt/${encodeURIComponent(v.id)}.m3u8`);
+    $("#fullscreen").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.().catch(() => {})));
+    return;
   }
 
   // the server streams video and audio apart; keep the audio element in step with the video
@@ -794,6 +801,7 @@ function setupPlayer(v, card, segments, at) {
 
 function stopPlayer() {
   if (!player) return;
+  player.live?.destroy();
   player.save?.();
   player.timers.forEach(clearInterval);
   clearTimeout(player.audioTimer);

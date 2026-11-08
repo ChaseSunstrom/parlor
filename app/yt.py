@@ -303,6 +303,8 @@ def video_info(vid, user_id=None, fresh=False):
             return hit
     used = {}
     info = extract(f"https://www.youtube.com/watch?v={vid}", user_id, report=used, noplaylist=True)
+    if info.get("live_status") == "is_upcoming":
+        return info  # not kept: once it starts, the next look should see it live
     return _info.put((vid, user_id if used.get("cookies") else None), info)
 
 

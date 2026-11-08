@@ -172,6 +172,14 @@ Without a YouTube account, Recommended mixes videos like the ones you watched la
 
 For YouTube's own recommendations, add your YouTube cookies in Settings. Export them with a "cookies.txt" browser extension while signed in to youtube.com. This also adds your YouTube feed and YouTube watch later, and plays videos that need a sign-in (age-restricted ones). The cookies are stored with owner-only permissions and used only for those requests. YouTube can flag accounts used this way, so a spare account is safer.
 
+### Live
+
+Watch → **Live** shows who's live now: YouTube lives from your subscriptions (with what's starting soon) and the Twitch channels you follow.
+
+- **YouTube lives** play in Parlor's player like any video, without ads. Go back over the last hour or so; the **LIVE** badge turns into **Go live** when you're behind, and takes you back. **Low latency** brings you closer to live, at the price of more pauses on a weak connection.
+- **Twitch** needs no account. Follow channels by name or link, search for them, or paste many at once (Twitch's own export works). A channel's page plays it live with its chat beside it (read-only), and lists its past broadcasts and clips. Twitch's ads are taken out on the way: while one runs, the picture holds with a note, and the stream is back when it ends; the ad itself is never fetched.
+- Everything goes through Parlor, so your browser never talks to YouTube or Twitch, and Parlor hands out only addresses it has signed, so it can't be used to fetch anything else.
+
 ### Downloads
 
 Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p), or **Download all** on a playlist.
