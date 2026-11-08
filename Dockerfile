@@ -1,11 +1,15 @@
 FROM python:3.12-slim
 
 # ffmpeg joins video and audio and converts music; deno lets yt-dlp solve
-# YouTube's JavaScript challenges (without it downloads crawl or fail)
+# YouTube's JavaScript challenges (without it downloads crawl or fail).
+# ffmpeg comes from the base image's Debian release, which pins it already
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
-RUN pip install --no-cache-dir "spotdl~=4.5.2" "spotapi~=1.2.8" pillow \
+# yt-dlp is the newest on purpose: an older one stops working with YouTube within weeks
+# hadolint ignore=DL3013
+RUN pip install --no-cache-dir "spotdl~=4.5.2" "spotapi~=1.2.8" "pillow~=13.0" \
     && pip install --no-cache-dir -U "yt-dlp[default]"
 
 COPY app /app
