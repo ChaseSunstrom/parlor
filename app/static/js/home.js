@@ -301,7 +301,7 @@ async function adminPanels(t) {
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
       ${u.jellyfin ? "" : `<button class="ghost" data-reset>Reset password</button>`}
       ${u.id === ME.id ? "" : `<button class="ghost danger" data-delete-user>Delete</button>`}</div></td></tr>`;
-  $("#adminSide").innerHTML = `<div id="services"></div><div id="vpn"></div><div id="security"></div>
+  $("#adminSide").innerHTML = `<div id="services"></div><div id="vpn"></div><div id="security"></div><div id="tvPanel"></div>
     <section class="panel"><div class="head"><div><h3>Seerr</h3><p>${status.connected ? `Connected${status.version ? `, version ${esc(status.version)}` : ""}.` : `Not connected${status.reason && status.reason !== "not set up" ? `: ${esc(status.reason)}` : "."}`}</p></div>
         ${pill(status.connected ? "available" : "failed", status.connected ? "Connected" : "Offline")}</div>
       <form id="seerrForm">
@@ -360,6 +360,7 @@ async function adminPanels(t) {
   drawServices(t);
   drawVpn(t);
   drawSecurity();
+  drawTvPanel();
   $("#keepForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/yt/retention", { days: +$("#keepDays").value, watched_only: $("#keepWatched").checked })
@@ -395,10 +396,11 @@ async function adminPanels(t) {
 
 /* ---------- sign in ---------- */
 
-async function showGate(mode) {
+async function showGate(mode, here = false) {
   ME = null;
   forgetMe();
   const state = await fetch("/api/auth/state").then((r) => r.json()).catch(() => ({}));
+  if (TV_MODE && !here && !state.setup) return showTvPair(); // a TV pairs by a code instead (tv.js)
   mode ||= state.setup ? "setup" : "login";
   const titles = { setup: ["Welcome to Parlor", "Create the admin account. You can add everyone else after."], login: ["Sign in", state.jellyfin ? "Use your Parlor or Jellyfin account." : ""], signup: ["Create an account", ""] };
   const [title, blurb] = titles[mode];
@@ -610,6 +612,7 @@ async function boot() {
   keepMe();
   applyAccess();
   offRun(); // anything still being saved for offline carries on
+  tvBoot(); // a TV listens for casts; anyone else learns their TVs (tv.js)
   $("#account").textContent = (ME.name || "?").trim()[0].toUpperCase();
   $("#account").title = ME.name;
   dockRestore();

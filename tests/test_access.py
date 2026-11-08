@@ -47,9 +47,16 @@ class Routes(unittest.TestCase):
                  "/music/api/playlists/abc/sync": ("music", "downloads"), "/music/api/playlists/abc": ("music",),
                  "/music/api/playlists": ("music",), "/music/api/organize": ("music", "downloads"),
                  "/api/me": acl.EVERYONE, "/api/users/3": acl.ADMIN,
-                 "/api/qbit/torrents": acl.ADMIN, "/qbit/": acl.ADMIN, "/api/nope": None}
+                 "/api/qbit/torrents": acl.ADMIN, "/qbit/": acl.ADMIN, "/api/nope": None,
+                 "/tv": acl.OPEN, "/api/tv/code": acl.OPEN, "/api/tv/claim": acl.OPEN, "/api/tv/me": acl.OPEN,
+                 "/api/tv/pair": acl.EVERYONE, "/api/tv/3/do": acl.EVERYONE, "/api/tv/events": acl.EVERYONE}
         for path, want in cases.items():
             self.assertEqual(acl.rule(path), want, path)
+
+    def test_open_api_paths_are_the_ones_the_guard_lets_in(self):
+        opened = {r.path for r in app.app.routes if getattr(r, "path", "").startswith("/api/") and acl.rule(r.path) == acl.OPEN}
+        self.assertTrue(opened, "the TV's pairing calls at least")
+        self.assertEqual(opened - app.PUBLIC, set(), "open in acl, but the guard still asks for a sign-in")
 
 
 class Sections(unittest.TestCase):

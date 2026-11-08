@@ -23,6 +23,7 @@ import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
 import pwa
+import tv
 import security
 import seerr
 import qbit
@@ -35,7 +36,8 @@ import yt
 log = logging.getLogger("parlor")
 app = FastAPI(title="Parlor", description=api.__doc__, docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json",
               swagger_ui_oauth2_redirect_url=None)  # the docs need a sign-in like the rest of /api
-PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup"} | security.PUBLIC
+PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup",
+          "/api/tv/code", "/api/tv/claim", "/api/tv/me"} | security.PUBLIC  # a TV pairs before it has a session
 
 
 @app.middleware("http")
@@ -106,6 +108,8 @@ app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own
 app.include_router(qbit.router)
 app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
 app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline
+app.include_router(tv.router)  # /api/tv: pairing TVs, casting and the remote
+app.include_router(tv.page)  # /tv: Parlor on a TV
 app.mount("/music", music.app)  # its API answers at /music/api/...
 
 

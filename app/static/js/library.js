@@ -124,9 +124,9 @@ const toggles = (x, [yes, ask] = ["Watched", "Mark watched"]) => `<button class=
   <button class="ghost icon${x.favourite ? " on" : ""}" data-jf-fav="${esc(x.id)}" data-on="${x.favourite ? 1 : 0}" aria-label="${x.favourite ? "Remove from favourites" : "Add to favourites"}" title="Favourite">${ICON.heart}</button>`;
 function playButtons(x) {
   if (x.position && !x.played) {
-    return `<a class="primary" href="#/jf/play/${esc(x.id)}">${ICON.play}Resume from ${clock(x.position)}</a><a class="ghost" href="#/jf/play/${esc(x.id)}/start">From the start</a>`;
+    return `<a class="primary" href="#/jf/play/${esc(x.id)}">${ICON.play}Resume from ${clock(x.position)}</a><a class="ghost" href="#/jf/play/${esc(x.id)}/start">From the start</a>${tvButton("data-cast-jf", x.id)}`;
   }
-  return `<a class="primary" href="#/jf/play/${esc(x.id)}">${ICON.play}Play</a>`;
+  return `<a class="primary" href="#/jf/play/${esc(x.id)}">${ICON.play}Play</a>${tvButton("data-cast-jf", x.id)}`;
 }
 const jcredits = (people) => (people?.length ? `<div class="credits">${people.slice(0, 14).map((p) => `<span><b>${esc(p.name)}</b>${p.role ? ` ${esc(p.role)}` : ""}</span>`).join("")}</div>` : "");
 

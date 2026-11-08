@@ -517,6 +517,7 @@ async function showWatch(t, [id, at]) {
             <button class="ghost" data-tomusic>${ICON.note}Save audio to music</button>
             <button class="ghost${v.later ? " on" : ""}" data-later>${v.later ? ICON.ok : ICON.clock}<span>${v.later ? "Saved for later" : "Watch later"}</span></button>
             <button class="ghost" data-copy title="Copy a link at the current time">${ICON.link}Copy link</button>
+            ${tvButton("data-cast-yt", v.id)}
             <a class="ghost" href="https://www.youtube.com/watch?v=${esc(v.id)}" target="_blank" rel="noopener noreferrer" title="Open on YouTube">${ICON.out}</a>
           </div>
         </div>

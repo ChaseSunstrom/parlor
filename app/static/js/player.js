@@ -468,7 +468,8 @@ function queueMenu(anchor, items) {
   m.anchor = anchor;
   m.setAttribute("role", "menu");
   m.innerHTML = `<button role="menuitem" data-qm="next">${ICON.next}<span>Play next</span></button><button role="menuitem" data-qm="end">${ICON.queue}<span>Add to queue</span></button>`
-    + (offWorks ? `<button role="menuitem" data-qm="save">${ICON.dl}<span>Save on this device</span></button>` : "");
+    + (offWorks ? `<button role="menuitem" data-qm="save">${ICON.dl}<span>Save on this device</span></button>` : "")
+    + (tvKnown.length && !tvMe ? `<button role="menuitem" data-qm="tv">${ICON.tv}<span>Play on TV</span></button>` : "");
   document.body.append(m);
   const r = anchor.getBoundingClientRect(), mh = m.offsetHeight;
   m.style.top = `${r.bottom + 4 + mh > innerHeight - 90 ? Math.max(8, r.top - mh - 4) : r.bottom + 4}px`;
@@ -488,6 +489,7 @@ function queueMenu(anchor, items) {
     if (!b) return;
     close(true);
     if (b.dataset.qm === "save") offSave(items());
+    else if (b.dataset.qm === "tv") tvChoose(anchor, async () => ({ kind: "queue", id: "0", items: items().map((x) => ({ ...x, image: x.image?.startsWith("blob:") ? null : x.image })) }));
     else dockAdd(items(), b.dataset.qm === "next");
   });
   m.querySelector("button").focus();

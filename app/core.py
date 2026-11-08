@@ -144,6 +144,16 @@ CREATE TABLE IF NOT EXISTS private_items (
   id TEXT PRIMARY KEY, owner INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   file TEXT NOT NULL, size INTEGER NOT NULL, meta BLOB NOT NULL, created REAL NOT NULL  -- meta: sealed with the item's key
 );
+-- TVs (tv.py): codes a TV shows while it pairs (hashed, minutes long), and paired TVs, each tied to its own session
+CREATE TABLE IF NOT EXISTS tv_codes (
+  code TEXT PRIMARY KEY, claim TEXT NOT NULL UNIQUE, created REAL NOT NULL,  -- sha256 of the code and of the TV's claim secret
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, name TEXT          -- set when a phone enters the code
+);
+CREATE TABLE IF NOT EXISTS tvs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  session TEXT NOT NULL UNIQUE REFERENCES sessions(token) ON DELETE CASCADE,  -- signing out everywhere unpairs it
+  created REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS private_shares (
   item_id TEXT NOT NULL REFERENCES private_items(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -261,8 +271,8 @@ def new_session(user_id: int, agent: str = "") -> str:
 def session_user(token: str):
     if not token:
         return None
-    row = one("""SELECT u.id, u.name, u.admin, u.jellyfin_id, u.seerr_id, u.pw IS NOT NULL AS local, s.seen
-                 FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?""", _digest(token))
+    row = one("""SELECT u.id, u.name, u.admin, u.jellyfin_id, u.seerr_id, u.pw IS NOT NULL AS local, s.seen, t.id AS tv
+                 FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN tvs t ON t.session = s.token WHERE s.token = ?""", _digest(token))
     if not row:
         return None
     now = time.time()
@@ -272,7 +282,7 @@ def session_user(token: str):
     if now - row["seen"] > 3600:  # sliding expiry, written at most hourly
         db().execute("UPDATE sessions SET seen = ? WHERE token = ?", (now, _digest(token)))
     row.pop("seen")
-    row["admin"], row["local"] = bool(row["admin"]), bool(row["local"])
+    row["admin"], row["local"] = bool(row["admin"]) and not row.pop("tv"), bool(row["local"])  # a TV in the living room is never an admin
     return row
 
 

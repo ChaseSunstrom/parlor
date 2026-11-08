@@ -39,6 +39,12 @@ grep -q usesCleartextTraffic "$m"
 # Android 14 and later: the media notification (lock-screen controls, playing on in the background) is a media foreground service
 sed -i "s|<uses-permission android:name=\"android.permission.INTERNET\" />|&\n    <uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK\" />|" "$m"
 grep -q FOREGROUND_SERVICE_MEDIA_PLAYBACK "$m"
+# Android TV: listed in its launcher with a banner, and no touchscreen needed (it opens on the TV mode there)
+cp -r native/res/. android/app/src/main/res/
+sed -i "s|<application|<application android:banner=\"@drawable/banner\"|" "$m"
+sed -i "s|<category android:name=\"android.intent.category.LAUNCHER\" />|&\n                <category android:name=\"android.intent.category.LEANBACK_LAUNCHER\" />|" "$m"
+sed -i "s|<uses-permission android:name=\"android.permission.INTERNET\" />|&\n    <uses-feature android:name=\"android.software.leanback\" android:required=\"false\" />\n    <uses-feature android:name=\"android.hardware.touchscreen\" android:required=\"false\" />|" "$m"
+grep -q LEANBACK_LAUNCHER "$m"
 npx cap sync android
 cd android
 ./gradlew --no-daemon -Dorg.gradle.workers.max=4 assembleDebug
@@ -50,13 +56,14 @@ cp "$apk" dist/parlor.apk
 
 # check the APK itself, inside the image
 check=$(nice -n 19 docker run --rm -v "$root/dist":/dist:ro "$img" bash -euo pipefail -c '
-aapt2 dump badging /dist/parlor.apk | grep -E "^package:|uses-permission: name=.android.permission.(INTERNET|FOREGROUND_SERVICE_MEDIA_PLAYBACK)."
+aapt2 dump badging /dist/parlor.apk | grep -E "^package:|uses-permission: name=.android.permission.(INTERNET|FOREGROUND_SERVICE_MEDIA_PLAYBACK).|leanback-launchable-activity"
 aapt2 dump xmltree --file AndroidManifest.xml /dist/parlor.apk | grep -E "usesCleartextTraffic"
 ')
 echo "$check"
 grep -q "package: name='$pkg'" <<<"$check" || fail "package"
 grep -q "android.permission.INTERNET" <<<"$check" || fail "INTERNET"
 grep -q "FOREGROUND_SERVICE_MEDIA_PLAYBACK" <<<"$check" || fail "media playback service"
+grep -q "leanback-launchable-activity" <<<"$check" || fail "Android TV launcher"
 grep -Eq 'usesCleartextTraffic.*=(true|\(type 0x12\)0xffffffff)' <<<"$check" || fail "cleartext"
 
 ls -l dist/parlor.apk

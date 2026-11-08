@@ -267,8 +267,8 @@ def read(path: Path) -> bytes:
     raw = path.read_bytes()
     if not raw.startswith(SEALED):
         return raw
-    blob = base64.b64decode(raw[len(SEALED):])
     try:
+        blob = base64.b64decode(raw[len(SEALED):])
         return AESGCM(_file_key()).decrypt(blob[:12], blob[12:], path.name.encode())
     except Exception as exc:  # cryptography's InvalidTag: another key, or the file was changed
         raise WrongKey(f"{path.name} can't be opened with this key") from exc

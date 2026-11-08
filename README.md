@@ -192,6 +192,17 @@ Parlor installs as an app: on Android, Chrome's menu has **Install app**; on iPh
 - **The Android app**: `scripts/build-android.sh` builds `dist/parlor.apk` in Docker (Capacitor, every version pinned; about two minutes the first time). Later builds install over it, keeping what's saved; `--clean` starts over with a new signing key, which means uninstalling the old app first. Install it on the phone (allow installing from your file manager), open it and type Parlor's address, the one you use in a browser, like `http://192.168.1.20:8800`; then sign in as usual. The app carries Parlor's page with it and passes its requests on to your server, so everything works as in the browser, saving for offline included, over plain http on your home network. Music keeps playing with the screen off, with a media notification and lock-screen controls. **Settings → This device → Use another Parlor** switches servers. `tests/live_android.py` checks it on an Android emulator.
 - **iPhone and iPad**: a Home Screen app can stop playing when it's in the background or the screen locks, and Safari may clear saved music and videos from a Home Screen app that hasn't been opened for a few weeks.
 
+## On a TV
+
+Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the Android app on an Android TV: it's in the TV's launcher and opens this way by itself). The TV shows an 8-character code; on your phone open **You → TVs**, type it and a name under **Add a TV**, press **Pair**, and the TV signs itself in to your account. No password is typed on the TV, and the code works once, for five minutes.
+
+- **The TV layout** is made for a remote: bigger, with a bright outline on what's selected. The arrows move to the nearest thing in that direction, OK opens it, Back goes back. The menu on the left reaches every page.
+- **Play on TV**: a film's or episode's **On TV** button, a YouTube video's (it carries on from where you are), and **⋯ → Play on TV** on any album or song send it to the TV, which plays it with its own sign-in. With more than one TV on, you pick which.
+- **The remote** (You → TVs → a TV): a joystick (drag it for the arrows, hold to keep going, press it for OK), Back and Home, play/pause, back 10 s and forward 30 s, next song, volume, and a box that types on the TV (searching, say). It shows what the TV is playing. Two phones can drive the same TV; both see what it does. A computer's arrow keys, Enter and Space work it too.
+- A TV that's off or not showing Parlor shows as off; it comes back by itself. **Unpair** signs it out. Signing out everywhere unpairs every TV. A TV is never signed in as an admin, even an admin's, so only enter a code you see on a TV in front of you. Admins see every account's TVs, and a remote for each, in **Settings → TVs**.
+- The remote's volume is Parlor's on the TV; switching the TV set on, its input and its own volume aren't there yet.
+- The remote talks over server-sent events, so it works through the Android app and any reverse proxy. nginx must not buffer `/api/tv/events` (Parlor sends `X-Accel-Buffering: no`, which nginx honours).
+
 ## Music apps (Subsonic)
 
 Parlor speaks the Subsonic/OpenSubsonic API, so Symfonium, Tempo, DSub, Feishin and similar apps can play your music folder.
