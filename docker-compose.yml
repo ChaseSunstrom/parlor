@@ -38,6 +38,7 @@ services:
       SEERR_URL: http://seerr:5055
       JELLYFIN_URL: http://jellyfin:8096
       GAMES_STREAM_URL: ${GAMES_STREAM:+http://moonlight-web:8080}   # Games → Play from your PC, when it's on
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}   # your reverse proxy's address, so limits count each person (README → Security)
     ports:
       - "${PORT:-8800}:8800"
     volumes:

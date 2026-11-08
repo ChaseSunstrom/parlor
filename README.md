@@ -271,6 +271,7 @@ Set these in `.env` (see `.env.example`).
 | `KEY_DIR` | `./parlor/key` in the compose, else `DATA_DIR/key` | Where the encryption key lives. Keep it apart from the data, and back it up. |
 | `HEAL` | `1` | When YouTube changes something and downloads start failing, update yt-dlp straight away instead of at the next check. `0` turns that off (so does `UPDATE_HOURS=0`). |
 | `GAMES_STREAM`, `GAMES_STREAM_HOST` | off | Any value (leave it out for off) and this server's address on your network turn on Games → From your PC, with `COMPOSE_PROFILES=games-stream` (see [Games](#games)) |
+| `FORWARDED_ALLOW_IPS` | `127.0.0.1` | Behind a reverse proxy: its address as Parlor sees it (comma-separated for more than one; `*` only when nothing but the proxy can reach Parlor). Parlor then takes each visitor's address from `X-Forwarded-For`, so the limits on guessing passwords and TV codes count each person, not the proxy. From any other address the header is ignored. |
 | `OFFLINE` | on | `off` makes the app's copy on phones and computers remove itself (see [On phones, tablets and computers](#on-phones-tablets-and-computers)) |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 
@@ -294,7 +295,7 @@ docker compose pull && docker compose build --pull && docker compose up -d
 
 - Every API call needs a session. Sessions last 30 days, renew while used, and are stored hashed. Passwords are hashed with scrypt.
 - Every change needs an `X-Requested-With: parlor` header (formerly yeerr, still accepted), which other websites can't send, so a page you visit can't act for you.
-- Wrong passwords are throttled per name and per address.
+- Wrong passwords are throttled per name and per address. Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address so the address is each visitor's, not the proxy's (see [Settings](#settings)).
 - Changing a password signs out your other devices; Settings also has **Sign out everywhere**.
 - Put Parlor behind HTTPS (a reverse proxy) if it's reachable from outside your home. The session cookie is marked secure when the proxy says the request came over HTTPS.
 - The *arrs skip their logins for any private address, qBittorrent only for `LAN_SUBNET` and the other containers. Anyone on your home network can use them, so keep untrusted devices on a guest network, and don't forward their ports to the internet; from outside, they ask for a name and password. Your password is used for setup only while it runs, and never stored.
