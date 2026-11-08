@@ -188,6 +188,8 @@ Set these in `.env` (see `.env.example`).
 | `YT_PARALLEL` | `2` | Videos downloading at once |
 | `VIDEO_KEEP_DAYS` | `0` | Delete downloaded videos this many days after they're downloaded; `0` keeps them. Settings can change it. |
 | `UPDATE_HOURS` | `24` | How often yt-dlp is updated while running (it's also updated on every start). `0` turns both off. |
+| `ENCRYPT` | `1` | Parlor's data encrypted at rest; `0` keeps a new install plain. See [Encrypted at rest](#encrypted-at-rest). |
+| `KEY_DIR` | `./parlor/key` in the compose, else `DATA_DIR/key` | Where the encryption key lives. Keep it apart from the data, and back it up. |
 | `HEAL` | `1` | When YouTube changes something and downloads start failing, update yt-dlp straight away instead of at the next check. `0` turns that off (so does `UPDATE_HOURS=0`). |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 
@@ -215,6 +217,18 @@ docker compose pull && docker compose build --pull && docker compose up -d
 - Changing a password signs out your other devices; Settings also has **Sign out everywhere**.
 - Put Parlor behind HTTPS (a reverse proxy) if it's reachable from outside your home. The session cookie is marked secure when the proxy says the request came over HTTPS.
 - The *arrs skip their logins for any private address, qBittorrent only for `LAN_SUBNET` and the other containers. Anyone on your home network can use them, so keep untrusted devices on a guest network, and don't forward their ports to the internet; from outside, they ask for a name and password. Your password is used for setup only while it runs, and never stored.
+
+### Encrypted at rest
+
+Everything Parlor itself writes is encrypted at rest: its database (accounts, sessions, settings and the apps' keys, history, subscriptions) with SQLCipher, and the files it keeps beside it (YouTube cookies, the download list) with AES-GCM, all with one random 256-bit key. The data folder is Parlor's alone (folders 0700, files 0600). The stack's own Seerr key isn't copied at all: Parlor reads it from Seerr's settings when it needs it.
+
+- **The key** is made on the first start in `./parlor/key/db.key`, apart from `./parlor/config`, so a copy or backup of the config folder alone can't be read. Outside the compose, set `KEY_DIR` to a folder of its own (otherwise it goes inside `DATA_DIR`, and Settings warns you).
+- **Back up the key.** Settings → Security → **Download the key** (it asks for your password; do it at home or over HTTPS, since the key crosses the network). Lose it and the data is lost: nobody can open it, Parlor included. To restore, put the file back as `./parlor/key/db.key`.
+- **Upgrading** from a Parlor without encryption converts the database once at start: an encrypted copy is written and checked (every row, and an integrity check) before it replaces the old file, and the plain copy is kept as `yeerr.db.plain-backup` until the next start, then removed.
+- **Lock at boot** (Settings → Security) seals the key on disk with a passphrase of yours. After every restart Parlor stays locked, downloads and music apps included, until someone opens it in a browser and enters the passphrase (five wrong ones a minute, then it waits). There's no recovery: forget the passphrase and only a backed-up key opens the data. Turning it off puts the plain key back.
+- `ENCRYPT=0` keeps a new install plain; a database that's already encrypted stays encrypted and keeps opening with its key.
+- **What it protects against:** a stolen disk, a copied backup or another user on the server reading Parlor's data. It doesn't protect against someone who controls the running server: an admin who changes Parlor's code can read what it opens.
+- **What isn't covered:** the apps' own configs and your media, which Jellyfin, the *arrs and qBittorrent read and write directly. Encrypt the disk they're on instead: LUKS when you set the disk up (`cryptsetup luksFormat`, then unlock it at boot, before Docker starts), or `fscrypt` on an ext4 folder (`fscrypt setup`, then `fscrypt encrypt /srv/media`). Put the compose folder on it too, and the whole stack is encrypted at rest.
 
 ## Development
 

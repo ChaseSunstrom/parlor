@@ -13,6 +13,8 @@ from pathlib import Path
 
 from fastapi import HTTPException, Request
 
+import vault
+
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
 VIDEOS = Path(os.environ.get("VIDEO_DIR", "/videos"))
 SESSION_DAYS = 30
@@ -137,8 +139,9 @@ def db() -> sqlite3.Connection:
     conn = getattr(_local, "db", None)
     if conn is None or getattr(_local, "path", None) != path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
+        with _schema_lock:  # one thread converts an old plain database; the others wait for it
+            conn = vault.connect(path, timeout=30, isolation_level=None, check_same_thread=False)
+        conn.row_factory = vault.row_type(conn)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         with _schema_lock:
@@ -148,7 +151,7 @@ def db() -> sqlite3.Connection:
                     if column not in {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}:
                         try:
                             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-                        except sqlite3.OperationalError:  # another process added it first
+                        except vault.OperationalError:  # another process added it first
                             pass
                 _ready.add(path)
         _local.db, _local.path = conn, path
@@ -177,7 +180,12 @@ ENV_DEFAULTS = {
 }
 
 
+READERS: dict = {}  # setting -> a function reading it where its app keeps it (the stack's own apps), so no copy is stored
+
+
 def setting(key: str, default: str = "") -> str:
+    if key in READERS and (value := READERS[key]()):
+        return value
     row = one("SELECT value FROM settings WHERE key = ?", key)
     if row and row["value"] is not None:
         return row["value"]

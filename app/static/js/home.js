@@ -266,7 +266,7 @@ async function adminPanels(t) {
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
       ${u.jellyfin ? "" : `<button class="ghost" data-reset>Reset password</button>`}
       ${u.id === ME.id ? "" : `<button class="ghost danger" data-delete-user>Delete</button>`}</div></td></tr>`;
-  $("#adminSide").innerHTML = `<div id="services"></div><div id="vpn"></div>
+  $("#adminSide").innerHTML = `<div id="services"></div><div id="vpn"></div><div id="security"></div>
     <section class="panel"><div class="head"><div><h3>Seerr</h3><p>${status.connected ? `Connected${status.version ? `, version ${esc(status.version)}` : ""}.` : `Not connected${status.reason && status.reason !== "not set up" ? `: ${esc(status.reason)}` : "."}`}</p></div>
         ${pill(status.connected ? "available" : "failed", status.connected ? "Connected" : "Offline")}</div>
       <form id="seerrForm">
@@ -317,6 +317,7 @@ async function adminPanels(t) {
   });
   drawServices(t);
   drawVpn(t);
+  drawSecurity();
   $("#keepForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/yt/retention", { days: +$("#keepDays").value, watched_only: $("#keepWatched").checked })
@@ -382,6 +383,76 @@ async function showGate(mode) {
       $("#gErr").textContent = err.message;
       button.disabled = false;
     }
+  });
+}
+
+/* ---------- locked: the encryption key waits for the owner's passphrase ---------- */
+
+function showUnlock() {
+  ME = null;
+  if ($("#unlockForm")) return;
+  $("#gate").innerHTML = `<div class="gate">${aurora}
+    <form id="unlockForm" autocomplete="off">
+      <div class="brand"><img src="logo.svg" alt=""><span>Parlor</span></div>
+      <h1>Parlor is locked</h1><p>Its data is encrypted, and it opens only with the passphrase its owner set. Everything waits until then.</p>
+      <label class="field"><span>Passphrase</span><input id="uPass" type="password" autocomplete="off" required autofocus></label>
+      <p class="err" id="uErr" role="alert"></p>
+      <button class="primary">Unlock</button>
+    </form></div>`;
+  $("#unlockForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const button = $("#unlockForm .primary");
+    button.disabled = true;
+    try {
+      await post("/api/vault/unlock", { passphrase: $("#uPass").value });
+      $("#gate").innerHTML = "";
+      await boot();
+    } catch (err) {
+      $("#uErr").textContent = err.message;
+      button.disabled = false;
+    }
+  });
+}
+
+async function drawSecurity() {
+  const box = $("#security");
+  if (!box) return;
+  const s = await api("/api/vault/state").catch(() => null);
+  if (!s) return;
+  box.innerHTML = `<section class="panel"><div class="head"><div><h3>Security</h3>
+      <p>${s.encrypted ? "Parlor's data (accounts, settings, keys, history and YouTube cookies) is encrypted at rest." : "Encryption is off (ENCRYPT=0): Parlor's data is stored plain."}</p></div>
+      ${pill(s.encrypted ? "available" : "failed", s.encrypted ? "Encrypted" : "Plain")}</div>
+    ${s.encrypted ? `<p>${s.key_apart ? "The key is kept apart from the data, in a folder of its own (<code>./parlor/key</code> in the compose)." : "The key is inside the data folder, so a copy of that folder can be read. Set <code>KEY_DIR</code> to a folder of its own."}
+      <strong>Lose the key and the data is lost:</strong> keep a copy somewhere safe.</p>
+    <form id="keyForm" class="actions"><label class="field grow"><span class="vh">Your password</span><input id="keyPw" type="password" autocomplete="current-password" placeholder="Your password" required></label>
+      <button class="ghost">Download the key</button></form>
+    <h4>Lock at boot</h4>
+    <p>${s.lock_at_boot ? "On: after every start Parlor waits for the passphrase before it opens anything, downloads included." : "With a passphrase, the key on disk is sealed by it: after a restart Parlor stays locked, downloads included, until someone enters it here."}</p>
+    <form id="lockForm">
+      <label class="field"><span>Your password</span><input id="lockPw" type="password" autocomplete="current-password" required></label>
+      ${s.lock_at_boot ? "" : `<label class="field"><span>Passphrase (12 characters or more)</span><input id="lockPass" type="password" autocomplete="new-password" minlength="12" required></label>`}
+      <div class="actions"><button class="primary small">${s.lock_at_boot ? "Turn lock at boot off" : "Lock at boot"}</button></div></form>` : ""}
+  </section>`;
+  $("#keyForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await post("/api/vault/key", { password: $("#keyPw").value });
+      $("#keyPw").value = "";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([r.key + "\n"], { type: "text/plain" }));
+      a.download = r.file;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast("Saved as db.key. To restore, put it in ./parlor/key.");
+    } catch (err) { toast(err.message); }
+  });
+  $("#lockForm")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      await put("/api/vault/passphrase", { password: $("#lockPw").value, passphrase: s.lock_at_boot ? "" : $("#lockPass").value });
+      toast(s.lock_at_boot ? "Lock at boot is off" : "Locked at boot: keep the passphrase safe, it can't be recovered");
+      drawSecurity();
+    } catch (err) { toast(err.message); }
   });
 }
 

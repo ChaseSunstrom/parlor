@@ -5,6 +5,7 @@ Run from the music folder (music-fndr writes relative to the working directory):
 """
 
 import logging
+import threading
 
 import anyio
 from fastapi import FastAPI, Request
@@ -17,16 +18,18 @@ import core
 import jf
 import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
+import security
 import seerr
 import qbit
 import subsonic
 import activity
 import stack
+import vault
 import yt
 
 log = logging.getLogger("parlor")
 app = FastAPI(title="Parlor", docs_url=None, redoc_url=None, openapi_url=None)
-PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup"}
+PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup"} | security.PUBLIC
 
 
 @app.middleware("http")
@@ -34,6 +37,8 @@ async def guard(request: Request, call_next):
     """Every API call needs a session, and every change needs a header other
     websites can't send without a CORS preflight (which is never granted)."""
     path = request.url.path
+    if path.startswith(("/api/", "/music/api/", "/rest/", "/qbit/")) and not security.is_open(path):
+        return JSONResponse({"detail": "Parlor is locked: enter the passphrase"}, status_code=423)
     if path.startswith(("/api/", "/music/api/")):
         if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") not in core.HEADERS:
             return JSONResponse({"detail": f"Missing X-Requested-With: {core.HEADER}"}, status_code=403)
@@ -57,6 +62,7 @@ def health():
 
 
 app.include_router(auth.router)
+app.include_router(security.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)
 app.include_router(stack.router)
@@ -76,7 +82,12 @@ async def startup():
 
 
 def start():
-    core.db()  # creates the tables
+    if vault.locked():  # the key is sealed by the owner's passphrase: everything waits for it
+        log.warning("Parlor is locked: open it in a browser and enter the passphrase")
+        security.on_unlock = lambda: threading.Thread(target=start, daemon=True, name="start").start()
+        return
+    core.db()  # creates the tables (and encrypts an old plain database once)
+    vault.lock_down(core.DATA)
     music.others_busy = yt.busy  # music's yt-dlp update waits for video downloads too
     yt.heal_soon = music.heal_soon  # one yt-dlp healer for both
     yt.restarting = lambda: music.healing.is_set() or music.restart_wanted.is_set()
@@ -84,6 +95,7 @@ def start():
     yt.start()
     library.start()  # keeps the music index (for /rest) current
     if stack.on():
+        stack.read_keys_from_disk()
         stack.start(retries=10)  # what needs no password; the apps may still be starting
         stack.rechecker()  # the weekly search for better copies
 

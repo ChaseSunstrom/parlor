@@ -179,6 +179,20 @@ class PasswordChange(BaseModel):
     new: str
 
 
+def confirm_password(user: dict, password: str) -> bool:
+    """Is this the signed-in person's own password (theirs here, or their Jellyfin one)? Wrong
+    guesses count toward the same limit as signing in."""
+    keys = (f"name:{user['name'].casefold()}",)
+    if _throttled(*keys):
+        return False
+    row = one("SELECT pw, jellyfin_id FROM users WHERE id = ?", user["id"])
+    ok = check_password(password, row["pw"]) if row and row["pw"] else bool(
+        row and row["jellyfin_id"] and setting("jellyfin_url") and jellyfin_login(user["name"], password) == user["id"])
+    if not ok:
+        _failed(*keys)
+    return ok
+
+
 @router.post("/me/password")
 def change_password(body: PasswordChange, request: Request, user=Depends(me)):
     row = one("SELECT pw FROM users WHERE id = ?", user["id"])

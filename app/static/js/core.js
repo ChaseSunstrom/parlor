@@ -67,6 +67,10 @@ async function api(path, options = {}) {
   // the server only accepts changes carrying this header (it blocks other websites)
   const res = await fetch(path, { ...options, headers: { ...options.headers, "X-Requested-With": "parlor" } });
   const body = await res.json().catch(() => ({}));
+  if (res.status === 423) {
+    showUnlock();
+    throw new Error("Parlor is locked");
+  }
   if (res.status === 401 && !path.startsWith("/api/auth/")) {
     showGate();
     throw new Error("Sign in first");

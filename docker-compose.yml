@@ -30,7 +30,8 @@ services:
     environment:
       <<: *env
       STACK: "1"               # the apps below run beside Parlor: it sets them up
-      DATA_DIR: /config        # Parlor's own data: accounts, subscriptions, settings
+      DATA_DIR: /config        # Parlor's own data: accounts, subscriptions, settings (encrypted)
+      KEY_DIR: /key            # the key that opens it, kept apart: back up ./parlor/key
       MUSIC_DIR: /data/music
       VIDEO_DIR: /data/youtube
       SEERR_URL: http://seerr:5055
@@ -39,6 +40,7 @@ services:
       - "${PORT:-8800}:8800"
     volumes:
       - ./parlor/config:/config
+      - ./parlor/key:/key
       - ${DATA:-/data}:/data
       # a kind set in .env is mounted over /data/<kind>; unset, its line repeats the /data mount above and
       # Compose (2.24.3 or newer) drops it, so everything stays one mount: imports are instant and hardlinked

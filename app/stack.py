@@ -857,7 +857,23 @@ def run(name=None, password=None, into=None) -> list:
         results.append({"app": app, "step": step, "status": status, "detail": detail, "seconds": round(time.time() - started, 1)})
         if status in ("done", "failed"):
             log.info("stack %s %s: %s (%s)", app, step, status, detail)
+    read_keys_from_disk()
     return results
+
+
+def read_keys_from_disk():
+    """The stack's own Seerr keeps its API key in its settings.json: read it there when needed, so
+    Parlor stores no copy, and drop the copy an earlier version stored. A Seerr elsewhere keeps the
+    key Parlor was given, as only Parlor has it."""
+    disk = seerr_key_on_disk() if ours("seerr") else ""
+    stored = core.one("SELECT value FROM settings WHERE key = 'seerr_key'")
+    # only once the key on disk is known to be the one Seerr answers to (it matched the working copy)
+    if disk and (stored and stored["value"] == disk or setting("seerr_key_on_disk") == "1"):
+        core.READERS["seerr_key"] = seerr_key_on_disk
+        core.set_setting("seerr_key_on_disk", "1")
+        core.db().execute("DELETE FROM settings WHERE key = 'seerr_key'")
+    else:
+        core.READERS.pop("seerr_key", None)
 
 
 # failures that mean "not ready yet" (an app still starting, or one it talks to), worth another go

@@ -1,3 +1,11 @@
+# SQLCipher (Parlor's database is encrypted at rest) has no prebuilt wheel for ARM: build it here,
+# from its bundled source with OpenSSL, so every platform gets the same one
+FROM python:3.12-slim AS sqlcipher
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip wheel --no-cache-dir --wheel-dir /wheels "sqlcipher3==0.6.0"
+
 FROM python:3.12-slim
 
 # ffmpeg joins video and audio and converts music; deno lets yt-dlp solve
@@ -7,10 +15,11 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+COPY --from=sqlcipher /wheels /wheels
 # yt-dlp is the newest on purpose: an older one stops working with YouTube within weeks
 # hadolint ignore=DL3013
-RUN pip install --no-cache-dir "spotdl~=4.5.2" "spotapi~=1.2.8" "pillow~=13.0" \
-    && pip install --no-cache-dir -U "yt-dlp[default]"
+RUN pip install --no-cache-dir "spotdl~=4.5.2" "spotapi~=1.2.8" "pillow~=13.0" "cryptography~=50.0" /wheels/*.whl \
+    && pip install --no-cache-dir -U "yt-dlp[default]" && rm -rf /wheels
 
 COPY app /app
 

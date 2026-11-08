@@ -32,6 +32,7 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
 import core
+import vault
 from core import admin, db, dumps, me, one, rows
 
 log = logging.getLogger("parlor.yt")
@@ -76,9 +77,10 @@ def has_cookies(user_id) -> bool:
 def _opts(extra, user_id=None):
     opts = {**BASE, "cachedir": str(core.DATA / "cache" / "yt-dlp"), **extra}
     if user_id is not None and has_cookies(user_id):
-        # yt-dlp writes cookies back when it's done; give each call its own copy
-        tmp = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False)
-        tmp.write(cookie_path(user_id).read_text())
+        # yt-dlp reads cookies from a file and writes them back when it's done: give each call its own
+        # plain copy (0600, deleted after the call); the one kept is sealed
+        tmp = tempfile.NamedTemporaryFile("wb", suffix=".txt", delete=False)
+        tmp.write(vault.read(cookie_path(user_id)))
         tmp.close()
         opts["cookiefile"] = tmp.name
     return opts
@@ -1026,11 +1028,7 @@ def set_cookies(body: Cookies, user=Depends(me)):
     youtube = [l for l in lines if "youtube.com" in l.split("\t")[0]]
     if not youtube or any(len(l.split("\t")) != 7 for l in youtube):
         raise HTTPException(422, "That doesn't look like a cookies.txt (Netscape format) with youtube.com cookies")
-    path = cookie_path(user["id"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)  # only this app can read it
-    with os.fdopen(fd, "w") as f:
-        f.write("# Netscape HTTP Cookie File\n" + "\n".join(youtube) + "\n")
+    vault.write(cookie_path(user["id"]), ("# Netscape HTTP Cookie File\n" + "\n".join(youtube) + "\n").encode())
     return {"ok": True, "cookies": len(youtube)}
 
 
@@ -1072,20 +1070,16 @@ class DownloadRequest(BaseModel):
 def save_jobs():
     with _jobs_lock:
         snapshot = json.loads(json.dumps([{k: v for k, v in j.items() if not k.startswith("_")} for j in jobs]))
-    path = STATE()
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(snapshot))
-        tmp.replace(path)
+        vault.write(STATE(), json.dumps(snapshot).encode())
     except OSError:
         log.exception("couldn't save the download list")
 
 
 def restore_jobs():
     try:
-        saved = json.loads(STATE().read_text())
-    except (OSError, ValueError):
+        saved = json.loads(vault.read(STATE()))
+    except (OSError, ValueError, vault.WrongKey):
         return
     with _jobs_lock:
         jobs[:] = [j for j in saved if isinstance(j, dict) and "job" in j]
