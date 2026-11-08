@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.responses import Response
 
+import acl
 import auth
 import core
 import library
@@ -209,6 +210,8 @@ def login(p, request, method):
         auth._failed(*keys)
         raise
     auth._failures.pop(keys[0], None)  # an app that has the right password now isn't a guesser (the IP's count stays)
+    if acl.allowed(user, "/rest/"):
+        raise Fail(50, "Music isn't open to your account; ask an admin")
     if used:
         now = time.time()
         db().execute("UPDATE app_passwords SET used = ? WHERE id = ? AND (used IS NULL OR used < ?)", (now, used, now - 3600))

@@ -1,5 +1,6 @@
 """Accounts: first-run admin setup, sign in (local or Jellyfin), users and settings."""
 
+import json
 import re
 import time
 import uuid
@@ -171,7 +172,9 @@ def logout_everywhere(response: Response, user=Depends(me)):
 def whoami(user=Depends(me)):
     from yt import has_cookies  # late: yt imports this module's neighbours
 
-    return {**user, "jellyfin": bool(user["jellyfin_id"]), "youtube_cookies": has_cookies(user["id"])}
+    import acl
+
+    return {**user, "jellyfin": bool(user["jellyfin_id"]), "youtube_cookies": has_cookies(user["id"]), **acl.view(user)}
 
 
 class PasswordChange(BaseModel):
@@ -220,9 +223,13 @@ def create_user(name, password, is_admin) -> int:
 
 @router.get("/users")
 def list_users(_=Depends(admin)):
-    return rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.jf_user, u.created,
-                          (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
-                   FROM users u ORDER BY u.name""")
+    people = rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.jf_user, u.created,
+                            u.blocked, u.libraries, (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
+                     FROM users u ORDER BY u.name""")
+    for p in people:
+        p["blocked"] = [s for s in (p["blocked"] or "").split(",") if s]
+        p["libraries"] = None if p["libraries"] is None else json.loads(p["libraries"])
+    return people
 
 
 class NewUser(BaseModel):
@@ -257,6 +264,9 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
         raise HTTPException(409, "There has to be at least one admin")
     if body.admin is not None:
         db().execute("UPDATE users SET admin = ? WHERE id = ?", (int(body.admin), user_id))
+        if body.admin:
+            import jfaccess  # late: it talks to Jellyfin
+            jfaccess.lift({"id": user_id, "jellyfin_id": None})
     if body.password:
         if not target["pw"]:
             raise HTTPException(409, "This account signs in with Jellyfin")
@@ -275,6 +285,8 @@ def delete_user(user_id: int, user=Depends(admin)):
         raise HTTPException(409, "You can't delete your own account")
     if not _admins_left_without(user_id):
         raise HTTPException(409, "There has to be at least one admin")
+    import jfaccess  # late: it talks to Jellyfin
+    jfaccess.forget({"id": user_id})
     db().execute("DELETE FROM users WHERE id = ?", (user_id,))
     from yt import cookie_path  # late: yt imports core, which this module also uses
 

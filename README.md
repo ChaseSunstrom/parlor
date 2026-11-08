@@ -113,6 +113,15 @@ Each account has its own subscriptions, history, resume points, watch later and 
 
 **Seerr users.** Requests go to Seerr as the person's own Seerr user, so Seerr's quotas, permissions and approvals apply. People who sign in with Jellyfin are linked to the Seerr user with the same Jellyfin account by themselves. Everyone else is linked by an admin in Settings → People, which points out a Seerr user with the same name (names alone aren't trusted: with open sign-up anyone could pick one). Members who aren't linked can browse but can't request; an admin who isn't linked requests as the API key's owner.
 
+### Who can use what
+
+Settings → People → **Access** sets, for each member, what they can use:
+
+- **Watch** (YouTube), **Movies & TV** (discovering and requesting), **Music** (finding and requesting music, and music apps over Subsonic), **Library** (playing what's in Jellyfin) and **Downloads** (saving videos and songs to the server). A section that's off leaves their menus, and the server refuses it too, from the page, the API or a music app.
+- **Which Jellyfin libraries they see.** Jellyfin holds this itself: a member limited to some libraries plays as a Jellyfin user of their own (their Jellyfin sign-in, or one Parlor makes for them, hidden and with a password nobody needs), whose library list Parlor keeps in step. Search, Next up, pictures and streams follow it, in Parlor and in Jellyfin's own apps. Someone sharing the default Jellyfin user is given their own first, so the others keep theirs. If Jellyfin can't be reached while you save, they see no library until it can, never every library.
+
+Admins always have everything, and accounts from before this have everything until you change it. The apps' own pages (Sonarr, qBittorrent and the rest) are admin tools outside these settings; keep their ports to your home network.
+
 ## Watching YouTube
 
 The player streams through your server. YouTube serves HD video and audio separately, and its stream links only work from the address that asked for them. Parlor fetches both, in byte ranges, and the player keeps them in step. Seeking, quality changes (144p to 4K, HDR when your browser can show it), captions, playback speed, picture-in-picture and your system's media keys all work.

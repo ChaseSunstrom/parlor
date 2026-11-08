@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
+import acl
 import auth
 import core
 import jf
@@ -46,6 +47,9 @@ async def guard(request: Request, call_next):
             user = await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request))
             if not user:
                 return JSONResponse({"detail": "Sign in first"}, status_code=401)
+            lacking = await anyio.to_thread.run_sync(acl.allowed, user, path)
+            if lacking:
+                return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)
             request.state.user = user
     return await call_next(request)
 
@@ -63,6 +67,7 @@ def health():
 
 app.include_router(auth.router)
 app.include_router(security.router)
+app.include_router(acl.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)
 app.include_router(stack.router)

@@ -258,11 +258,14 @@ async function adminPanels(t) {
   const seerrUsers = seerr.users;
   if (t !== ticket) return;
   const option = (u, sel) => `<option value="${u.id}"${sel === u.id ? " selected" : ""}>${esc(u.name)}${u.jellyfin ? ` (Jellyfin: ${esc(u.jellyfin)})` : ""}</option>`;
+  const limits = (u) => [u.blocked.length && `no ${u.blocked.map((s) => SECTION_NAMES[s][0].toLowerCase()).join(", ")}`,
+    u.libraries && `${u.libraries.length} ${u.libraries.length === 1 ? "library" : "libraries"}`].filter(Boolean).join(" · ");
   const userRow = (u) => `<tr data-user="${u.id}">
-    <td><strong>${esc(u.name)}</strong><br><small class="dim">${u.admin ? "Admin" : "Member"}${u.jellyfin ? " · Jellyfin" : ""}${u.seen ? ` · seen ${since(u.seen)}` : ""}</small></td>
+    <td><strong>${esc(u.name)}</strong><br><small class="dim">${u.admin ? "Admin" : "Member"}${u.jellyfin ? " · Jellyfin" : ""}${u.seen ? ` · seen ${since(u.seen)}` : ""}${!u.admin && limits(u) ? ` · ${esc(limits(u))}` : ""}</small></td>
     <td>${status.connected ? `<select class="input" data-seerr aria-label="Seerr user for ${esc(u.name)}"><option value="">${u.jellyfin ? "Same Jellyfin account" : "Not linked"}</option>${seerrUsers.map((x) => option(x, u.seerr_id)).join("")}</select>
       ${!u.seerr_id && seerr.suggested[u.id] ? `<br><small class="dim">Same name in Seerr: ${esc(seerrUsers.find((x) => x.id === seerr.suggested[u.id])?.name || "")}. Pick it if it's them.</small>` : ""}` : `<small class="dim">Seerr not connected</small>`}</td>
     <td><div class="acts">
+      ${u.admin ? "" : `<button class="ghost" data-access aria-expanded="false">Access</button>`}
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
       ${u.jellyfin ? "" : `<button class="ghost" data-reset>Reset password</button>`}
       ${u.id === ME.id ? "" : `<button class="ghost danger" data-delete-user>Delete</button>`}</div></td></tr>`;
@@ -339,6 +342,8 @@ async function adminPanels(t) {
     if (!row) return;
     const id = row.dataset.user;
     const done = () => { keepScroll = true; route(); };
+    const opener = e.target.closest("[data-access]");
+    if (opener) accessEditor(row, users.find((u) => String(u.id) === id), opener);
     const flip = e.target.closest("[data-admin-toggle]");
     if (flip) patch(`/api/users/${id}`, { admin: flip.dataset.adminToggle === "1" }).then(done, (err) => toast(err.message));
     if (e.target.closest("[data-reset]")) {
@@ -384,6 +389,67 @@ async function showGate(mode) {
       button.disabled = false;
     }
   });
+}
+
+/* ---------- who may use what (admins) ---------- */
+
+const SECTION_NAMES = {
+  watch: ["Watch", "YouTube: feeds, videos, subscriptions"], media: ["Movies & TV", "discovering and requesting films and shows"],
+  music: ["Music", "finding and requesting music, and music apps"], library: ["Library", "playing what's in Jellyfin"],
+  downloads: ["Downloads", "saving videos and songs to the server"],
+};
+
+async function accessEditor(row, u, opener) {
+  const open = row.nextElementSibling?.classList.contains("access-row");
+  row.parentElement.querySelectorAll(".access-row").forEach((r) => r.remove());
+  row.parentElement.querySelectorAll("[data-access]").forEach((b) => b.setAttribute("aria-expanded", "false"));
+  if (open) return;
+  opener.setAttribute("aria-expanded", "true");
+  const libs = await api("/api/access/libraries").then((r) => r.libraries).catch(() => null);
+  const edit = document.createElement("tr");
+  edit.className = "access-row";
+  const check = (name, value, on, label, note) => `<label class="check"><input type="checkbox" name="${name}" value="${esc(value)}"${on ? " checked" : ""}><span>${esc(label)}${note ? ` <small class="dim">${esc(note)}</small>` : ""}</span></label>`;
+  edit.innerHTML = `<td colspan="3"><form class="access">
+      <fieldset><legend>What ${esc(u.name)} can use</legend>
+        ${Object.entries(SECTION_NAMES).map(([k, [label, note]]) => check("section", k, !u.blocked.includes(k), label, note)).join("")}</fieldset>
+      ${libs ? `<fieldset><legend>Jellyfin libraries they see</legend>
+        ${check("all", "1", u.libraries === null, "All of them, new ones included")}
+        ${libs.map((l) => check("lib", l.id, u.libraries === null || u.libraries.includes(l.id), l.name)).join("")}
+        <small class="dim">Held by Jellyfin itself: they play as a Jellyfin user of their own, so its apps show the same.</small></fieldset>`
+        : `<p class="dim">Jellyfin isn't connected, so its libraries can't be limited yet.</p>`}
+      <div class="actions"><button class="primary small">Save</button><button type="button" class="ghost" data-cancel>Cancel</button></div>
+    </form></td>`;
+  row.after(edit);
+  const form = edit.querySelector("form");
+  const all = form.querySelector("[name=all]");
+  form.addEventListener("change", (e) => {
+    if (e.target === all) form.querySelectorAll("[name=lib]").forEach((b) => { b.checked = all.checked; });
+    else if (e.target.name === "lib" && all) all.checked = [...form.querySelectorAll("[name=lib]")].every((b) => b.checked);
+  });
+  form.querySelector("[data-cancel]").addEventListener("click", () => { edit.remove(); opener.setAttribute("aria-expanded", "false"); opener.focus(); });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = { blocked: [...form.querySelectorAll("[name=section]")].filter((b) => !b.checked).map((b) => b.value) };
+    if (libs) body.libraries = all.checked ? null : [...form.querySelectorAll("[name=lib]:checked")].map((b) => b.value);
+    try {
+      await put(`/api/users/${u.id}/access`, body);
+      toast(`Saved what ${u.name} can use`);
+      keepScroll = true; route();
+    } catch (err) { toast(err.message); }
+  });
+  form.querySelector("input")?.focus();
+}
+
+/** a person's own view: sections closed to them leave the menus, and download buttons go */
+function applyAccess() {
+  const closed = (s) => ME?.sections && ME.sections[s] === false;
+  for (const key of ["watch", "media", "music"]) {
+    const i = NAV.findIndex((g) => g.key === key);
+    if (i >= 0 && closed(key)) NAV.splice(i, 1);
+  }
+  const you = NAV.find((g) => g.key === "you");
+  if (you) you.pages = you.pages.filter(([, href]) => !(href.startsWith("#/yt") && (closed("watch") || href === "#/yt/downloads" && closed("downloads"))));
+  document.body.classList.toggle("no-downloads", closed("downloads"));
 }
 
 /* ---------- locked: the encryption key waits for the owner's passphrase ---------- */
@@ -469,6 +535,7 @@ async function boot() {
   } catch {
     return; // api() showed the sign-in screen
   }
+  applyAccess();
   $("#account").textContent = (ME.name || "?").trim()[0].toUpperCase();
   $("#account").title = ME.name;
   poll();

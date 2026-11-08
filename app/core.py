@@ -126,6 +126,9 @@ CREATE TABLE IF NOT EXISTS app_passwords (
 COLUMNS = [
     ("videos", "keep", "INTEGER NOT NULL DEFAULT 0"),  # 1: never deleted by the retention rule
     ("users", "jf_user", "TEXT"),  # the Jellyfin user (name or id) they play as, set by an admin
+    ("users", "blocked", "TEXT NOT NULL DEFAULT ''"),  # sections an admin closed to them (acl.py)
+    ("users", "libraries", "TEXT"),  # NULL: every Jellyfin library; else a JSON list of library ids (jfaccess.py)
+    ("users", "jf_own", "INTEGER NOT NULL DEFAULT 0"),  # 1: jf_user is a Jellyfin user Parlor made for them alone
 ]
 
 _local = threading.local()

@@ -67,7 +67,12 @@ def either(method, new, old, **kw):
 
 
 def who(user) -> dict:
-    """The Jellyfin user this account plays as: its Jellyfin sign-in, else the admin's link, else the default."""
+    """The Jellyfin user this account plays as: its Jellyfin sign-in, else the admin's link, else the default.
+    A person with a library limit plays only as their own user, and sees nothing while the limit is being set."""
+    limits = one("SELECT libraries, jf_own FROM users WHERE id = ?", user["id"]) or {}
+    if not user.get("admin") and limits.get("libraries") is not None and (
+            limits["libraries"] == "[]" or not (user["jellyfin_id"] or limits["jf_own"])):
+        raise HTTPException(403, "No Jellyfin library is open to your account; ask an admin")
     link, via = user["jellyfin_id"], "signin"
     if not link:
         link, via = (one("SELECT jf_user FROM users WHERE id = ?", user["id"]) or {}).get("jf_user"), "link"
@@ -366,8 +371,7 @@ def stream(path: str, request: Request, user=Depends(me)):
     if len(path) > 300 or not ALLOWED.fullmatch(path):
         raise HTTPException(404, "No such stream")
     image = bool(IMAGE.fullmatch(path))
-    if not image:  # pictures are let through unchecked: a page of cards would mean a lookup each
-        may_see(user, path.split("/")[1], download=path.endswith("/Download"))
+    may_see(user, path.split("/")[1], download=path.endswith("/Download"))  # pictures too: a hidden library's art stays hidden
     params = [(k, v) for k, v in request.query_params.multi_items() if k.lower() not in DROP]
     headers = {"Accept-Encoding": "identity"}  # a compressed body would make Content-Length lie
     if request.headers.get("range"):

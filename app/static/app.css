@@ -692,6 +692,11 @@ code.secret { font: .95rem ui-monospace, monospace; padding: 6px 10px; border-ra
 .tile .lreq { width: 100%; margin-top: 8px; }
 .pstrip.even { grid-auto-columns: 152px; }
 .jobs .empty.failed { color: var(--bad); }
+.no-downloads [data-vdl], .no-downloads [data-dl], .no-downloads [data-dl-all], .no-downloads .dl { display: none !important; }
+.access-row td { background: var(--sunk); border-radius: 10px; }
+.access fieldset { border: 0; padding: 0; margin: 0 0 14px; display: grid; gap: 6px; }
+.access legend { font-weight: 700; margin-bottom: 6px; }
+.access .check input { flex: none; }
 #lidarrForm { max-width: 600px; align-items: end; }
 #lidarrForm .field { flex: 1; margin: 0; }
 .torrent strong { overflow-wrap: anywhere; }
