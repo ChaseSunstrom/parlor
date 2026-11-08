@@ -1,0 +1,339 @@
+"""The README's screenshots, made from the running app with made-up demo data and nothing else: Parlor runs here against
+the test stand-ins (a Jellyfin with posters, a Steam, retro games, a TV paired to a phone) and each page is shot at
+desktop (1280 wide) and phone (390 wide) width, dark and light, into docs/assets/screens/NAME-VIEW-SCHEME.png, each
+file kept under the README check's 400 KB budget. No real library, name, address or key is used or shown.
+
+Run from app/:  ../.venv/bin/python ../tests/readme_shots.py [OUT_DIR]   (needs Playwright, its Chromium, ffmpeg and Pillow)"""
+import io
+import json
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
+
+import auth
+import core
+import games
+import jf_standin as jfs
+import uvicorn
+from jf_standin import T
+from PIL import Image, ImageDraw, ImageFont
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "docs" / "assets" / "screens"
+OUT.mkdir(parents=True, exist_ok=True)
+PASSWORD = "Readme-demo-pass-42!"  # pragma: allowlist secret (made up)
+KB_BUDGET = 380  # the README check allows 400 KB a PNG
+VIEWS = {"desktop": dict(viewport={"width": 1280, "height": 800}), "phone": dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_mobile=True, has_touch=True)}
+
+
+# ---------------------------------------------------------------- made-up art: flat shapes, a title, small as PNG
+
+PALETTE = [("#243b6b", "#ffb547", "#101a33"), ("#4a2c5e", "#6be0c4", "#241431"), ("#6b2b34", "#ffc56e", "#35141a"), ("#1f4d4a", "#ff6b6b", "#0f2827"),
+           ("#37306b", "#6cc2ff", "#1a1638"), ("#5a4326", "#a58bff", "#2b2013"), ("#2a4a2e", "#ffb547", "#142617"), ("#5a2f52", "#6cc2ff", "#2c1628")]
+
+
+def font(size):
+    return ImageFont.load_default(size)
+
+
+def art(title, w, h, n, subtitle="", pad=0.08):
+    """a flat poster: a sky, a sun, two hills and the title"""
+    bg, sun, hill = PALETTE[n % len(PALETTE)]
+    im = Image.new("RGB", (w, h), bg)
+    d = ImageDraw.Draw(im)
+    r = int(min(w, h) * (0.22 + 0.03 * (n % 3)))
+    cx, cy = int(w * (0.3 + 0.13 * (n % 5))), int(h * 0.38)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=sun)
+    d.ellipse([-w * 0.3, h * 0.62, w * 0.85, h * 1.5], fill=hill)
+    d.ellipse([w * 0.3, h * 0.72, w * 1.4, h * 1.6], fill=_shade(hill))
+    size = int(min(w, h * 0.7) * 0.115)
+    words, lines, line = title.split(), [], ""
+    for word in words:
+        if d.textlength(f"{line} {word}".strip(), font=font(size)) > w * (1 - 2 * pad) and line:
+            lines.append(line)
+            line = word
+        else:
+            line = f"{line} {word}".strip()
+    lines.append(line)
+    y = h - int(h * 0.08) - len(lines) * int(size * 1.25) - (int(size * 0.8) if subtitle else 0)
+    for ln in lines:
+        d.text((int(w * pad), y), ln, fill="#f7f3ea", font=font(size))
+        y += int(size * 1.25)
+    if subtitle:
+        d.text((int(w * pad), y), subtitle, fill="#d6cfe0", font=font(int(size * 0.62)))
+    return im
+
+
+def _shade(hex_):
+    r, g, b = (int(hex_[i:i + 2], 16) for i in (1, 3, 5))
+    return f"#{int(r * .75):02x}{int(g * .75):02x}{int(b * .75):02x}"
+
+
+def save_art(name, im, jpeg=False):
+    p = jfs.MEDIA / name
+    im.save(p, "JPEG" if jpeg else "PNG", **({"quality": 88} if jpeg else {"optimize": True}))
+    return p
+
+
+# ---------------------------------------------------------------- the Jellyfin stand-in, stocked
+
+FILMS = [("Night Train", 2024, "Mystery"), ("The Salt Road", 2023, "Drama"), ("Paper Lanterns", 2022, "Fantasy"), ("Seventh Harbour", 2024, "Thriller"),
+         ("Quiet Engines", 2021, "Science fiction"), ("Winter Orchard", 2023, "Drama"), ("Glass Meridian", 2025, "Adventure"), ("A Small Weather", 2020, "Comedy"),
+         ("Copper Bay", 2022, "Western"), ("The Long Lamp", 2019, "Documentary")]
+SHOWS = ["Harbour Lights", "Tin Kingdom", "Field Notes", "Midnight Ferry", "The Quarry Club", "Slow Orbit"]
+ALBUMS = [("Quiet Hours", "The Lamps"), ("Low Tide Radio", "Marlow & Wren"), ("Paper Sun", "Ines Okoro"), ("Northern Lines", "The Gulls"),
+          ("Kite Season", "Hollow Pines"), ("Slow Orbit", "Cass Delamere")]
+BOOKS = ["The Keeper", "Salt & Ledger", "An Orchard Year", "The Cartographer's Wife"]
+
+
+ART: dict = {}  # item id -> its poster, wide and square pictures
+
+
+def stock_library():
+    items = jfs.ITEMS
+    keep = {k: items[k] for k in (jfs.SEASON, jfs.EP1, jfs.EP2, jfs.S1, jfs.S2, jfs.ARTIST)}
+    items.clear()
+    items.update(keep)
+    n = 0
+
+    def add(iid, name, kind, view, title_art, **more):
+        nonlocal n
+        n += 1
+        items[iid] = {"Id": iid, "Name": name, "Type": kind, "_view": view, "ImageTags": {"Primary": "p"}, **more}
+        ART[iid] = {"poster": save_art(f"a{n}-p.png", art(name, 400, 600, n)), "wide": save_art(f"a{n}-w.png", art(name, 960, 540, n)),
+                    "square": save_art(f"a{n}-s.png", art(name, 500, 500, n, title_art))}
+        if kind in ("Movie", "Series"):
+            items[iid]["BackdropImageTags"] = ["b"]
+        return items[iid]
+
+    for i, (name, year, genre) in enumerate(FILMS):
+        film = add(jfs.FILM if i == 0 else jfs.hid(0x300 + i), name, "Movie", jfs.V_FILMS, "", ProductionYear=year, RunTimeTicks=(88 + 7 * i) * 60 * T,
+                   Genres=[genre, "Feature"], CommunityRating=round(6.6 + (i * 0.37) % 2.2, 1), OfficialRating=["PG", "PG-13", "R"][i % 3], _file="film.mp4",
+                   Overview="A sleeper car, a missing ticket and a conductor who has seen it all before." if i == 0 else "A quiet story about a small place and the people who keep it going.")
+        if i == 0:
+            film["People"] = [{"Name": "Ada Brook", "Role": "Conductor"}, {"Name": "Tomas Reyes", "Role": "The passenger"}]
+    for i, name in enumerate(SHOWS):
+        add(jfs.SERIES if i == 0 else jfs.hid(0x400 + i), name, "Series", jfs.V_SHOWS, "", ProductionYear=2021 + i % 4,
+            Overview="A small port, a long winter." if i == 0 else "A new season, the same neighbours.")
+    for iid in (jfs.SEASON, jfs.EP1, jfs.EP2):
+        ART[iid] = ART[jfs.SERIES]
+    for i, (name, artist) in enumerate(ALBUMS):
+        add(jfs.ALBUM if i == 0 else jfs.hid(0x500 + i), name, "MusicAlbum", jfs.V_MUSIC, artist, AlbumArtist=artist, Artists=[artist], ProductionYear=2019 + i)
+    for iid in (jfs.S1, jfs.S2, jfs.ARTIST):
+        ART[iid] = ART[jfs.ALBUM]
+    for i, name in enumerate(BOOKS):
+        add(jfs.BOOK if i == 0 else jfs.hid(0x600 + i), name, "Book", jfs.V_BOOKS, "", ProductionYear=2018 + i, Overview="A lighthouse, a ledger.", _file="book.epub")
+    for v in jfs.VIEWS:
+        ART[v["Id"]] = ART[jfs.FILM]
+    # picked up where each was left: Continue watching
+    for iid, at in ((jfs.hid(0x303), 0.35), (jfs.hid(0x305), 0.72)):
+        jfs.STATE[iid] = {"PlaybackPositionTicks": int(items[iid]["RunTimeTicks"] * at)}
+    # the stand-in serves one poster for everything: serve each item's own
+    handler = jfs.StandIn
+    original = handler.do_GET
+
+    def do_get(self):
+        m = __import__("re").fullmatch(r"/Items/(\w+)/Images/(\w+)(?:/\d+)?", urlparse(self.path).path)
+        if m and f'Token="{jfs.KEY}"' in (self.headers.get("Authorization") or ""):
+            it = items.get(m[1]) or next((v for v in jfs.VIEWS if v["Id"] == m[1]), None)
+            if it and m[1] in ART:
+                a = ART[m[1]]
+                kind = "wide" if "Backdrop" in m[2] or it.get("Type") == "Episode" or it.get("Type") == "CollectionFolder" else "square" if it["Type"] in ("MusicAlbum", "Audio", "MusicArtist") else "poster"
+                return self.file(a[kind], "image/png")
+        return original(self)
+
+    handler.do_GET = handler.do_HEAD = do_get
+
+
+# ---------------------------------------------------------------- Steam and the retro games
+
+SAMPLE = [(1001, "Lantern Run", 4300, 310), (1002, "Orbital Ferry", 2600, 0), (1003, "Salt Flats Racing", 1900, 120), (1004, "Kettle & Crow", 1500, 0),
+          (1005, "Tiny Harbour", 980, 45), (1006, "Moss Kingdom", 760, 0), (1007, "Paper Pilots", 540, 0), (1008, "Deep Library", 410, 0),
+          (1009, "Night Courier", 320, 0), (1010, "Hollow Pines", 210, 0), (1011, "Clockwork Orchard", 150, 0), (1012, "Slow Orbit", 90, 0)]
+STEAM_ID, KEY = "76561197960287930", "0123456789ABCDEF0123456789ABCDEF"  # pragma: allowlist secret (made up)
+
+
+class Steam(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        u, q = urlparse(self.path), {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+        if u.path.startswith("/img/"):
+            appid = int(u.path.split("/")[2])
+            buf = io.BytesIO()
+            art(dict((a, n) for a, n, *_ in SAMPLE)[appid], 460, 215, appid, pad=0.06).save(buf, "JPEG", quality=85)
+            body, kind, status = buf.getvalue(), "image/jpeg", 200
+        else:
+            kind, status = "application/json", 200 if q.get("key") == KEY else 403
+            body = json.dumps({"response": {
+                "/ISteamUser/GetPlayerSummaries/v2/": {"players": [{"personaname": "Maya", "communityvisibilitystate": 3}]},
+                "/IPlayerService/GetOwnedGames/v1/": {"game_count": len(SAMPLE), "games": [{"appid": a, "name": n, "playtime_forever": m} for a, n, m, _ in SAMPLE]},
+                "/IPlayerService/GetRecentlyPlayedGames/v1/": {"games": [{"appid": a, "name": n, "playtime_2weeks": r, "playtime_forever": m} for a, n, m, r in SAMPLE if r]},
+            }.get(u.path, {})}).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+RETRO = {"nes": [("Pixel Garden", "nes"), ("Block Drop", "nes"), ("Mole Patrol", "nes")], "gba": [("Tiny Quest", "gba"), ("Cave Runner", "gba"), ("Star Kitchen", "gba")],
+         "snes": [("Moon Courier", "sfc"), ("Rail Baron", "sfc")]}
+
+
+def stock_games():
+    for system, titles in RETRO.items():
+        folder = env.TMP / "games" / "roms" / system
+        folder.mkdir(parents=True, exist_ok=True)
+        for i, (title, ext) in enumerate(titles):
+            (folder / f"{title}.{ext}").write_bytes(b"\0" * 192)
+            art(title, 300, 300, i + len(system) * 3, system.upper()).save(folder / f"{title}.png", optimize=True)
+    games.GAMES = env.TMP / "games"
+    steam = ThreadingHTTPServer(("127.0.0.1", 0), Steam)
+    threading.Thread(target=steam.serve_forever, daemon=True).start()
+    games.STEAM_API = f"http://127.0.0.1:{steam.server_port}"
+    games.STEAM_ART = f"http://127.0.0.1:{steam.server_port}/img/{{appid}}/{{kind}}.jpg"
+    games.STREAM = "http://moonlight-web:8080"  # only so the page says the bridge is on; nothing is fetched from it
+    core.set_setting("games_stream_admin", "1")
+    return steam
+
+
+# ---------------------------------------------------------------- shooting
+
+def save_png(data: bytes, dest: Path):
+    """the PNG, as small as it goes: lossless first, then fewer colours only if it still won't fit the budget"""
+    im = Image.open(io.BytesIO(data)).convert("RGB")
+    buf = io.BytesIO()
+    im.save(buf, "PNG", optimize=True)
+    if len(buf.getvalue()) > KB_BUDGET * 1024:
+        buf = io.BytesIO()
+        im.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG).save(buf, "PNG", optimize=True)
+    dest.write_bytes(buf.getvalue())
+    return len(buf.getvalue())
+
+
+def main():
+    core.db()
+    auth.create_user("maya", PASSWORD, True)
+    jfs.point(core)
+    stock_library()
+    steam = stock_games()
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(env.yeerr.app, host="127.0.0.1", port=port, log_level="warning"))
+    threading.Thread(target=server.run, daemon=True).start()
+    while not server.started:
+        time.sleep(0.1)
+    base = f"http://127.0.0.1:{port}"
+    shell = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))), None)
+    errors, written = [], []
+
+    def signed_in(b, view):
+        ctx = b.new_context(color_scheme="dark", **VIEWS[view])
+        p = ctx.new_page()
+        p.on("pageerror", lambda e: errors.append(f"{view}: {e}"))
+        p.goto(base + "/")
+        p.wait_for_selector("#gateForm")
+        p.fill("#gName", "maya")
+        p.fill("#gPw", PASSWORD)
+        p.click("#gateForm .primary")
+        p.wait_for_selector("#gateForm", state="detached", timeout=30000)
+        return p
+
+    def shoot(p, name, view, route, wait, after=None, tall=None):
+        """a page, dark then light; `tall` gives a desktop page more height so its shelves show"""
+        if view == "desktop":
+            p.set_viewport_size({"width": 1280, "height": tall or 800})
+        p.goto(base + "/" + route)
+        p.wait_for_selector(wait, timeout=30000)
+        for scheme in ("dark", "light"):
+            p.emulate_media(color_scheme=scheme)
+            p.wait_for_function("[...document.images].every((i) => i.complete)", timeout=30000)
+            p.wait_for_timeout(900)
+            if after:
+                after(p)
+            p.mouse.move(0, 0)
+            dest = OUT / f"{name}-{view}-{scheme}.png"
+            size = save_png(p.screenshot(), dest)
+            written.append((dest.name, size))
+            print(f"  {dest.name}  {size // 1024} KB")
+
+    try:
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(executable_path=str(shell) if shell else None, args=["--autoplay-policy=no-user-gesture-required"])
+            desk, phone = signed_in(b, "desktop"), signed_in(b, "phone")
+            # Steam: an admin's key, then this person's profile
+            desk.goto(base + "/#/games")
+            desk.wait_for_selector("#steamKey", timeout=20000)
+            desk.fill("#steamKeyIn", KEY)
+            desk.click("#steamKey .primary")
+            desk.wait_for_selector("#steamLink", timeout=10000)
+            desk.wait_for_timeout(800)  # let the page finish painting before typing into it
+            desk.fill("#steamProfile", f"https://steamcommunity.com/profiles/{STEAM_ID}")
+            with desk.expect_response(lambda r: r.url.endswith("/api/games/steam") and r.request.method == "PUT") as put:
+                desk.click("#steamLink .primary")
+            print("link:", put.value.status, put.value.text()[:200])
+            try:
+                desk.wait_for_selector("#g-steam .gshelf .gcard", timeout=15000)
+            except Exception:
+                print("STEAM SECTION:", desk.evaluate("fetch('/api/games/steam').then(r => r.text())")[:600], desk.inner_text("body")[-300:])
+                raise
+            # a TV: /tv shows a code, the phone types it
+            tv = b.new_context(viewport={"width": 1280, "height": 720}, color_scheme="dark").new_page()
+            tv.on("pageerror", lambda e: errors.append(f"tv: {e}"))
+            tv.goto(base + "/tv")
+            tv.wait_for_selector("#tvCode", timeout=30000)
+            code = tv.inner_text("#tvCode").replace("\n", "").replace(" ", "")
+            phone.goto(base + "/#/tvs")
+            phone.wait_for_selector("#tvAdd", timeout=30000)
+            phone.fill("#tvAddCode", code.lower())
+            phone.fill("#tvAddName", "Living room")
+            phone.click("#tvAdd .primary")
+            tv.wait_for_function("document.body.classList.contains('tv') && tvMe && tvMe.name === 'Living room'", timeout=30000)
+            tv.evaluate("location.hash = '#/jf'")
+            tv.wait_for_selector(".jcard", timeout=30000)
+            tv.wait_for_function("[...document.images].every((i) => i.complete)", timeout=30000)
+            tv.wait_for_timeout(1200)
+            for scheme in ("dark", "light"):
+                tv.emulate_media(color_scheme=scheme)
+                tv.wait_for_timeout(500)
+                dest = OUT / f"tv-screen-desktop-{scheme}.png"
+                written.append((dest.name, save_png(tv.screenshot(), dest)))
+                print(f"  {dest.name}  {written[-1][1] // 1024} KB")
+            for view, p in (("desktop", desk), ("phone", phone)):
+                shoot(p, "library", view, "#/jf", ".jcard", tall=1240)
+                shoot(p, "film", view, f"#/jf/item/{jfs.FILM}", ".hero .primary")
+                shoot(p, "games", view, "#/games", "#g-retro .gcard.retro", tall=1300)
+            # the remote, with a film playing on the TV
+            phone.goto(base + f"/#/jf/item/{jfs.FILM}")
+            phone.wait_for_selector("[data-cast-jf]", timeout=30000)
+            phone.click("[data-cast-jf]")
+            tv.wait_for_function("document.querySelector('#jfVideo') && !document.querySelector('#jfVideo').paused", timeout=30000)
+            tid = phone.evaluate("fetch('/api/tv').then(r => r.json()).then(r => r.tvs[0].id)")
+            shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
+                "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
+                q.wait_for_timeout(600)))  # the toast fades out in 0.18 s: don't shoot it half gone
+            b.close()
+    finally:
+        server.should_exit = True
+        steam.shutdown()
+        jfs.JF.shutdown()
+    print("page errors:", errors or "none")
+    big = [w for w in written if w[1] > KB_BUDGET * 1024]
+    print(f"{len(written)} screenshots in {OUT}; over budget: {big or 'none'}")
+    ok = len(written) == 16 and not big and not errors
+    print("RESULT:", "ok" if ok else "FAIL")
+    return 0 if ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
