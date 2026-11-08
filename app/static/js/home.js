@@ -285,6 +285,10 @@ async function adminPanels(t) {
         <label class="check"><input type="checkbox" id="openSignup"${s.open_signup ? " checked" : ""}><span>Anyone who can reach this page can create an account</span></label>
         <div class="actions"><button class="primary small">Save</button></div></form>
     </section>
+    <section class="panel"><h3>Music requests</h3>
+      <p>When Lidarr finds nothing for a requested album in 6 hours, or its download fails or stalls, Parlor gets it from YouTube instead and has Lidarr import it.</p>
+      <label class="check"><input type="checkbox" id="fallbackWanted"${s.music_fallback_wanted ? " checked" : ""}><span>Do that for Lidarr's own wanted list too (albums added in Lidarr, or by watching an artist), a few at a time</span></label>
+    </section>
     <section class="panel"><h3>People</h3>
       <p>Each account has its own subscriptions, history, watch later and requests. Requests go to Seerr as the linked Seerr user, with their limits and approvals. Jellyfin sign-ins link to the same Jellyfin account in Seerr by themselves; link everyone else here.</p>
       <table class="table"><thead><tr><th>Account</th><th>Seerr user</th><th></th></tr></thead><tbody>${users.map(userRow).join("")}</tbody></table>
@@ -319,6 +323,9 @@ async function adminPanels(t) {
   $("#signinForm").addEventListener("submit", (e) => {
     e.preventDefault();
     put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
+  });
+  $("#fallbackWanted")?.addEventListener("change", (e) => {
+    put("/api/settings", { music_fallback_wanted: e.target.checked }).then(() => toast("Saved"), (err) => { e.target.checked = !e.target.checked; toast(err.message); });
   });
   drawServices(t);
   drawVpn(t);

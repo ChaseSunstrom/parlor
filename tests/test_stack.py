@@ -121,6 +121,14 @@ class FakeStack:
                 self.clients[app].append(body)
                 return Resp(201, body)
             return Resp(200, self.clients[app])
+        if path == "/notification/schema":
+            return Resp(200, [{"implementation": "Webhook", "fields": [{"name": "url", "value": ""}, {"name": "method", "value": 1}]}])
+        if path == "/notification":
+            hooks = self.__dict__.setdefault("hooks", {}).setdefault(app, [])
+            if method == "POST":
+                hooks.append(body)
+                return Resp(201, body)
+            return Resp(200, hooks)
         if app == "prowlarr":
             return self.prowlarr(method, path, body)
         return Resp(404, text="no such route")

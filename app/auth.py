@@ -317,6 +317,7 @@ class Settings(BaseModel):
     jellyfin_key: Optional[str] = None
     jellyfin_user: Optional[str] = None  # who unlinked accounts play as
     open_signup: Optional[bool] = None
+    music_fallback_wanted: Optional[bool] = None  # YouTube for Lidarr's own wanted list too, not only for requests
 
 
 def _jf_user(value: str) -> str:
@@ -344,6 +345,7 @@ def get_settings(_=Depends(admin)):
         "jellyfin_key_set": bool(setting("jellyfin_key")),  # the key itself is never sent back
         "jellyfin_user": setting("jellyfin_user"),
         "open_signup": setting("open_signup") in ("1", "true", "yes"),
+        "music_fallback_wanted": setting("music_fallback_wanted") == "1",
     }
 
 
@@ -364,4 +366,6 @@ def put_settings(body: Settings, _=Depends(admin)):
         set_setting("jellyfin_user", _jf_user(body.jellyfin_user))
     if body.open_signup is not None:
         set_setting("open_signup", "1" if body.open_signup else "0")
+    if body.music_fallback_wanted is not None:
+        set_setting("music_fallback_wanted", "1" if body.music_fallback_wanted else "0")
     return get_settings(_)

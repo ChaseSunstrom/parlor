@@ -172,6 +172,19 @@ def arr_client(app):
     return "done", f"qBittorrent, category {category}"
 
 
+def lidarr_webhook():
+    """Lidarr tells Parlor when it grabs, imports or fails an album, so music requests move at once (the
+    ten-minute check stays, so a missed call loses nothing)."""
+    import musicreq  # late: it imports music-fndr
+    if any(n.get("implementation") == "Webhook" and n.get("name") == "Parlor" for n in arr.call("lidarr", "GET", "/notification")):
+        return "ok", "Parlor hears about grabs, imports and failures"
+    schema = next(s for s in arr.call("lidarr", "GET", "/notification/schema") if s["implementation"] == "Webhook")
+    arr.fill(schema, url=f"http://parlor:8800/hooks/lidarr/{musicreq.hook_token()}", method=1)  # 1: POST
+    schema.update(name="Parlor", onGrab=True, onReleaseImport=True, onUpgrade=True, onDownloadFailure=True, onImportFailure=True)
+    arr.call("lidarr", "POST", "/notification?forceSave=true", json=schema)
+    return "done", "Parlor hears about grabs, imports and failures at once"
+
+
 def prowlarr_apps():
     have = {a.get("implementation") for a in arr.call("prowlarr", "GET", "/applications")}
     schemas, added = None, []
@@ -819,6 +832,7 @@ def steps(name, password):
     for app in ("sonarr", "radarr", "lidarr"):
         yield app, "root folder", lambda app=app: arr_root(app)
         yield app, "download client", lambda app=app: arr_client(app)
+    yield "lidarr", "music requests", lidarr_webhook
     yield "qbittorrent", "folders", qbit_folders
     yield "prowlarr", "apps", prowlarr_apps
     yield "prowlarr", "flaresolverr", prowlarr_proxy

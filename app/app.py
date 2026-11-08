@@ -19,6 +19,7 @@ import core
 import jf
 import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
+import musicreq
 import private
 import security
 import seerr
@@ -74,6 +75,8 @@ app.include_router(yt.router)
 app.include_router(seerr.router)
 app.include_router(stack.router)
 app.include_router(activity.router)
+app.include_router(musicreq.router)
+app.include_router(musicreq.hooks)  # Lidarr's webhook: /hooks/lidarr/<secret>
 app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
 app.include_router(qbit.router)
@@ -102,6 +105,7 @@ def start():
     music.start_worker()  # a mounted app's own startup hook doesn't run
     yt.start()
     library.start()  # keeps the music index (for /rest) current
+    musicreq.start()  # follows music requests through Lidarr, YouTube as the fallback
     if stack.on():
         stack.read_keys_from_disk()
         stack.start(retries=10)  # what needs no password; the apps may still be starting

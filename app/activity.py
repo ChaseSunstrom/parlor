@@ -256,8 +256,11 @@ def request_music(kind, mbid):
 
 
 @router.post("/music/request")
-def music_request(body: MusicRequest, _=Depends(me)):
+def music_request(body: MusicRequest, user=Depends(me)):
+    import musicreq  # late: it imports music-fndr
     try:
-        return request_music(body.type, body.id)
+        got = request_music(body.type, body.id)
     except arr.ArrError as exc:
         raise HTTPException(502, str(exc)) from exc
+    musicreq.add(user["id"], got)  # followed from here: Lidarr first, YouTube if Lidarr can't
+    return got

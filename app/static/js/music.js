@@ -477,10 +477,10 @@ function lidarrCard(x) {
 async function showLidarr(t, parts) {
   const q = parts.join("/");
   paint(t, `<section class="home">${aurora}<h1>Request music</h1>
-      <p>Lidarr finds albums and artists, downloads them in the best quality it can and keeps them in your music library. Ask for one album, or an artist and everything they make.</p>
+      <p>Lidarr finds albums and artists, downloads them in the best quality it can and keeps them in your music library; if it can't, Parlor gets them from YouTube. Ask for one album, or an artist and everything they make.</p>
       ${musicChips("lidarr")}
       <form id="lidarrForm" class="actions"><label class="field grow"><span class="vh">Artist or album</span><input id="lidarrQ" type="search" placeholder="Artist or album" value="${esc(q)}"></label><button class="primary">Search</button></form>
-    </section><div class="wrap" id="lidarrOut">${q ? SPIN : ""}</div>`);
+    </section><div class="wrap" id="lidarrOut">${q ? SPIN : ""}</div><div class="wrap" id="musicReqs"></div>`);
   $("#lidarrForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const v = $("#lidarrQ").value.trim();
@@ -491,7 +491,7 @@ async function showLidarr(t, parts) {
   if (!apps.includes("lidarr")) {
     return out(`<div class="note"><strong>Lidarr isn't connected</strong>Music requests go to Lidarr. In the full stack Parlor sets it up for you; for a Lidarr elsewhere, set LIDARR_URL and LIDARR_API_KEY.</div>`);
   }
-  if (!q) return $("#lidarrQ").focus();
+  if (!q) { $("#lidarrQ").focus(); return drawRequests(t); }
   let r;
   try { r = await api(`/api/arr/music/search?q=${encodeURIComponent(q)}`); } catch (err) {
     return out(`<div class="note"><strong>Lidarr didn't answer</strong>${esc(err.message)}</div>`);
@@ -509,6 +509,46 @@ document.addEventListener("click", async (e) => {
     const r = await post("/api/arr/music/request", JSON.parse(b.dataset.lreq));
     b.textContent = "Requested";
     toast(`${r.already ? "Lidarr is searching again for" : "Lidarr is looking for"} ${r.title}. It shows in Downloads once it's found.`);
+  } catch (err) { b.disabled = false; toast(err.message); }
+});
+
+/* ---------- your requests: followed through Lidarr, and fetched from YouTube when Lidarr can't ---------- */
+
+const REQ_PILL = { searching: "pending", downloading: "processing", importing: "processing", fetching: "processing", expanding: "pending",
+  needs_look: "requested", imported: "available", failed: "failed" };
+const ACTIVE = new Set(["searching", "downloading", "importing", "fetching", "expanding"]);
+function requestRow(x) {
+  const acts = [
+    x.state === "failed" ? `<button class="ghost small" data-mreq="retry" data-id="${x.id}">Retry</button>` : "",
+    ["searching", "downloading"].includes(x.state) ? `<button class="ghost small" data-mreq="youtube" data-id="${x.id}" title="Don't wait for Lidarr">Get it from YouTube</button>` : "",
+  ].join("");
+  const picks = x.state === "needs_look" && x.candidates.length ? `<div class="mpicks">${x.candidates.map((c) => `<button class="mpick" data-mreq="choose" data-id="${x.id}" data-spotify="${esc(c.id)}">
+      ${img(c.image)}<span><b>${esc(c.name)}</b><small>${esc([c.artist, c.year, c.tracks ? plural(c.tracks, "song") : ""].filter(Boolean).join(" · "))}</small></span></button>`).join("")}</div>` : "";
+  return `<li class="mreq ${esc(x.state)}">${img(x.image)}
+    <div><span class="t">${esc(x.title || "An album")}</span><span class="s">${esc(x.by || "")}${x.mine === false ? " · from Lidarr's wanted list" : ""}</span>
+      <div class="s">${pill(REQ_PILL[x.state] || "pending", x.label)}${x.via === "youtube" ? `<span class="via">via YouTube</span>` : ""}</div>
+      ${x.why ? `<p class="why">${esc(x.why)}</p>` : ""}${picks}</div>
+    <div class="acts">${acts}</div></li>`;
+}
+async function drawRequests(t) {
+  const box = $("#musicReqs");
+  const r = await api("/api/arr/music/requests").catch(() => null);
+  if (!box || t !== ticket || !r) return;
+  const open = r.items.filter((x) => x.state !== "imported"), done = r.items.filter((x) => x.state === "imported").slice(0, 12);
+  box.innerHTML = r.items.length ? shelf("Your requests", `<ul class="reqs mreqs">${open.map(requestRow).join("")}</ul>`) +
+      (done.length ? shelf("Arrived lately", `<ul class="reqs mreqs">${done.map(requestRow).join("")}</ul>`) : "")
+    : `<div class="empty-state"><strong>Nothing requested yet</strong>Search above. Lidarr looks first; if it finds nothing or stalls, Parlor gets it from YouTube instead, so a request never just sits there.</div>`;
+  if (open.some((x) => ACTIVE.has(x.state))) setTimeout(() => t === ticket && drawRequests(t), 15000);
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-mreq]");
+  if (!b) return;
+  b.disabled = true;
+  const what = b.dataset.mreq;
+  try {
+    await post(`/api/arr/music/requests/${b.dataset.id}/${what}`, what === "choose" ? { spotify: b.dataset.spotify } : undefined);
+    toast({ retry: "Trying again", youtube: "Getting it from YouTube", choose: "Getting that one from YouTube" }[what]);
+    drawRequests(ticket);
   } catch (err) { b.disabled = false; toast(err.message); }
 });
 page("lidarr", showLidarr, "music");

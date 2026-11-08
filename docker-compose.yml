@@ -50,6 +50,7 @@ services:
       - ${BOOKS:-${DATA:-/data}}:/data${BOOKS:+/books}
       - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
       - ${YOUTUBE:-${DATA:-/data}}:/data${YOUTUBE:+/youtube}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}   # music Parlor gets from YouTube waits here for Lidarr
       # the apps' config folders, read-only: Parlor reads their API keys from them
       - ./sonarr/config:/stack/sonarr:ro
       - ./radarr/config:/stack/radarr:ro

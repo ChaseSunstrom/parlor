@@ -14,6 +14,7 @@ from core import admin, db, one
 
 SECTIONS = {"watch": "Watch", "media": "Movies & TV", "music": "Music", "library": "Library", "downloads": "Downloads"}
 EVERYONE, ADMIN = ("everyone",), ("admin",)  # no section: any signed-in person; or admins only (core.admin decides)
+SECRET = ("secret",)  # no session at all: another app calls it, and the address carries a secret the route checks
 # path prefix -> sections it needs (all of them), first match wins: the specific ones first
 RULES = [
     ("/api/yt/downloads", ("watch", "downloads")), ("/api/yt/library", ("watch", "downloads")), ("/api/yt/file/", ("watch", "downloads")),
@@ -32,6 +33,7 @@ RULES = [
     ("/api/access/", ADMIN), ("/api/vault/key", ADMIN), ("/api/vault/passphrase", ADMIN),
     ("/api/health", EVERYONE), ("/api/auth/", EVERYONE), ("/api/vault/", EVERYONE), ("/api/me/app-passwords", EVERYONE),
     ("/api/me/password", EVERYONE), ("/api/me", EVERYONE),
+    ("/hooks/lidarr/", SECRET),  # Lidarr's webhook (musicreq.lidarr_hook)
 ]
 ADMIN_ITSELF = ("/qbit", "/api/vault/key", "/api/vault/passphrase")  # check core.admin inside, not as a Depends
 
@@ -56,7 +58,7 @@ def blocked(user_id: int) -> set:
 def allowed(user: dict, path: str) -> Optional[str]:
     """None when this person may use this path, else the name of the section they lack."""
     need = rule(path)
-    if need in (None, EVERYONE, ADMIN) or user.get("admin"):  # admin pages decide for themselves
+    if need in (None, EVERYONE, ADMIN, SECRET) or user.get("admin"):  # admin pages decide for themselves
         return None
     lacking = [s for s in need if s in blocked(user["id"])]
     return SECTIONS[lacking[0]] if lacking else None

@@ -121,6 +121,15 @@ CREATE TABLE IF NOT EXISTS app_passwords (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL, secret TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created REAL NOT NULL, used REAL
 );
+-- music requests followed through Lidarr, with YouTube as the fallback (musicreq.py)
+CREATE TABLE IF NOT EXISTS music_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  album INTEGER UNIQUE, artist INTEGER, title TEXT NOT NULL DEFAULT '', artist_name TEXT NOT NULL DEFAULT '', image TEXT,
+  state TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', via TEXT NOT NULL DEFAULT 'lidarr',
+  created REAL NOT NULL, updated REAL NOT NULL, searched REAL, next_at REAL NOT NULL DEFAULT 0,
+  tries INTEGER NOT NULL DEFAULT 0, yt_tries INTEGER NOT NULL DEFAULT 0,  -- errors in a row talking to Lidarr; YouTube downloads that failed
+  left_bytes INTEGER, moved REAL, job TEXT, command INTEGER, candidates TEXT, spotify TEXT
+);
 -- private items (private.py): each person's key pair, the private half sealed by their password and by a recovery code
 CREATE TABLE IF NOT EXISTS person_keys (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

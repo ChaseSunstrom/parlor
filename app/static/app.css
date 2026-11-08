@@ -842,3 +842,18 @@ body:not(.dock-playing) .dock .eq i { animation-play-state: paused; height: 4px;
   body.docked main { padding-bottom: 190px !important; }
   body.docked .toast { bottom: 150px !important; }
 }
+
+/* ---------- music requests ---------- */
+.mreqs li { grid-template-columns: 64px minmax(0, 1fr) auto; }
+.mreqs img, .mreqs .blank { aspect-ratio: 1; }
+.mreqs .s { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--dim); font-size: .9rem; }
+.mreqs .via { font-size: .8rem; color: var(--dim); }
+.mreqs .why { margin: 6px 0 0; color: var(--dim); font-size: .88rem; max-width: 70ch; }
+.mreq.searching .pill .dot, .mreq.downloading .pill .dot, .mreq.importing .pill .dot, .mreq.fetching .pill .dot, .mreq.expanding .pill .dot { animation: pulse 1.6s ease-in-out infinite; }
+.mpicks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.mpick { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); text-align: left; }
+.mpick:hover { border-color: var(--accent); }
+.mpick img, .mpick .blank { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
+.mpick b { display: block; font-weight: 650; } .mpick small { color: var(--dim); }
+@media (max-width: 600px) { .mreqs li { grid-template-columns: 48px minmax(0, 1fr); } .mreqs .acts { grid-column: 2; } .mreqs img, .mreqs .blank { width: 48px; } }
+.mreqs .acts .ghost { height: 34px; padding: 0 14px; font-size: .9rem; }
