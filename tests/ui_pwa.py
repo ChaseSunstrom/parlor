@@ -5,7 +5,9 @@ the spare player and starts with no gap worth hearing; the lock screen knows wha
 queue is back, paused where it was. Saved for offline: a Jellyfin album (from a Jellyfin stand-in), a song from
 the music folder and a downloaded video, saved in small pieces, one of which breaks off and carries on from where
 it stopped, byte for byte. With the network off Parlor opens on its Offline page; the saved songs play in the dock
-and the video plays, seeking included; removing one frees its space. Back online the bar goes. On plain http
+and the video plays, seeking included; a Jellyfin film and episode save from their Library pages (a film with its
+subtitle file; what can't be saved says why) and, offline, the film plays from the device with seeking and its
+subtitles, its place reaching Jellyfin once back online; removing one frees its space. Back online the bar goes. On plain http
 Settings says how to get https. No page errors; screenshots at desktop and phone width:
    python tests/ui_pwa.py [OUT_DIR]   (needs Playwright, its Chromium and ffmpeg)"""
 import hashlib
@@ -73,6 +75,8 @@ OPFS = """async () => { let n = 0; for await (const [, h] of (await offDir()).en
 SHA = """async (title) => { const e = offMine().find((x) => x.title === title);
   const f = await (await (await offDir()).getFileHandle(e.file)).getFile();
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", await f.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join(""); }"""
+SUB = """async () => { const e = offMine().find((x) => x.title === 'Night Train');
+  return (await (await (await offDir()).getFileHandle(e.subs[0].file)).getFile()).text(); }"""
 AFTER = ["Dawn", "Lantern", "Gale", "Pier", "Undertow", "Lantern"]  # the queue once it has been reordered and Tidewater taken out
 
 
@@ -229,6 +233,24 @@ with sync_playwright() as pw:
     checks["a Jellyfin album, a song from the music folder and a downloaded video are saved"] = sorted(page.evaluate("offMine().map((e) => e.title)")) == [
         "An offline one", "First Light", "Pier", "Second Wind"]
 
+    # a film and an episode, saved from their Library pages: the film's text subtitles saved beside it (the picture-based
+    # ones said not to be); an episode Jellyfin would have to convert says so and isn't saved
+    jfs.NODIRECT.add(jfs.EP2)
+    for item, word in ((jfs.FILM, "picture-based"), (jfs.EP1, "Saving"), (jfs.EP2, "convert")):  # what the toast says each time
+        page.goto(BASE + f"/#/jf/item/{item}")
+        page.wait_for_selector("[data-jf-save]", timeout=30000)
+        page.click("[data-jf-save]")
+        page.wait_for_function(f"toastEl.textContent.includes({word!r})", timeout=10000)
+    jfs.NODIRECT.discard(jfs.EP2)
+    page.wait_for_function("Object.values(offList()).every((e) => e.done || e.error)", timeout=60000)
+    film = page.evaluate("offMine().find((e) => e.title === 'Night Train')")
+    sub = page.evaluate(SUB)
+    checks["a film and an episode save from their Library pages, text subtitles beside the film, what can't be said so"] = (
+        sorted(e["title"] for e in page.evaluate("offMine().filter((e) => e.jf && e.kind === 'video')")) == ["Harbour Lights · S1:E1", "Night Train"]
+        and page.evaluate(SHA, "Night Train") == hashlib.sha256((jfs.MEDIA / "film.mp4").read_bytes()).hexdigest()
+        and page.evaluate(SHA, "Harbour Lights · S1:E1") == hashlib.sha256((jfs.MEDIA / "ep1.mp4").read_bytes()).hexdigest()
+        and sub == jfs.VTT and len(film["subs"]) == 1)
+
     # no network: Parlor still opens, on its Offline page, with the queue in the dock; back online the bar goes
     ctx.set_offline(True)
     page.reload()
@@ -246,7 +268,7 @@ with sync_playwright() as pw:
     checks["offline, the saved Jellyfin album plays from the device, seeking included"] = page.evaluate(NOW) == "First Light"
     page.click(".offalbum:has-text('Harbor') [data-off-play]")
     page.wait_for_function(f"{NOW} === 'Pier' && dock.audio.src.startsWith('blob:') && dock.audio.currentTime > 0.3", timeout=15000)
-    page.click(".vcard[data-off] a.t")
+    page.click(".vcard[data-off]:has-text('An offline one') a.t")
     page.wait_for_selector("#offVideo", timeout=10000)
     page.wait_for_function("document.querySelector('#offVideo').currentTime > 0.3", timeout=15000)
     page.evaluate("document.querySelector('#offVideo').currentTime = 6")
@@ -254,18 +276,40 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     page.screenshot(path=str(OUT / "offline-video-desk.png"))
     checks["offline, the music folder's song plays, and the video with seeking"] = page.evaluate("dock.audio.paused")  # the video took over
+    # the saved film (opened from the Offline page) plays in the Library player from the device: seeking, its subtitle
+    # file, and the place it got to kept until Jellyfin answers; the episode plays too, with no subtitles to offer
+    page.goto(BASE + "/#/offline")
+    page.click(".vcard[data-off]:has-text('Night Train') a.t")
+    page.wait_for_function("window.jfVideo?.src.startsWith('blob:') && jfVideo.currentTime > 0.3", timeout=15000)
+    page.evaluate("jfVideo.currentTime = 8")
+    page.wait_for_function("jfVideo.currentTime > 8.3 && !jfVideo.paused", timeout=10000)
+    page.evaluate("jfVideo.pause()")  # its place is kept at 8 s (the film is 12 s long)
+    page.select_option("#jfSubs", "0")
+    page.wait_for_function("jfVideo.textTracks[0]?.activeCues?.length === 1", timeout=10000)
+    cue = page.evaluate("jfVideo.textTracks[0].activeCues[0].text")
+    page.screenshot(path=str(OUT / "offline-film-desk.png"))
+    page.wait_for_function(f"(localStorage.getItem('parlor:jfpending') || '').includes('{jfs.FILM}')", timeout=10000)
+    kept = json.loads(page.evaluate("localStorage.getItem('parlor:jfpending')"))
+    checks["offline, the saved film plays from the device with seeking and its subtitles, and its place is kept"] = (
+        cue == "The night train never stops" and [b["position"] for b in kept.values() if b["id"] == jfs.FILM] == [8])
+    page.goto(BASE + "/#/offline")
+    page.click(".vcard[data-off]:has-text('Harbour Lights') a.t")
+    page.wait_for_function("window.jfVideo?.src.startsWith('blob:') && jfVideo.currentTime > 0.3", timeout=15000)
+    checks["offline, the saved episode plays too"] = page.evaluate("jfVideo.duration > 5 && $('#jfSubs').hidden")
     # removing one frees its space
     page.goto(BASE + "/#/offline")
     page.wait_for_selector(".vcard[data-off] [data-off-drop]", timeout=10000)
     before = page.evaluate(OPFS)
-    page.click(".vcard[data-off] [data-off-drop]")
-    page.wait_for_selector(".vcard[data-off]", state="detached", timeout=10000)
+    page.click(".vcard[data-off]:has-text('An offline one') [data-off-drop]")
+    page.wait_for_selector(".vcard[data-off]:has-text('An offline one')", state="detached", timeout=10000)
     after = page.evaluate(OPFS)
     print(f"saved on the device: {before} bytes, {after} after removing the video ({(core.VIDEOS / rel).stat().st_size} bytes)")
-    checks["removing one frees its space"] = before - after == (core.VIDEOS / rel).stat().st_size and len(page.evaluate("offMine()")) == 3
+    checks["removing one frees its space"] = before - after == (core.VIDEOS / rel).stat().st_size and len(page.evaluate("offMine()")) == 5
     ctx.set_offline(False)
     page.wait_for_selector(".offbar", state="hidden", timeout=30000)  # checked every 10 s
     page.wait_for_function("ME && ME.name === 'listener' && document.body.dataset.offlineStart === undefined", timeout=30000)
+    page.wait_for_function("!localStorage.getItem('parlor:jfpending') || localStorage.getItem('parlor:jfpending') === '{}'", timeout=10000)
+    checks["back online the film's place reaches Jellyfin"] = (jfs.FILM, {"PlaybackPositionTicks": 8 * jfs.T}) in jfs.SAVES
     page.goto(BASE + "/#/settings")
     page.wait_for_selector("#deviceText", timeout=30000)
     checks["back online the bar goes and Parlor carries on"] = "Install" in page.inner_text("#deviceText") or "browser" in page.inner_text("#deviceText")
@@ -320,6 +364,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == 18 and all(checks.values()) and not errors and len(shots) == 6
+ok = len(checks) == 22 and all(checks.values()) and not errors and len(shots) == 7
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

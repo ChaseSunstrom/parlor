@@ -93,6 +93,8 @@ STATE: dict = {}  # item id -> UserData
 SAVES: list = []
 RANGES: list = []  # (file name, Range header) of every file asked for
 BREAK: set = set()  # file names whose next request for a later piece fails once (a dropped connection)
+NODIRECT: set = set()  # item ids Jellyfin would have to convert (no direct play)
+VTT = "WEBVTT\n\n00:00:00.000 --> 00:00:11.000\nThe night train never stops\n"  # the film's external subtitle file
 
 
 def public(i):
@@ -178,6 +180,8 @@ class StandIn(BaseHTTPRequestHandler):
                 return self.file(MEDIA / i["_file"], "application/epub+zip")
             kind = "wide.png" if "Backdrop" in m[2] or i["Type"] == "Episode" else "square.png" if i["Type"] in ("MusicAlbum", "Audio", "MusicArtist") else "poster.png"
             return self.file(MEDIA / kind, "image/png")
+        if re.fullmatch(rf"/Videos/\w+/{MS}/Subtitles/\d+/Stream\.vtt", p):
+            return self.send(200, body=VTT.encode(), ctype="text/vtt")
         m = re.fullmatch(r"/(Videos|Audio)/(\w+)/stream(?:\.\w+)?", p)
         if m and m[2] in ITEMS:
             return self.file(MEDIA / ITEMS[m[2]]["_file"], "video/mp4" if m[1] == "Videos" else "audio/mpeg")
@@ -196,8 +200,14 @@ class StandIn(BaseHTTPRequestHandler):
             audio = i["Type"] == "Audio"
             streams = [] if audio else [{"Index": 0, "Type": "Video", "Codec": "h264"}, {"Index": 1, "Type": "Audio", "Codec": "aac", "Language": "eng",
                                                                                          "DisplayTitle": "English AAC", "IsDefault": True}]
-            return self.send(200, {"PlaySessionId": "ps", "MediaSources": [{"Id": MS, "Container": "mp3" if audio else "mp4", "SupportsDirectPlay": True,
-                                                                             "RunTimeTicks": i["RunTimeTicks"], "MediaStreams": streams}]})
+            if m[1] == FILM:  # one text subtitle Jellyfin serves as a file, one picture-based one it can't
+                streams += [{"Index": 2, "Type": "Subtitle", "Codec": "webvtt", "Language": "eng", "DisplayTitle": "English", "DeliveryMethod": "External",
+                             "DeliveryUrl": f"/Videos/{FILM}/{MS}/Subtitles/2/Stream.vtt"},
+                            {"Index": 3, "Type": "Subtitle", "Codec": "pgssub", "Language": "fre", "DisplayTitle": "French (PGS)", "DeliveryMethod": "Embed"}]
+            src = {"Id": MS, "Container": "mp3" if audio else "mp4", "SupportsDirectPlay": m[1] not in NODIRECT, "RunTimeTicks": i["RunTimeTicks"], "MediaStreams": streams}
+            if m[1] in NODIRECT:
+                src["TranscodingUrl"] = f"/videos/{m[1]}/master.m3u8?MediaSourceId={MS}&PlaySessionId=ps"
+            return self.send(200, {"PlaySessionId": "ps", "MediaSources": [src]})
         m = re.fullmatch(r"/UserItems/(\w+)/UserData", p)
         if m and m[1] in ITEMS:
             STATE.setdefault(m[1], {}).update(body)

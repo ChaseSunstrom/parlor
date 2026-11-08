@@ -1,4 +1,4 @@
-/* Saved for offline: songs, albums and downloaded videos kept on this device, in the browser's private storage
+/* Saved for offline: songs, albums, downloaded videos and Jellyfin films and episodes kept on this device, in the browser's private storage
    for this site (OPFS), so they play with no network, from the Offline page and in the dock (which plays a saved
    copy even online). offline-worker.js does the saving, in pieces it can carry on from; the list of what's saved
    is in this device's localStorage, per person. Playing needs no server and no sign-in token: a saved file plays
@@ -8,12 +8,14 @@ const offWorks = SECURE && !!navigator.storage?.getDirectory && typeof Worker ==
 const offBlobs = new Map(), offSent = new Set();
 let offWorker = null, offChunk = 8 << 20; // the piece size: the browser test makes it small, to break a download part way
 
-/** everything saved on this device: { file: entry }; an entry is { file, who (server and person), key, kind: "song" | "video" | "image",
-    title, by, album, image (another entry's file), runtime, url, have, size, type, done, error, added } */
+/** everything saved on this device: { file: entry }; an entry is { file, who (server and person), key, kind: "song" | "video" | "image" | "sub",
+    title, by, album, image (another entry's file), runtime, url, have, size, type, done, error, added }; a Jellyfin film or episode
+    also has jf, film (what the player needs to draw its page with no server) and subs ([{ file (a "sub" entry), title, language, default }]) */
 function offList() { try { return JSON.parse(localStorage.getItem("parlor:offline")) || {}; } catch { return {}; } }
 function offKeep(all) { try { localStorage.setItem("parlor:offline", JSON.stringify(all)); } catch { /* storage full */ } }
 const offWho = () => `${SERVER || location.origin} ${ME?.id}`; // whose: the same id on another Parlor is someone else
-const offMine = () => Object.values(offList()).filter((e) => e.who === offWho() && e.kind !== "image");
+const offSmall = (e) => e.kind === "image" || e.kind === "sub"; // covers and subtitle files: kept beside what they belong to, never listed
+const offMine = () => Object.values(offList()).filter((e) => e.who === offWho() && !offSmall(e));
 const offKey = (x) => (x.jf ? `jf:${x.jf}` : x.yt ? `yt:${x.yt}` : x.src);
 const offDir = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("offline", { create: true });
 
@@ -27,18 +29,28 @@ async function offName(key) {
 async function offSave(items, kind = "song") {
   if (!offWorks) return toast(SECURE ? "This browser can't save for offline" : "Saving for offline needs Parlor's https address: see Settings → This device");
   navigator.storage.persist?.().catch(() => {}); // ask the browser not to clear it when space runs low
-  const all = offList(), fresh = [];
+  const all = offList(), fresh = [], notes = [];
   for (const x of items) {
     const file = await offName(offKey(x));
     if (all[file] && !all[file].error) continue; // saved, or on its way
     let url = x.src;
+    const subs = []; // a film's text subtitles Jellyfin serves as files are saved beside it
     if (x.jf) {
       try {
         const p = await post(`/api/jf/playback/${x.jf}`, { start: 0 });
         if (p.method !== "direct") throw new Error("Jellyfin would have to convert it, so it can't be saved as it is");
         url = p.url;
         x.runtime ||= p.runtime;
-      } catch (err) { toast(`“${x.title}”: ${err.message}`); continue; }
+        if (kind === "video") {
+          for (const s of p.subtitles.filter((t) => t.url)) {
+            const f = await offName(`sub:${x.jf}:${s.index}`);
+            all[f] ||= { file: f, who: offWho(), kind: "sub", url: s.url, have: 0, size: 0, done: false };
+            subs.push({ file: f, title: s.title, language: s.language, default: s.default });
+          }
+          const lost = p.subtitles.filter((t) => !t.url).map((t) => t.title || t.language).filter(Boolean);
+          if (lost.length || p.subtitles.length > subs.length) notes.push(`Subtitles that are picture-based or inside the file aren't saved${lost.length ? ` (${lost.join(", ")})` : ""}`);
+        }
+      } catch (err) { notes.push(`“${x.title}”: ${err.message}`); continue; }
     }
     let image = null;
     if (x.image && !x.image.startsWith("blob:")) {
@@ -46,12 +58,13 @@ async function offSave(items, kind = "song") {
       all[image] ||= { file: image, who: offWho(), kind: "image", url: x.image, have: 0, size: 0, done: false };
     }
     all[file] = { file, who: offWho(), key: offKey(x), kind, title: x.title || "", by: x.by || "", album: x.album || "", image, runtime: x.runtime || 0,
-      url, href: x.href || "", have: 0, size: 0, done: false, added: Date.now(), ...(x.jf ? { jf: x.jf } : {}) };
+      url, href: x.href || "", have: 0, size: 0, done: false, added: Date.now(), ...(x.jf ? { jf: x.jf } : {}), ...(x.film ? { film: x.film, subs } : {}) };
     fresh.push(all[file]);
   }
   offKeep(all);
   offRun();
-  toast(!fresh.length ? "Already saved on this device" : fresh.length === 1 ? `Saving “${fresh[0].title}” on this device` : `Saving ${plural(fresh.length, kind)} on this device`, false);
+  const said = fresh.length ? (fresh.length === 1 ? `Saving “${fresh[0].title}” on this device` : `Saving ${plural(fresh.length, kind)} on this device`) : notes.length ? "" : "Already saved on this device";
+  toast([said, ...notes].filter(Boolean).join(". "), false);
   if (location.hash.startsWith("#/offline")) route();
 }
 
@@ -59,7 +72,7 @@ async function offSave(items, kind = "song") {
 function offRun() {
   if (!offWorks || !ME) return;
   const todo = Object.values(offList()).filter((e) => e.who === offWho() && !e.done && !e.error && !offSent.has(e.file))
-    .sort((a, b) => (b.kind === "image") - (a.kind === "image"));
+    .sort((a, b) => offSmall(b) - offSmall(a));
   if (!todo.length) return;
   offWorker ||= Object.assign(new Worker("js/offline-worker.js"), { onmessage: offHeard });
   for (const e of todo) {
@@ -82,7 +95,7 @@ function offHeard({ data: m }) {
   offKeep(all);
   const row = document.querySelector(`[data-off="${e.file}"] .offstate`);
   if (row) row.outerHTML = offState(e);
-  if (m.done && e.kind !== "image" && !Object.values(all).some((x) => x.who === offWho() && !x.done && !x.error)) toast("Saved on this device");
+  if (m.done && !offSmall(e) && !Object.values(all).some((x) => x.who === offWho() && !x.done && !x.error)) toast("Saved on this device");
 }
 
 /** this person's saved copy of a dock item, if it's all here: the dock plays it instead of asking the server */
@@ -111,9 +124,9 @@ async function offRemove(files) {
     offBlobs.delete(f);
     await dir.removeEntry(f).catch(() => {});
   }
-  const used = new Set(Object.values(all).map((e) => e.image));
+  const used = new Set(Object.values(all).flatMap((e) => [e.image, ...(e.subs || []).map((s) => s.file)]));
   for (const e of Object.values(all)) {
-    if (e.kind === "image" && !used.has(e.file)) { delete all[e.file]; await dir.removeEntry(e.file).catch(() => {}); }
+    if (offSmall(e) && !used.has(e.file)) { delete all[e.file]; await dir.removeEntry(e.file).catch(() => {}); }
   }
   offKeep(all);
 }
@@ -124,6 +137,9 @@ page("offline", showOffline, "settings");
 
 const offState = (e) => `<span class="offstate${e.error ? " bad" : ""}">${e.error ? `${esc(e.error)} <button class="linkish" data-off-retry="${esc(e.file)}">Try again</button>`
   : e.done ? esc(bytes(e.size)) : `<span class="offbar-mini"><i style="width:${e.size ? Math.round((100 * e.have) / e.size) : 3}%"></i></span>Saving${e.size ? ` ${Math.round((100 * e.have) / e.size)}%` : "…"}`}</span>`;
+
+/** where a saved video plays: a Jellyfin film or episode in the Library's player, any other in a plain one */
+const offWatch = (e) => (e.film ? `#/jf/play/${esc(e.jf)}` : `#/offline/v/${esc(e.file)}`);
 
 async function showOffline(t, [sub, file] = []) {
   if (sub === "v" && file) return showOfflineVideo(t, file);
@@ -143,7 +159,7 @@ async function showOffline(t, [sub, file] = []) {
     ${kept ? "Kept until you remove it." : "The browser may clear it if the device runs low on space."}`;
   if (!mine.length) {
     return paint(t, head(note) + `<div class="wrap"><div class="empty-state"><strong>Nothing saved on this device yet</strong>
-      Use <b>⋯ → Save on this device</b> on an album or a song, or the save button on a downloaded video, while online.</div></div>`);
+      Use <b>⋯ → Save on this device</b> on an album or a song, the save button on a downloaded video, or <b>Save on this device</b> on a film or an episode, while online.</div></div>`);
   }
   const art = (e, cls = "") => (covers[e.image] ? `<img class="${cls}" src="${esc(covers[e.image])}" alt="">` : `<span class="blank ${cls}"></span>`);
   const albums = new Map();
@@ -160,9 +176,9 @@ async function showOffline(t, [sub, file] = []) {
         <button class="ghost" data-off-drop="${esc(list.map((e) => e.file).join(","))}">${ICON.trash}Remove</button></div></div></div>
       <ol class="rows offsongs">${list.map(songRow).join("")}</ol></section>`).join("")}` : ""}
     ${videos.length ? `<h2>Videos</h2><div class="vgrid">${videos.map((e) => `<article class="vcard" data-off="${esc(e.file)}">
-      <a class="vthumb" href="#/offline/v/${esc(e.file)}" tabindex="-1" aria-hidden="true">${art(e)}${e.runtime ? `<span class="len">${clock(e.runtime)}</span>` : ""}</a>
+      <a class="vthumb" href="${offWatch(e)}" tabindex="-1" aria-hidden="true">${art(e)}${e.runtime ? `<span class="len">${clock(e.runtime)}</span>` : ""}</a>
       <div class="vact"><button data-off-drop="${esc(e.file)}" aria-label="Remove ${esc(e.title)} from this device">${ICON.trash}</button></div>
-      <div class="vmeta"><a class="t" href="#/offline/v/${esc(e.file)}">${esc(e.title)}</a><span class="c">${esc(e.by)}</span>${offState(e)}</div></article>`).join("")}</div>` : ""}
+      <div class="vmeta"><a class="t" href="${offWatch(e)}">${esc(e.title)}</a><span class="c">${esc(e.by)}</span>${offState(e)}</div></article>`).join("")}</div>` : ""}
     <div class="actions"><button class="ghost danger" data-off-drop="${esc(mine.map((e) => e.file).join(","))}" data-off-all>${ICON.trash}Remove everything from this device</button></div>
   </div>`);
 }

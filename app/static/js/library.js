@@ -155,13 +155,17 @@ function trackRows(tracks, album) {
     <button class="icon-btn" data-track-more="${i}" aria-label="More for ${esc(s.name)}" aria-haspopup="menu" aria-expanded="false">${ICON.more}</button></li>`).join("")}</ol>`;
 }
 
+let jfShown = null; // the film or episode on the page: what Save on this device saves
+const saveButton = (x) => `<button class="ghost" data-jf-save="${esc(x.id)}">${ICON.dl}<span>${offFind({ jf: x.id }) ? "Saved on this device" : "Save on this device"}</span></button>`;
+
 async function showJfItem(t, [id, , ...order]) {
   const x = await api(`/api/jf/item/${encodeURIComponent(id)}`);
   if (t !== ticket) return;
+  jfShown = x;
   const similar = x.similar?.length ? shelf("More like this", jstrip(x.similar)) : "";
   if (x.type === "Movie" || x.type === "Video" || x.type === "MusicVideo") {
     return paint(t, hero({ kind: x.type === "Movie" ? "Film" : "Video", title: x.name, image: x.image, poster: true, backdrop: x.backdrop, meta: jmeta(x),
-      blurb: x.overview, action: playButtons(x) + toggles(x) }) + `<div class="wrap">${x.people?.length ? `<h2>Cast and crew</h2>${jcredits(x.people)}` : ""}${similar}</div>`);
+      blurb: x.overview, action: playButtons(x) + saveButton(x) + toggles(x) }) + `<div class="wrap">${x.people?.length ? `<h2>Cast and crew</h2>${jcredits(x.people)}` : ""}${similar}</div>`);
   }
   if (x.type === "Series") {
     const n = x.next_up;
@@ -180,7 +184,7 @@ async function showJfItem(t, [id, , ...order]) {
     const season = x.season_id ? await api(`/api/jf/item/${x.season_id}`).catch(() => null) : null;
     if (t !== ticket) return;
     return paint(t, hero({ kind: `${x.series || ""} · ${epCode(x)}`, title: x.name, image: x.image, backdrop: x.backdrop, meta: jmeta(x), blurb: x.overview,
-      action: playButtons(x) + toggles(x) + (x.series_id ? `<a class="ghost" href="#/jf/item/${esc(x.series_id)}">The show</a>` : "") }) +
+      action: playButtons(x) + saveButton(x) + toggles(x) + (x.series_id ? `<a class="ghost" href="#/jf/item/${esc(x.series_id)}">The show</a>` : "") }) +
       `<div class="wrap">${season?.episodes?.length ? `<h2>${esc(season.name)}</h2>${episodeRows(season.episodes, x.id)}` : ""}</div>`);
   }
   if (x.type === "MusicAlbum" || x.type === "Playlist") {
@@ -232,6 +236,13 @@ document.addEventListener("click", (e) => {
     }, (err) => { b.disabled = false; toast(err.message); });
     return;
   }
+  const save = e.target.closest("[data-jf-save]");
+  if (save && jfShown?.id === save.dataset.jfSave) {
+    const x = jfShown, ep = x.type === "Episode";
+    offSave([{ jf: x.id, title: ep ? `${x.series || ""} · ${epCode(x)}` : x.name, by: ep ? x.name : String(x.year || ""), image: x.image, runtime: x.runtime, href: `#/jf/item/${x.id}`,
+      film: { id: x.id, type: x.type, name: x.name, series: x.series, series_id: x.series_id, season: x.season, episode: x.episode, year: x.year, runtime: x.runtime, overview: x.overview } }], "video");
+    return;
+  }
   if (!jfAlbum) return;
   const one = e.target.closest("[data-track-play]"), more = e.target.closest("[data-track-more], [data-album-more]");
   const queue = () => jfAlbum.tracks.map((s) => dockItem(s, jfAlbum.album));
@@ -247,6 +258,26 @@ dockOn("play", () => {
 });
 
 /* ---------- the video player ---------- */
+
+/* where you got to (or that you finished) with no server to hear it is kept on this device, one per film, and sent when the server answers */
+const jfPendKey = (id) => `${offWho()} ${id}`;
+function jfPending() { try { return JSON.parse(localStorage.getItem("parlor:jfpending")) || {}; } catch { return {}; } }
+function jfSend(body) {
+  return post("/api/jf/progress", body).catch((err) => {
+    if (!err.offline) return;
+    try { localStorage.setItem("parlor:jfpending", JSON.stringify({ ...jfPending(), [jfPendKey(body.id)]: body })); } catch { /* storage full */ }
+  });
+}
+async function jfFlush() {
+  if (!ME) return;
+  for (const [k, body] of Object.entries(jfPending())) {
+    if (!k.startsWith(`${offWho()} `)) continue; // someone else's on this device: theirs to send
+    try { await post("/api/jf/progress", body); } catch (err) { if (err.offline) return; } // any other answer (the film's gone, say): not worth keeping
+    const left = jfPending();
+    if (JSON.stringify(left[k]) === JSON.stringify(body)) delete left[k]; // a newer place made meanwhile stays
+    try { localStorage.setItem("parlor:jfpending", JSON.stringify(left)); } catch { /* storage full */ }
+  }
+}
 
 let jfp = null;
 function stopJf() {
@@ -286,7 +317,8 @@ async function attach(video, url, at, s) {
 
 async function showJfPlay(t, [id, from]) {
   stopJf();
-  const x = await api(`/api/jf/item/${encodeURIComponent(id)}`);
+  const saved = offFind({ jf: id }); // this device's copy, if it has one: it plays that first
+  const x = await api(`/api/jf/item/${encodeURIComponent(id)}`).catch((err) => { if (err.offline && saved?.film) return saved.film; throw err; });
   const season = x.type === "Episode" && x.season_id ? await api(`/api/jf/item/${x.season_id}`).catch(() => null) : null;
   if (t !== ticket) return;
   const eps = season?.episodes || [];
@@ -318,17 +350,32 @@ async function showJfPlay(t, [id, from]) {
   const overlay = (html) => { $("#jfOverlay")?.remove(); if (html) box.insertAdjacentHTML("beforeend", `<div class="overlay" id="jfOverlay">${html}</div>`); };
   s.fail = (why) => {
     if (s !== jfp) return;
+    if (s.p?.local && !s.failedLocal) { s.failedLocal = true; return load({ start: video.currentTime || s.p.position }); } // the device's copy won't play: ask Jellyfin
     if (s.p?.method === "direct" && !s.tried) { s.tried = true; return load({ transcode: true, start: video.currentTime || s.p.position }); } // the browser couldn't play the file: let Jellyfin convert it
     overlay(`<p><strong>This won't play</strong><br>${esc(why)}</p><button class="ghost" onclick="route()">Try again</button>`);
   };
+  /** playback info made from the saved copy: the film, its subtitle files and where it got to (what's kept for Jellyfin, else what Jellyfin last said) */
+  async function local(start) {
+    const url = await offBlob(saved);
+    if (!url) return null; // the browser cleared it
+    const subtitles = [];
+    for (const m of saved.subs || []) {
+      const e = offList()[m.file], u = e?.done && (await offBlob(e));
+      if (u) subtitles.push({ ...m, url: u });
+    }
+    const kept = jfPending()[jfPendKey(id)];
+    return { method: "direct", local: true, url, subtitles, audio: [], chapters: [], runtime: saved.runtime, position: start ?? (kept ? kept.position || 0 : x.position || 0) };
+  }
   async function load(opts = {}) {
-    let p;
-    try {
-      p = await post(`/api/jf/playback/${encodeURIComponent(id)}`, { hevc, ...opts, ...(opts.start === undefined && from === "start" && !s.p ? { start: 0 } : {}) });
-    } catch (err) { return s === jfp && overlay(`<p><strong>Jellyfin can't play this here</strong><br>${esc(err.message)}</p>`); }
+    let p = !opts.transcode && saved && !s.failedLocal ? await local(opts.start ?? (from === "start" && !s.p ? 0 : undefined)) : null;
+    if (!p) {
+      try {
+        p = await post(`/api/jf/playback/${encodeURIComponent(id)}`, { hevc, ...opts, ...(opts.start === undefined && from === "start" && !s.p ? { start: 0 } : {}) });
+      } catch (err) { return s === jfp && overlay(`<p><strong>Jellyfin can't play this here</strong><br>${esc(err.message)}</p>`); }
+    }
     if (s !== jfp) return;
     s.p = p;
-    $("#jfStat").textContent = p.method === "direct" ? "Original file" : "Converted by Jellyfin for this browser";
+    $("#jfStat").textContent = p.local ? "Saved on this device" : p.method === "direct" ? "Original file" : "Converted by Jellyfin for this browser";
     const audio = $("#jfAudio"), subs = $("#jfSubs"), ch = $("#jfChapters");
     if (p.audio.length > 1 && !audio.options.length) {
       audio.innerHTML = p.audio.map((a) => `<option value="${a.index}"${a.default ? " selected" : ""}>${esc(a.title || a.language || `Track ${a.index}`)}</option>`).join("");
@@ -367,10 +414,10 @@ async function showJfPlay(t, [id, from]) {
     const at = video.currentTime || 0, len = video.duration && isFinite(video.duration) ? video.duration : s.p.runtime;
     if (!s.marked && (done || (len && at / len > 0.92))) {
       s.marked = true; // watched: Jellyfin moves it out of Continue watching and on to the next episode
-      post("/api/jf/progress", { id, played: true }).catch(() => {});
+      jfSend({ id, played: true });
     } else if (!s.marked && at > 5 && Math.abs(at - s.saved) >= 3) {
       s.saved = at;
-      post("/api/jf/progress", { id, position: Math.floor(at) }).catch(() => {});
+      jfSend({ id, position: Math.floor(at) });
     }
   };
   s.timers.push(setInterval(() => { if (!video.paused) s.save(); }, 10000));
@@ -516,6 +563,7 @@ async function showJfSearch(t, q) {
 const JF_ID = /^[0-9a-f]{32}$/i;
 page("jf", async (t, [what = "", ...rest]) => {
   if (["view", "item", "play", "read"].includes(what) && !JF_ID.test(rest[0] || "")) return paint(t, `<div class="note"><strong>Not here</strong>That isn't a link to something in your library.</div>`);
+  if (what === "play" && document.body.classList.contains("offline") && offFind({ jf: rest[0] })?.film) return showJfPlay(t, rest); // no Jellyfin to ask: the device's copy
   if (!(await jfReady(t))) return;
   if (JF_KINDS[what]) {
     const k = JF_KINDS[what];
