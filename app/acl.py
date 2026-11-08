@@ -34,6 +34,8 @@ RULES = [
     ("/api/health", EVERYONE), ("/api/auth/", EVERYONE), ("/api/vault/", EVERYONE), ("/api/me/app-passwords", EVERYONE),
     ("/api/me/password", EVERYONE), ("/api/me", EVERYONE),
     ("/hooks/lidarr/", SECRET),  # Lidarr's webhook (musicreq.lidarr_hook)
+    ("/api/v1/", EVERYONE),  # the API: each source and action checks its own sections (api.py)
+    ("/api/me/api-keys", EVERYONE), ("/api/docs", EVERYONE), ("/api/openapi.json", EVERYONE),
 ]
 ADMIN_ITSELF = ("/qbit", "/api/vault/key", "/api/vault/passphrase")  # check core.admin inside, not as a Depends
 

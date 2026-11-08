@@ -121,6 +121,11 @@ CREATE TABLE IF NOT EXISTS app_passwords (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL, secret TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created REAL NOT NULL, used REAL
 );
+-- API keys for other programs (api.py): hashed, each acting as its person; "search" keys only read
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL, scope TEXT NOT NULL, hint TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created REAL NOT NULL, used REAL
+);
 -- music requests followed through Lidarr, with YouTube as the fallback (musicreq.py)
 CREATE TABLE IF NOT EXISTS music_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,

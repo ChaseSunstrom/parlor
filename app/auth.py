@@ -169,6 +169,7 @@ def logout(request: Request, response: Response):
 @router.post("/auth/logout-everywhere")
 def logout_everywhere(response: Response, user=Depends(me)):
     db().execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
+    db().execute("DELETE FROM api_keys WHERE user_id = ?", (user["id"],))  # every way in, keys included
     import private  # late: it imports this module
     private.drop_user(user["id"])
     response.delete_cookie(COOKIE, path="/")
@@ -281,6 +282,7 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
             raise HTTPException(409, "This account signs in with Jellyfin")
         db().execute("UPDATE users SET pw = ? WHERE id = ?", (hash_password(valid_password(body.password)), user_id))
         db().execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        db().execute("DELETE FROM api_keys WHERE user_id = ?", (user_id,))
         import private  # late: it imports this module
         private.drop_user(user_id)
     if body.seerr_id is not None or body.unlink_seerr:

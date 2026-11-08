@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 import acl
+import api
 import auth
 import core
 import jf
@@ -31,7 +32,8 @@ import vault
 import yt
 
 log = logging.getLogger("parlor")
-app = FastAPI(title="Parlor", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Parlor", description=api.__doc__, docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json",
+              swagger_ui_oauth2_redirect_url=None)  # the docs need a sign-in like the rest of /api
 PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup"} | security.PUBLIC
 
 
@@ -42,6 +44,19 @@ async def guard(request: Request, call_next):
     path = request.url.path
     if path.startswith(("/api/", "/music/api/", "/rest/", "/qbit/")) and not security.is_open(path):
         return JSONResponse({"detail": "Parlor is locked: enter the passphrase"}, status_code=423)
+    if path.startswith(("/api/", "/music/api/")) and (key := request.headers.get("x-api-key") or _bearer(request)):
+        # another program, with an API key: no cookies are involved, so no cross-site header is needed either
+        user, refused = await anyio.to_thread.run_sync(api.user_for_key, key, request.method, path)
+        if refused:
+            return JSONResponse({"detail": refused[1]}, status_code=refused[0])
+        lacking = await anyio.to_thread.run_sync(acl.allowed, user, path)
+        if lacking:
+            return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)
+        request.state.user = user
+        return await call_next(request)
+    if path.startswith(("/music/docs", "/music/redoc", "/music/openapi.json")):  # music-fndr's own docs: signed-in people only
+        if not await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request)):
+            return JSONResponse({"detail": "Sign in first"}, status_code=401)
     if path.startswith(("/api/", "/music/api/")):
         if request.method not in ("GET", "HEAD") and request.headers.get("x-requested-with") not in core.HEADERS:
             return JSONResponse({"detail": f"Missing X-Requested-With: {core.HEADER}"}, status_code=403)
@@ -54,6 +69,13 @@ async def guard(request: Request, call_next):
                 return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)
             request.state.user = user
     return await call_next(request)
+
+
+def _bearer(request: Request) -> str:
+    """A Parlor key in Authorization: Bearer; any other bearer token (a proxy's, an SSO's) is left alone."""
+    auth = request.headers.get("authorization") or ""
+    token = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+    return token if token.startswith("pk_") else ""
 
 
 @app.exception_handler(Exception)
@@ -70,6 +92,7 @@ def health():
 app.include_router(auth.router)
 app.include_router(security.router)
 app.include_router(acl.router)
+app.include_router(api.router)
 app.include_router(private.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)

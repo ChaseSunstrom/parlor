@@ -134,6 +134,20 @@ async function drawAppKeys(t, fresh) {
       && del(`/api/me/app-passwords/${b.dataset.dropKey}`).then(() => drawAppKeys(t), (err) => toast(err.message))));
 }
 
+async function drawApiKeys(t, fresh) {
+  const keys = await api("/api/me/api-keys").catch(() => null);
+  const box = $("#apiKeyList");
+  if (!box || t !== ticket || !keys) return;
+  box.innerHTML = (fresh ? `<div class="notice"><p>The key for <strong>${esc(fresh.name)}</strong>. Copy it now: it isn't shown again.</p>
+      <div class="actions"><code class="secret" id="freshApiKey">${esc(fresh.key)}</code><button class="ghost" id="copyApiKey">Copy</button></div></div>` : "")
+    + (keys.length ? `<ul class="svc-list">${keys.map((k) => `<li class="svc two"><div><strong>${esc(k.name)}</strong> <code>${esc(k.hint)}</code>
+        <small class="dim">${k.scope === "search" ? "search and read only" : "search, download and request"} · made ${since(k.created)}${k.used ? `, last used ${since(k.used)}` : ", not used yet"}</small></div>
+        <button class="ghost danger" data-drop-api="${k.id}">Delete</button></li>`).join("")}</ul>` : `<p class="dim">No API keys yet.</p>`);
+  $("#copyApiKey")?.addEventListener("click", () => navigator.clipboard.writeText(fresh.key).then(() => toast("Copied"), () => toast("Select it and copy")));
+  box.querySelectorAll("[data-drop-api]").forEach((b) => b.addEventListener("click", () =>
+    confirm("Delete this key? Whatever uses it stops working at once.") && del(`/api/me/api-keys/${b.dataset.dropApi}`).then(() => drawApiKeys(t), (err) => toast(err.message))));
+}
+
 /* You: your lists, your library and settings in one place (the phone's "more" page) */
 async function showYou(t) {
   paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
@@ -211,6 +225,14 @@ async function showSettings(t) {
         <form id="appKeyForm" class="actions"><label class="field grow"><span class="vh">Name</span><input id="appKeyName" maxlength="40" placeholder="Which app, like Symfonium on my phone" required></label>
           <button class="primary small">Make an app password</button></form>
       </section>
+      <section class="panel" id="apiKeys"><h3>API keys</h3>
+        <p>For scripts and other programs: a key acts as you, with what your account may use. Send it as <code>X-Api-Key</code>.
+          Search everything with <code>/api/v1/search?q=…</code>, get anything with <code>POST /api/v1/get</code>; the details are in <a href="/api/docs" target="_blank" rel="noopener">the API docs</a>.</p>
+        <div id="apiKeyList">${SPIN}</div>
+        <form id="apiKeyForm" class="actions"><label class="field grow"><span class="vh">Name</span><input id="apiKeyName" maxlength="40" placeholder="What uses it, like Home Assistant" required></label>
+          <label class="field"><span class="vh">What it may do</span><select id="apiKeyScope"><option value="full">Search, download and request</option><option value="search">Search and read only</option></select></label>
+          <button class="primary small">Make a key</button></form>
+      </section>
       <section class="panel" id="privatePanel"></section>
       <section class="panel"><h3>Your account</h3>
         ${me.local ? `<form id="pwForm"><label class="field"><span>Current password</span><input type="password" id="pwOld" autocomplete="current-password" required></label>
@@ -234,7 +256,13 @@ async function showSettings(t) {
     toast("Saved");
   }));
   drawAppKeys(t);
+  drawApiKeys(t);
   drawPrivatePanel();
+  $("#apiKeyForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    post("/api/me/api-keys", { name: $("#apiKeyName").value, scope: $("#apiKeyScope").value }).then((k) => { $("#apiKeyName").value = ""; drawApiKeys(t, k); },
+      (err) => toast(err.message));
+  });
   $("#appKeyForm").addEventListener("submit", (e) => {
     e.preventDefault();
     post("/api/me/app-passwords", { name: $("#appKeyName").value }).then((k) => {

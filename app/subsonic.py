@@ -158,7 +158,7 @@ def reply(p, payload, status="ok", http=200):
     return Response(ET.tostring(root, encoding="utf-8", xml_declaration=True), http, media_type="application/xml")
 
 
-@router.api_route("/rest/{method}", methods=["GET", "POST"])
+@router.api_route("/rest/{method}", methods=["GET", "POST"], include_in_schema=False)  # the Subsonic protocol has its own docs
 async def rest(method: str, request: Request):
     pairs = list(request.query_params.multi_items())
     if request.method == "POST":  # formPost: the same parameters in the body, of which we read 1 MB at most

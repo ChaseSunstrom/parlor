@@ -192,6 +192,25 @@ Parlor speaks the Subsonic/OpenSubsonic API, so Symfonium, Tempo, DSub, Feishin 
 - Tracks are found by a hash of their path in the music folder. **Moving or renaming a file makes it a new track**: its stars, ratings and play counts don't follow it (they're deleted at the next scan, every 10 minutes, once the old path is gone).
 - A scan that can't open a folder, or finds no music at all (an unmounted share), removes nothing; it logs a warning instead. Files whose names aren't valid UTF-8 are skipped.
 
+## The API
+
+Scripts and other programs (Home Assistant, a phone shortcut, an AI agent) can use Parlor with an **API key** instead of a sign-in. Make one in **Settings → API keys**: it's shown once and stored hashed. A key acts as you, with what your account may use; a **search** key only reads, a **full** key also downloads and requests; an admin's key reaches what the admin does. A key reads what its person can and changes only what the API is for: downloads, requests and your own lists. Accounts, settings, the stack, keys, passwords, private items and the server's lock need a sign-in, an admin's key included, so a leaked key can't make itself an account or repoint the server. Deleting a key stops it at once, and **Sign out everywhere** (or an admin resetting your password) ends your keys too. Send it as `X-Api-Key` (or `Authorization: Bearer`) on any `/api` route; the full reference is at `/api/docs` once you're signed in.
+
+The stable part is `/api/v1`:
+
+```sh
+KEY=pk_your_key_here   # made up: use yours
+# one search across YouTube, films and shows (Seerr), music on Spotify and in Lidarr, and your Jellyfin library
+curl -H "X-Api-Key: $KEY" "http://your-server:8800/api/v1/search?q=ok+computer"
+curl -H "X-Api-Key: $KEY" "http://your-server:8800/api/v1/search?q=ok+computer&in=lidarr,spotify"
+# get anything a search found: each hit's "get" list holds the bodies to send
+curl -H "X-Api-Key: $KEY" -H "content-type: application/json" -d '{"kind": "lidarr_album", "id": "b1392450-e666-3926-a536-22c65f834433"}' \
+  http://your-server:8800/api/v1/get        # → {"job": "request:12"}
+curl -H "X-Api-Key: $KEY" http://your-server:8800/api/v1/jobs/request:12
+```
+
+`kind` is one of `youtube_video`, `youtube_audio`, `track`, `album`, `artist`, `playlist` (music-fndr, Spotify ids), `lidarr_album`, `lidarr_artist` (MusicBrainz ids), `movie` and `show` (TMDB ids; `seasons` picks seasons). Sources you can't use are left out of a search, and one that's down is named in `errors` while the rest answer.
+
 ## Settings
 
 Set these in `.env` (see `.env.example`).
