@@ -674,6 +674,17 @@ def _safe_feed(cid):
         return None
 
 
+LIVE_SEEN: dict = {}  # channel id -> (when, its live or scheduled video or None), as Live now (live.py) last found it
+
+
+def live_seen(item):
+    """the item marked live or upcoming when Live now found it so in the last ten minutes; never asks YouTube"""
+    when, card = LIVE_SEEN.get(item.get("channel_id"), (0, None))
+    if card and card["id"] == item["id"] and time.time() - when < 600:
+        return {**item, "live": card["live"]}
+    return item
+
+
 @router.get("/yt/feed")
 def feed(limit: int = 90, user=Depends(me)):
     subs = rows("SELECT channel_id, name FROM subs WHERE user_id = ?", user["id"])
@@ -684,7 +695,7 @@ def feed(limit: int = 90, user=Depends(me)):
         if not s["name"] and names.get(s["channel_id"]):
             db().execute("UPDATE subs SET name = ? WHERE user_id = ? AND channel_id = ?", (names[s["channel_id"]], user["id"], s["channel_id"]))
     known = {s["channel_id"]: s["name"] or names.get(s["channel_id"]) or s["channel_id"] for s in subs}
-    return {"items": mark(items, user["id"]), "channels": len(subs), "failed": [known[c] for c in failed]}
+    return {"items": mark([live_seen(i) for i in items], user["id"]), "channels": len(subs), "failed": [known[c] for c in failed]}
 
 
 ACCOUNT_FEEDS = {"recommended": ":ytrec", "subscriptions": ":ytsubs", "later": ":ytwatchlater", "history": ":ythis"}

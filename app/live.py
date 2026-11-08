@@ -384,7 +384,7 @@ async def chat(login: str, request: Request, _=Depends(me)):
 # A subscription's feed doesn't say what's live, so each channel's own /live page is asked: it points at the stream
 # when there is one (live or scheduled). Kept five minutes per channel, asked eight at a time.
 
-_yt_live: dict = {}  # channel id -> (when, card or None)
+_yt_live = yt.LIVE_SEEN  # channel id -> (when, card or None); the Subscriptions feed reads it too
 YT_LIVE = "https://www.youtube.com/channel/{cid}/live"
 
 

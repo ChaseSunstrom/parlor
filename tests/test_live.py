@@ -267,6 +267,17 @@ class Playlists(unittest.TestCase):
         self.assertEqual([(v["id"], v["published"]) for v in got["upcoming"]], [("bcdefghijkl", 1794200000)])
         with mock.patch.object(live.requests, "get", lambda *a, **k: self.fail("asked again within five minutes")):
             self.assertEqual(len(self.me.get("/api/live/now").json()["youtube"]), 1)
+        # the Subscriptions feed marks what Live now found, without asking YouTube anything more
+        uploads = {cid: ("Chan " + cid[2], [{"type": "video", "id": vid, "title": "", "channel_id": cid, "published": n, "live": None}
+                                            for n, vid in enumerate((own, cid[2] * 11))])
+                   for cid, own in zip(pages, ("abcdefghijk", "bcdefghijkl", "cdefghijklm"))}
+        with mock.patch.object(live.yt, "channel_feed", lambda cid: uploads[cid]), \
+                mock.patch.object(live.requests, "get", lambda *a, **k: self.fail("the feed asked YouTube")):
+            marked = {v["id"]: v["live"] for v in self.me.get("/api/yt/feed").json()["items"]}
+        self.assertEqual(marked["abcdefghijk"], "is_live")
+        self.assertEqual(marked["bcdefghijkl"], "is_upcoming")
+        self.assertEqual([marked[v] for v in ("cdefghijklm", "a" * 11, "b" * 11, "c" * 11)], [None] * 4)
+        self.assertIsNone(uploads["UCaaaaaaaaaaaaaaaaaaaaaa"][1][0]["live"], "the channel's cached feed is left as it was")
 
     def test_chat_lines(self):
         line = "@badge-info=;color=#1E90FF;display-name=Viewer_1;emotes= :viewer_1!viewer_1@viewer_1.tmi.twitch.tv PRIVMSG #somestreamer :hello <b>there</b>"
