@@ -121,6 +121,21 @@ CREATE TABLE IF NOT EXISTS app_passwords (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL, secret TEXT NOT NULL, key_hash TEXT NOT NULL UNIQUE, created REAL NOT NULL, used REAL
 );
+-- private items (private.py): each person's key pair, the private half sealed by their password and by a recovery code
+CREATE TABLE IF NOT EXISTS person_keys (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  pub BLOB NOT NULL, sealed_pw BLOB NOT NULL, sealed_code BLOB NOT NULL, created REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS private_items (
+  id TEXT PRIMARY KEY, owner INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  file TEXT NOT NULL, size INTEGER NOT NULL, meta BLOB NOT NULL, created REAL NOT NULL  -- meta: sealed with the item's key
+);
+CREATE TABLE IF NOT EXISTS private_shares (
+  item_id TEXT NOT NULL REFERENCES private_items(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  wrapped BLOB NOT NULL,  -- the item's key, sealed to this person's public key
+  PRIMARY KEY (item_id, user_id)
+);
 """
 
 COLUMNS = [

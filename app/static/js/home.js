@@ -211,6 +211,7 @@ async function showSettings(t) {
         <form id="appKeyForm" class="actions"><label class="field grow"><span class="vh">Name</span><input id="appKeyName" maxlength="40" placeholder="Which app, like Symfonium on my phone" required></label>
           <button class="primary small">Make an app password</button></form>
       </section>
+      <section class="panel" id="privatePanel"></section>
       <section class="panel"><h3>Your account</h3>
         ${me.local ? `<form id="pwForm"><label class="field"><span>Current password</span><input type="password" id="pwOld" autocomplete="current-password" required></label>
           <label class="field"><span>New password</span><input type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
@@ -233,6 +234,7 @@ async function showSettings(t) {
     toast("Saved");
   }));
   drawAppKeys(t);
+  drawPrivatePanel();
   $("#appKeyForm").addEventListener("submit", (e) => {
     e.preventDefault();
     post("/api/me/app-passwords", { name: $("#appKeyName").value }).then((k) => {
@@ -389,6 +391,36 @@ async function showGate(mode) {
       button.disabled = false;
     }
   });
+}
+
+/* ---------- your private items: a key of your own, sealed by your password ---------- */
+
+async function drawPrivatePanel(code) {
+  const box = $("#privatePanel");
+  if (!box) return;
+  if (ME?.sections && (ME.sections.watch === false || ME.sections.downloads === false)) return box.remove();
+  const s = await api("/api/private/state").catch(() => null);
+  if (!s) return box.remove();
+  const pw = (id, label = "Your password") => `<label class="field"><span>${label}</span><input type="password" id="${id}" autocomplete="current-password" required></label>`;
+  box.innerHTML = `<h3>Private items</h3>
+    ${code ? `<div class="notice"><strong>Your recovery code, shown this once:</strong> <code class="secret">${esc(code)}</code> <button type="button" class="ghost small" id="copyCode">Copy</button>
+        <p>Write it down somewhere safe. If an admin ever resets your password, only this code opens your private items again; without it they're gone, for you and for everyone.</p></div>` : ""}
+    ${!s.on ? `<p>Make a downloaded video private and it's encrypted with a key that's yours alone, sealed by your password. Only you, and people you share it with, can open it: not the server's other people, not its admins.</p>
+        <form id="privOn">${pw("privPw")}<div class="actions"><button class="primary small">Turn on private items</button></div></form>`
+      : s.open ? `<p>On. Your private items open while you're signed in; make a video private with the lock button on Downloaded.</p>`
+      : `<p>On, and locked for now (Parlor restarted, or your password was reset). Enter your password to open them.</p>
+        <form id="privOpen">${pw("privOpenPw")}<div class="actions"><button class="primary small">Open</button></div></form>
+        <details><summary>Your password was reset by an admin?</summary>
+          <form id="privRecover"><label class="field"><span>Recovery code</span><input id="privCode" autocomplete="off" required></label>${pw("privRecPw")}
+            <div class="actions"><button class="primary small">Use the recovery code</button></div></form></details>`}`;
+  $("#copyCode")?.addEventListener("click", () => navigator.clipboard.writeText(code).then(() => toast("Copied"), () => toast("Select it and copy")));
+  const send = (id, path, body, done) => $(id)?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { const r = await post(path, body()); done(r); } catch (err) { toast(err.message); }
+  });
+  send("#privOn", "/api/private/enable", () => ({ password: $("#privPw").value }), (r) => drawPrivatePanel(r.recovery_code));
+  send("#privOpen", "/api/private/unlock", () => ({ password: $("#privOpenPw").value }), () => { toast("Opened"); drawPrivatePanel(); });
+  send("#privRecover", "/api/private/recover", () => ({ code: $("#privCode").value, password: $("#privRecPw").value }), () => { toast("Opened, and sealed by your password again"); drawPrivatePanel(); });
 }
 
 /* ---------- who may use what (admins) ---------- */

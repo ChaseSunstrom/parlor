@@ -20,6 +20,7 @@ RULES = [
     ("/api/yt/", ("watch",)),
     ("/api/me/history", ("watch",)), ("/api/me/later", ("watch",)), ("/api/me/subs", ("watch",)), ("/api/me/topics", ("watch",)),
     ("/api/me/youtube-cookies", ("watch",)),
+    ("/api/private", ("watch", "downloads")),  # private items are Parlor's own downloads, YouTube's for now
     ("/api/seerr/users", ADMIN), ("/api/seerr/", ("media",)),
     ("/api/arr/music/", ("music",)), ("/api/arr/", ("media",)),
     ("/api/jf/music/", ("music",)), ("/api/jf/", ("library",)),

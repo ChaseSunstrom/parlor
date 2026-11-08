@@ -26,6 +26,7 @@ function vcard(v, { forget = false, remove = false } = {}) {
       <button data-later class="${v.later ? "on" : ""}" title="${v.later ? "In Watch later" : "Watch later"}" aria-label="Watch later">${v.later ? ICON.ok : ICON.clock}</button>
       ${forget ? `<button data-forget title="Remove from history" aria-label="Remove from history">${ICON.x}</button>` : ""}
       ${remove ? `<button data-vkeep class="${v.keep ? "on" : ""}" aria-pressed="${!!v.keep}" title="${v.keep ? "Kept: never deleted automatically" : "Keep: never delete it automatically"}" aria-label="Keep">${v.keep ? ICON.pinned : ICON.pin}</button>
+        <button data-vprivate title="Make it private: only you, and people you share it with, can open it" aria-label="Make it private">${ICON.lock}</button>
         <button data-vdelete title="Delete the file" aria-label="Delete the file">${ICON.trash}</button>` : ""}
     </div>
     <div class="vmeta">
@@ -100,6 +101,12 @@ document.addEventListener("click", (e) => {
     keep.disabled = true;
     post(`/api/yt/library/${v.id}/keep`, { keep: !keep.classList.contains("on") })
       .then((r) => { toast(r.keep ? "Kept: it won't be deleted automatically" : "No longer kept"); keepScroll = true; route(); }, (err) => { keep.disabled = false; toast(err.message); });
+  }
+  const lock = e.target.closest("[data-vprivate]");
+  if (lock && v && confirm(`Make “${v.title}” private? It's encrypted with your key and leaves the shared video folder; only you, and people you share it with, can open it.`)) {
+    lock.disabled = true;
+    post(`/api/yt/library/${v.id}/private`).then(() => { toast("Private now: find it under Private, above"); keepScroll = true; route(); },
+      (err) => { lock.disabled = false; toast(err.message); if (/Settings|password/.test(err.message)) go("#/settings"); });
   }
   const rm = e.target.closest("[data-vdelete]");
   if (rm && v && confirm(`Delete “${v.title}” from your video folder?`)) {
@@ -271,9 +278,77 @@ async function ytDownloads(t) {
   const [r, rule] = await Promise.all([api("/api/yt/library"), api("/api/yt/retention").catch(() => ({ days: 0 }))]);
   const disk = r.disk ? ` ${bytes(r.used)} used, ${bytes(r.disk.free)} free on the disk.` : "";
   paint(t, watchHead("downloads", "Downloaded", r.items.length ? `${plural(r.items.length, "video")} in your video folder.${disk} ${ruleText(rule)}` : "") +
-    `<div class="wrap" data-queue="Downloaded">${r.items.length ? `<div class="vgrid">${r.items.map((v) => vcard(v, { remove: v.mine || ME?.admin })).join("")}</div>`
+    `<div class="wrap"><div id="privateShelf"></div></div>
+    <div class="wrap" data-queue="Downloaded">${r.items.length ? `<div class="vgrid">${r.items.map((v) => vcard(v, { remove: v.mine || ME?.admin })).join("")}</div>`
       : `<div class="empty-state"><strong>No downloads yet</strong>Use the download button on any video. It's saved with chapters, subtitles and the thumbnail.</div>`}</div>`);
+  drawPrivate(t);
 }
+
+/* ---------- private items: encrypted with your key, for you and whoever you share them with ---------- */
+
+function privateCard(x) {
+  return `<article class="vcard private">
+    <a class="vthumb" href="#/private/${esc(x.id)}" tabindex="-1" aria-hidden="true"><div class="locked">${ICON.lock}</div>${x.duration ? `<span class="len">${clock(x.duration)}</span>` : ""}</a>
+    <div class="vmeta"><a class="t" href="#/private/${esc(x.id)}">${esc(x.title)}</a>
+      <span class="c">${esc(x.channel || "")}</span>
+      <span class="s">${esc([bytes(x.size), x.mine ? (x.shared_with.length ? `shared with ${x.shared_with.join(", ")}` : "only you") : "shared with you"].join(" · "))}</span></div>
+  </article>`;
+}
+
+async function drawPrivate(t) {
+  const box = $("#privateShelf");
+  let r;
+  try { r = await api("/api/private"); } catch (err) {
+    if (t === ticket && box && /password/.test(err.message)) box.innerHTML = privateUnlock("Your private videos are locked. Enter your password to open them.");
+    return;
+  }
+  if (t !== ticket || !box || !r.items.length) return;
+  box.innerHTML = shelf("Private", `<div class="vgrid">${r.items.map(privateCard).join("")}</div>`);
+}
+
+const privateUnlock = (why) => `<form class="actions private-unlock" data-private-unlock><span>${ICON.lock} ${esc(why)}</span>
+  <label class="field grow"><span class="vh">Your password</span><input type="password" autocomplete="current-password" placeholder="Your password" required></label>
+  <button class="primary small">Open</button></form>`;
+
+document.addEventListener("submit", async (e) => {
+  const form = e.target.closest("[data-private-unlock]");
+  if (!form) return;
+  e.preventDefault();
+  try {
+    await post("/api/private/unlock", { password: form.querySelector("input").value });
+    keepScroll = true; route();
+  } catch (err) { toast(err.message); if (/recovery/.test(err.message)) go("#/settings"); }
+});
+
+async function showPrivate(t, [id]) {
+  let r;
+  try { r = await api("/api/private"); } catch (err) {
+    return paint(t, `<div class="wrap">${privateUnlock(err.message)}</div>`);
+  }
+  const x = r.items.find((i) => i.id === id);
+  if (!x) return paint(t, `<div class="note"><strong>Not here</strong>It isn't shared with you, or it's gone.</div>`);
+  paint(t, `<div class="wrap private-page">
+      <video controls playsinline preload="metadata" src="/api/private/${esc(x.id)}/file"></video>
+      <h1>${ICON.lock} ${esc(x.title)}</h1><p class="dim">${esc(x.channel || "")} · ${bytes(x.size)} · encrypted; only the people below can open it</p>
+      ${x.mine ? `<section class="panel"><h3>Who has it</h3>
+        <ul class="shares">${x.shared_with.map((n) => `<li>${esc(n)} <button class="icon-btn" data-unshare="${esc(n)}" aria-label="Take ${esc(n)} off it">${ICON.x}</button></li>`).join("") || `<li class="dim">Only you</li>`}</ul>
+        <form class="actions" id="shareForm"><label class="field grow"><span class="vh">Their name in Parlor</span><input id="shareName" placeholder="Their name in Parlor" required></label>
+          <button class="primary small">Share</button></form>
+        <p class="dim">They need private items turned on (Settings). Taking someone off re-encrypts the file with a new key, so a large video takes a moment.</p>
+        <div class="actions"><button class="ghost" id="unprivate">Back to the shared library</button></div></section>` : ""}
+    </div>`);
+  $("#shareForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    post(`/api/private/${x.id}/share`, { name: $("#shareName").value }).then(() => { toast("Shared"); route(); }, (err) => toast(err.message));
+  });
+  $$("[data-unshare]").forEach((b) => b.addEventListener("click", () => {
+    b.disabled = true;
+    del(`/api/private/${x.id}/share/${encodeURIComponent(b.dataset.unshare)}`).then(() => { toast("Taken off, and re-encrypted"); route(); }, (err) => { b.disabled = false; toast(err.message); });
+  }));
+  $("#unprivate")?.addEventListener("click", () => confirm("Put it back in the shared video folder, unencrypted?") &&
+    post(`/api/private/${x.id}/unprivate`).then(() => { toast("Back in the library"); go("#/yt/downloads"); }, (err) => toast(err.message)));
+}
+page("private", showPrivate, "watch");
 
 async function ytChannels(t) {
   const subs = await api("/api/me/subs");

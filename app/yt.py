@@ -1380,6 +1380,30 @@ def video_thumb(vid: str):
     return Response(status_code=307, headers={"Location": thumb(vid)})
 
 
+@router.post("/yt/library/{vid}/private")
+def make_private(vid: str, request: Request, user=Depends(me)):
+    """Take a downloaded video out of the shared library into your private items, encrypted with your key."""
+    import private  # late: it uses this module's helpers
+    row, path = _saved(vid)
+    if not user["admin"] and row["user_id"] != user["id"]:
+        raise HTTPException(403, "Only the person who downloaded it, or an admin, can make it private")
+    private._key(request, user)  # their key is open (or they're told how to open it) before anything moves
+    full = one("SELECT item, path, quality FROM videos WHERE id = ?", vid)
+    item = json.loads(full["item"])
+    kind = {".mp4": "video/mp4", ".webm": "video/webm", ".mkv": "video/x-matroska"}.get(path.suffix.lower(), "application/octet-stream")
+    beside = [f for f in path.parent.glob(glob_escape(path.stem) + ".*") if f != path]  # its thumbnail and subtitles
+    iid = private.make_private(user, path, {"vid": vid, "title": item.get("title") or path.stem, "channel": item.get("channel") or "",
+                                            "duration": item.get("duration"), "type": kind, "item": full["item"], "path": full["path"],
+                                            "quality": full["quality"]})
+    for f in beside:
+        f.unlink(missing_ok=True)
+    db().execute("DELETE FROM videos WHERE id = ?", (vid,))
+    with _jobs_lock:  # everyone sees the download list: its finished entry would still show the title
+        jobs[:] = [j for j in jobs if not (j["id"] == vid and j["kind"] == "video" and j["status"] not in RUNNING)]
+    save_jobs()
+    return {"ok": True, "id": iid}
+
+
 @router.delete("/yt/library/{vid}")
 def delete_video(vid: str, user=Depends(me)):
     row, _ = _saved(vid)

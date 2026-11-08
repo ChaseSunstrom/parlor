@@ -48,9 +48,12 @@ def _client(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
-def _signed_in(request: Request, response: Response, user_id: int):
+def _signed_in(request: Request, response: Response, user_id: int, password: str = ""):
     token = new_session(user_id, request.headers.get("user-agent", ""))
     set_cookie(response, request, token)
+    if password:
+        import private  # late: it imports this module
+        private.hold(user_id, password, token)  # their private items open for this session
     return {"ok": True}
 
 
@@ -109,11 +112,11 @@ def login(body: Login, request: Request, response: Response):
     user = one("SELECT id, pw, jellyfin_id FROM users WHERE name = ?", name)
     if user and user["pw"]:
         if check_password(body.password, user["pw"]):
-            return _signed_in(request, response, user["id"])
+            return _signed_in(request, response, user["id"], body.password)
     elif setting("jellyfin_url") and (user is None or user["jellyfin_id"]):
         user_id = jellyfin_login(name, body.password)
         if user_id:
-            return _signed_in(request, response, user_id)
+            return _signed_in(request, response, user_id, body.password)
     else:
         check_password(body.password, "scrypt$00$00")  # same work either way, so timing doesn't reveal names
     _failed(*keys)
@@ -155,6 +158,8 @@ def jellyfin_login(name: str, password: str) -> Optional[int]:
 
 @router.post("/auth/logout")
 def logout(request: Request, response: Response):
+    import private  # late: it imports this module
+    private.drop(session_cookie(request))
     drop_session(session_cookie(request))
     response.delete_cookie(COOKIE, path="/")
     response.delete_cookie(OLD_COOKIE, path="/")
@@ -164,6 +169,8 @@ def logout(request: Request, response: Response):
 @router.post("/auth/logout-everywhere")
 def logout_everywhere(response: Response, user=Depends(me)):
     db().execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
+    import private  # late: it imports this module
+    private.drop_user(user["id"])
     response.delete_cookie(COOKIE, path="/")
     return {"ok": True}
 
@@ -204,6 +211,8 @@ def change_password(body: PasswordChange, request: Request, user=Depends(me)):
     if not check_password(body.old, row["pw"]):
         raise HTTPException(403, "Your current password isn't right")
     db().execute("UPDATE users SET pw = ? WHERE id = ?", (hash_password(valid_password(body.new)), user["id"]))
+    import private  # late: it imports this module
+    private.rewrap(user["id"], body.old, body.new)
     # other devices have to sign in again with the new password
     keep = session_cookie(request)
     db().execute("DELETE FROM sessions WHERE user_id = ? AND token != ?", (user["id"], _digest(keep)))
@@ -272,6 +281,8 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
             raise HTTPException(409, "This account signs in with Jellyfin")
         db().execute("UPDATE users SET pw = ? WHERE id = ?", (hash_password(valid_password(body.password)), user_id))
         db().execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        import private  # late: it imports this module
+        private.drop_user(user_id)
     if body.seerr_id is not None or body.unlink_seerr:
         db().execute("UPDATE users SET seerr_id = ? WHERE id = ?", (None if body.unlink_seerr else body.seerr_id, user_id))
     if body.jf_user is not None:
@@ -288,6 +299,9 @@ def delete_user(user_id: int, user=Depends(admin)):
     import jfaccess  # late: it talks to Jellyfin
     jfaccess.forget({"id": user_id})
     db().execute("DELETE FROM users WHERE id = ?", (user_id,))
+    import private  # late: it imports this module
+    private.drop_user(user_id)
+    private.sweep()  # their private files: no key opens them now
     from yt import cookie_path  # late: yt imports core, which this module also uses
 
     cookie_path(user_id).unlink(missing_ok=True)

@@ -19,6 +19,7 @@ import core
 import jf
 import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
+import private
 import security
 import seerr
 import qbit
@@ -68,6 +69,7 @@ def health():
 app.include_router(auth.router)
 app.include_router(security.router)
 app.include_router(acl.router)
+app.include_router(private.router)
 app.include_router(yt.router)
 app.include_router(seerr.router)
 app.include_router(stack.router)
@@ -93,6 +95,7 @@ def start():
         return
     core.db()  # creates the tables (and encrypts an old plain database once)
     vault.lock_down(core.DATA)
+    private.sweep()  # what a crash mid-change left behind
     music.others_busy = yt.busy  # music's yt-dlp update waits for video downloads too
     yt.heal_soon = music.heal_soon  # one yt-dlp healer for both
     yt.restarting = lambda: music.healing.is_set() or music.restart_wanted.is_set()
