@@ -156,7 +156,10 @@ function trackRows(tracks, album) {
 }
 
 let jfShown = null; // the film or episode on the page: what Save on this device saves
-const saveButton = (x) => `<button class="ghost" data-jf-save="${esc(x.id)}">${ICON.dl}<span>${offFind({ jf: x.id }) ? "Saved on this device" : "Save on this device"}</span></button>`;
+/** once saved (or saving) it's a link to Saved for offline, where it's removed */
+const saveButton = (x) => (offMine().some((e) => e.jf === x.id && !e.error)
+  ? `<a class="ghost" href="#/offline">${ICON.dl}<span>${offFind({ jf: x.id }) ? "Saved on this device" : "Saving on this device"}</span></a>`
+  : `<button class="ghost" data-jf-save="${esc(x.id)}">${ICON.dl}<span>Save on this device</span></button>`);
 
 async function showJfItem(t, [id, , ...order]) {
   const x = await api(`/api/jf/item/${encodeURIComponent(id)}`);
@@ -217,7 +220,7 @@ async function showJfItem(t, [id, , ...order]) {
 }
 let jfAlbum = null;
 
-document.addEventListener("click", (e) => {
+document.addEventListener("click", async (e) => {
   const played = e.target.closest("[data-jf-played]"), fav = e.target.closest("[data-jf-fav]");
   const b = played || fav;
   if (b) {
@@ -238,9 +241,11 @@ document.addEventListener("click", (e) => {
   }
   const save = e.target.closest("[data-jf-save]");
   if (save && jfShown?.id === save.dataset.jfSave) {
-    const x = jfShown, ep = x.type === "Episode";
-    offSave([{ jf: x.id, title: ep ? `${x.series || ""} · ${epCode(x)}` : x.name, by: ep ? x.name : String(x.year || ""), image: x.image, runtime: x.runtime, href: `#/jf/item/${x.id}`,
+    const x = jfShown, ep = x.type === "Episode", span = $("span", save), was = span.textContent;
+    span.textContent = "Saving…";
+    await offSave([{ jf: x.id, title: ep ? `${x.series || ""} · ${epCode(x)}` : x.name, by: ep ? x.name : String(x.year || ""), image: x.image, runtime: x.runtime, href: `#/jf/item/${x.id}`,
       film: { id: x.id, type: x.type, name: x.name, series: x.series, series_id: x.series_id, season: x.season, episode: x.episode, year: x.year, runtime: x.runtime, overview: x.overview } }], "video");
+    if (save.isConnected) { if (offMine().some((e) => e.jf === x.id && !e.error)) save.outerHTML = saveButton(x); else span.textContent = was; } // refused: the button stays
     return;
   }
   if (!jfAlbum) return;
@@ -265,14 +270,14 @@ function jfPending() { try { return JSON.parse(localStorage.getItem("parlor:jfpe
 function jfSend(body) {
   return post("/api/jf/progress", body).catch((err) => {
     if (!err.offline) return;
-    try { localStorage.setItem("parlor:jfpending", JSON.stringify({ ...jfPending(), [jfPendKey(body.id)]: body })); } catch { /* storage full */ }
+    try { localStorage.setItem("parlor:jfpending", JSON.stringify({ ...jfPending(), [jfPendKey(body.id)]: { ...jfPending()[jfPendKey(body.id)], ...body } })); } catch { /* storage full */ }
   });
 }
 async function jfFlush() {
   if (!ME) return;
   for (const [k, body] of Object.entries(jfPending())) {
     if (!k.startsWith(`${offWho()} `)) continue; // someone else's on this device: theirs to send
-    try { await post("/api/jf/progress", body); } catch (err) { if (err.offline) return; } // any other answer (the film's gone, say): not worth keeping
+    try { await post("/api/jf/progress", body); } catch (err) { if (![404, 422].includes(err.status)) return; } // kept for the next time unless Jellyfin says it can never take it (the film's gone)
     const left = jfPending();
     if (JSON.stringify(left[k]) === JSON.stringify(body)) delete left[k]; // a newer place made meanwhile stays
     try { localStorage.setItem("parlor:jfpending", JSON.stringify(left)); } catch { /* storage full */ }
@@ -318,7 +323,7 @@ async function attach(video, url, at, s) {
 async function showJfPlay(t, [id, from]) {
   stopJf();
   const saved = offFind({ jf: id }); // this device's copy, if it has one: it plays that first
-  const x = await api(`/api/jf/item/${encodeURIComponent(id)}`).catch((err) => { if (err.offline && saved?.film) return saved.film; throw err; });
+  const x = await api(`/api/jf/item/${encodeURIComponent(id)}`).catch((err) => { if (saved?.film) return saved.film; throw err; });
   const season = x.type === "Episode" && x.season_id ? await api(`/api/jf/item/${x.season_id}`).catch(() => null) : null;
   if (t !== ticket) return;
   const eps = season?.episodes || [];
@@ -375,6 +380,7 @@ async function showJfPlay(t, [id, from]) {
     }
     if (s !== jfp) return;
     s.p = p;
+    $("#jfQuality").disabled = !!p.local; // the device's copy has one quality; picking another would ask a server that may not be there
     $("#jfStat").textContent = p.local ? "Saved on this device" : p.method === "direct" ? "Original file" : "Converted by Jellyfin for this browser";
     const audio = $("#jfAudio"), subs = $("#jfSubs"), ch = $("#jfChapters");
     if (p.audio.length > 1 && !audio.options.length) {

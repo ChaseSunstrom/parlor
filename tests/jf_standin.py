@@ -94,6 +94,7 @@ SAVES: list = []
 RANGES: list = []  # (file name, Range header) of every file asked for
 BREAK: set = set()  # file names whose next request for a later piece fails once (a dropped connection)
 NODIRECT: set = set()  # item ids Jellyfin would have to convert (no direct play)
+DOWN = {"on": False, "hits": 0}  # while on, Jellyfin answers 500 to every place saved (hits counts them)
 VTT = "WEBVTT\n\n00:00:00.000 --> 00:00:11.000\nThe night train never stops\n"  # the film's external subtitle file
 
 
@@ -210,6 +211,9 @@ class StandIn(BaseHTTPRequestHandler):
             return self.send(200, {"PlaySessionId": "ps", "MediaSources": [src]})
         m = re.fullmatch(r"/UserItems/(\w+)/UserData", p)
         if m and m[1] in ITEMS:
+            if DOWN["on"]:
+                DOWN["hits"] += 1
+                return self.send(500, {})
             STATE.setdefault(m[1], {}).update(body)
             SAVES.append((m[1], body))
             return self.send(200, STATE[m[1]])

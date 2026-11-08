@@ -71,7 +71,7 @@ async function offSave(items, kind = "song") {
 /** start (or carry on with) whatever isn't saved yet: covers first, they're small */
 function offRun() {
   if (!offWorks || !ME) return;
-  const todo = Object.values(offList()).filter((e) => e.who === offWho() && !e.done && !e.error && !offSent.has(e.file))
+  const todo = Object.values(offList()).filter((e) => e.who === offWho() && !e.done && (!e.error || offSmall(e)) && !offSent.has(e.file))
     .sort((a, b) => offSmall(b) - offSmall(a));
   if (!todo.length) return;
   offWorker ||= Object.assign(new Worker("js/offline-worker.js"), { onmessage: offHeard });
@@ -126,7 +126,12 @@ async function offRemove(files) {
   }
   const used = new Set(Object.values(all).flatMap((e) => [e.image, ...(e.subs || []).map((s) => s.file)]));
   for (const e of Object.values(all)) {
-    if (offSmall(e) && !used.has(e.file)) { delete all[e.file]; await dir.removeEntry(e.file).catch(() => {}); }
+    if (offSmall(e) && !used.has(e.file)) {
+      delete all[e.file];
+      URL.revokeObjectURL(offBlobs.get(e.file));
+      offBlobs.delete(e.file);
+      await dir.removeEntry(e.file).catch(() => {});
+    }
   }
   offKeep(all);
 }

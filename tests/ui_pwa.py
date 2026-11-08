@@ -305,10 +305,20 @@ with sync_playwright() as pw:
     after = page.evaluate(OPFS)
     print(f"saved on the device: {before} bytes, {after} after removing the video ({(core.VIDEOS / rel).stat().st_size} bytes)")
     checks["removing one frees its space"] = before - after == (core.VIDEOS / rel).stat().st_size and len(page.evaluate("offMine()")) == 5
+    jfs.DOWN["on"] = True  # back online with Jellyfin down: the place must wait, not be thrown away
     ctx.set_offline(False)
     page.wait_for_selector(".offbar", state="hidden", timeout=30000)  # checked every 10 s
     page.wait_for_function("ME && ME.name === 'listener' && document.body.dataset.offlineStart === undefined", timeout=30000)
+    for _ in range(100):
+        if jfs.DOWN["hits"]:
+            break
+        page.wait_for_timeout(100)
+    page.wait_for_timeout(300)
+    waiting = jfs.FILM in (page.evaluate("localStorage.getItem('parlor:jfpending')") or "")
+    jfs.DOWN["on"] = False
+    page.evaluate("jfFlush()")  # Jellyfin is back: the next flush sends it
     page.wait_for_function("!localStorage.getItem('parlor:jfpending') || localStorage.getItem('parlor:jfpending') === '{}'", timeout=10000)
+    checks["back online with Jellyfin down the film's place waits"] = waiting and jfs.DOWN["hits"] > 0
     checks["back online the film's place reaches Jellyfin"] = (jfs.FILM, {"PlaybackPositionTicks": 8 * jfs.T}) in jfs.SAVES
     page.goto(BASE + "/#/settings")
     page.wait_for_selector("#deviceText", timeout=30000)
@@ -364,6 +374,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == 22 and all(checks.values()) and not errors and len(shots) == 7
+ok = len(checks) == 23 and all(checks.values()) and not errors and len(shots) == 7
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
