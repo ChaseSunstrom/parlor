@@ -113,7 +113,7 @@ Parlor is the one app you open. It keeps the sign-in and the accounts, and talks
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/architecture-dark.svg">
-  <img alt="Your browser, phone or TV talks to Parlor. Parlor plays from Jellyfin and asks Seerr for requests. Seerr hands them to Sonarr, Radarr and Lidarr, which use qBittorrent behind the VPN and save to your media folders." src="docs/assets/diagrams/architecture-light.svg" width="420">
+  <img alt="Your browser, phone or TV talks to Parlor, one container with the Library, Requests, Watch and Live, and Games. Parlor plays from Jellyfin, asks Seerr for requests, fetches YouTube, Twitch and Steam itself, and reaches your gaming PC through moonlight-web (optional). Seerr hands requests to Sonarr, Radarr and Lidarr, which look through Prowlarr and FlareSolverr, get subtitles from Bazarr, and download with qBittorrent, whose only way out is the Gluetun VPN; Cleanuparr clears stuck downloads, and setup makes the config folders once. Downloads are saved to your media folders." src="docs/assets/diagrams/architecture-light.svg">
 </picture>
 
 Asking for a film shows the whole path. You never leave Parlor, and the film turns up in your Library when it has downloaded:
@@ -127,7 +127,7 @@ What it costs to run, measured on one machine against the apps beside it:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/cost-dark.svg">
-  <img alt="Bar charts. Parlor's image is 1,258 MB, close to Jellyfin's 1,268 MB. Idle, Parlor uses 219 MiB of memory, against 181 to 207 MiB for Jellyfin, Seerr, Sonarr, Radarr and Prowlarr." src="docs/assets/charts/cost-light.svg">
+  <img alt="Bar charts. Parlor's image is 1,258 MB, close to Jellyfin's 1,268 MB. Idle, each in its own container, Parlor uses 198 MiB of memory, against 170 to 212 MiB for Seerr, Sonarr, Jellyfin, Radarr and Prowlarr." src="docs/assets/charts/cost-light.svg">
 </picture>
 
 ## Accounts
@@ -171,12 +171,17 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 
 ## Watching YouTube
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/watch-live-desktop-dark.png">
+  <img alt="A YouTube live playing in Parlor's own player: the picture with its LIVE badge and Low latency switch, then the title, the channel with Subscribe, and the description." src="docs/assets/screens/watch-live-desktop-light.png">
+</picture>
+
 The player streams through your server. YouTube serves HD video and audio separately, and its stream links only work from the address that asked for them. Parlor fetches both, in byte ranges, and the player keeps them in step. Seeking, quality changes (144p to 4K, HDR when your browser can show it), captions, playback speed, picture-in-picture and your system's media keys all work.
 
 - **SponsorBlock**: sponsors, self-promotion and "like and subscribe" segments are skipped (with Undo), and the seek bar shows every marked segment, the chapters and YouTube's "most replayed" curve. Choose categories in Settings. Lookups use a hash prefix, so SponsorBlock never learns which video you're watching.
 - **Resume**: videos pick up where you left off, on any device.
 - **Keys**: Space or K to play and pause, J and L to skip 10 s, ← and → for 5 s, ↑ and ↓ for volume, M to mute, F for full screen, T for theater mode, C for captions, < and > for speed, 0–9 to jump, Shift+N for the next video, / to search.
-- Live streams open on YouTube.
+- **Live streams** play here too, with going back and Go live: see [Live](#live).
 
 ### Browsing
 
@@ -209,9 +214,19 @@ For YouTube's own recommendations, add your YouTube cookies in Settings. Export 
 
 Watch → **Live** shows who's live now: YouTube lives from your subscriptions (with what's starting soon) and the Twitch channels you follow.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/live-desktop-dark.png">
+  <img alt="Watch → Live: the Twitch channels you follow that are live, each with its picture, title and viewers, and a box to follow more by name or link." src="docs/assets/screens/live-desktop-light.png">
+</picture>
+
 - **YouTube lives** play in Parlor's player like any video, without ads. Go back over the last hour or so; the **LIVE** badge turns into **Go live** when you're behind, and takes you back. **Low latency** brings you closer to live, at the price of more pauses on a weak connection.
 - **Twitch** needs no account. Follow channels by name or link, search for them, or paste many at once (Twitch's own export works). A channel's page plays it live with its chat beside it (read-only), and lists its past broadcasts and clips. Twitch's ads are taken out on the way: while one runs, the picture holds with a note, and the stream is back when it ends; the ad itself is never fetched.
 - Everything goes through Parlor, so your browser never talks to YouTube or Twitch, and Parlor hands out only addresses it has signed, so it can't be used to fetch anything else.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/twitch-desktop-dark.png">
+  <img alt="A Twitch channel playing in Parlor: the stream with its LIVE badge, read-only chat on the right, and past broadcasts below." src="docs/assets/screens/twitch-desktop-light.png">
+</picture>
 
 ### Downloads
 
@@ -227,7 +242,11 @@ Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/library-phone-dark.png">
-  <img alt="The Library on a phone: Continue watching and Next up as swipeable rows, with the menu along the bottom." src="docs/assets/screens/library-phone-light.png" width="260">
+  <img alt="The Library on a phone: Continue watching as a swipeable row, Next up below it, and the menu along the bottom." src="docs/assets/screens/library-phone-light.png" width="260">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/film-phone-dark.png">
+  <img alt="A film's page on a phone: the poster, year and length, then Play, Save on this device and Mark watched." src="docs/assets/screens/film-phone-light.png" width="260">
 </picture>
 
 Parlor installs as an app: on Android, Chrome's menu has **Install app**; on iPhone and iPad, Safari's **Share → Add to Home Screen**; on a computer, Chrome's and Edge's address bar has an install button (Settings → This device has one too). It opens in its own window with the system's media controls. Installing and saving for offline need Parlor's **https** address: a plain `http://` address on your home network works in the browser but can't install. Put Parlor behind a reverse proxy with a certificate (Caddy gets one on its own), or run `tailscale serve` on the server and use its `https://` address. The Android app (below) works over plain http too.

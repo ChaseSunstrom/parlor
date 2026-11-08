@@ -3,34 +3,217 @@
   "motion": true,
   "direction": "TB",
   "groups": [
-    {"id": "you", "label": "Your devices"},
-    {"id": "parlor", "label": "Parlor (one container)"},
-    {"id": "stack", "label": "The media apps"},
-    {"id": "disk", "label": "Your disk"}
+    {
+      "id": "you",
+      "label": "Your devices"
+    },
+    {
+      "id": "parlor",
+      "label": "Parlor (one container)"
+    },
+    {
+      "id": "net",
+      "label": "The internet"
+    },
+    {
+      "id": "stack",
+      "label": "The media apps"
+    },
+    {
+      "id": "disk",
+      "label": "Your disk"
+    }
   ],
   "nodes": [
-    {"id": "browser", "label": "Browser or phone", "sub": "installable app", "group": "you"},
-    {"id": "tv", "label": "TV", "sub": "paired with a code", "group": "you"},
-    {"id": "app", "label": "app.py", "sub": "sign-in, accounts, one API", "group": "parlor"},
-    {"id": "ui", "label": "static/", "sub": "the screens you see", "group": "parlor"},
-    {"id": "jf", "label": "Library", "sub": "jf.py", "group": "parlor"},
-    {"id": "req", "label": "Requests", "sub": "seerr.py", "group": "parlor"},
-    {"id": "jellyfin", "label": "Jellyfin", "sub": "films, shows, music, books", "group": "stack"},
-    {"id": "seerr", "label": "Seerr", "sub": "who asked for what", "group": "stack"},
-    {"id": "arr", "label": "Sonarr, Radarr, Lidarr", "sub": "find and file", "group": "stack"},
-    {"id": "dl", "label": "qBittorrent", "sub": "behind the VPN (Gluetun)", "group": "stack"},
-    {"id": "media", "label": "Media folders", "sub": "saved here, played by Jellyfin", "group": "disk"}
+    {
+      "id": "browser",
+      "label": "Browser or phone",
+      "sub": "installable app",
+      "group": "you"
+    },
+    {
+      "id": "tv",
+      "label": "TV",
+      "sub": "paired with a code",
+      "group": "you"
+    },
+    {
+      "id": "app",
+      "label": "app.py",
+      "sub": "sign-in, access, one API",
+      "group": "parlor"
+    },
+    {
+      "id": "games",
+      "label": "Games",
+      "sub": "games.py",
+      "group": "parlor"
+    },
+    {
+      "id": "jf",
+      "label": "Library",
+      "sub": "jf.py",
+      "group": "parlor"
+    },
+    {
+      "id": "req",
+      "label": "Requests",
+      "sub": "seerr.py",
+      "group": "parlor"
+    },
+    {
+      "id": "watch",
+      "label": "Watch and Live",
+      "sub": "yt.py, live.py",
+      "group": "parlor"
+    },
+    {
+      "id": "moon",
+      "label": "moonlight-web",
+      "sub": "plays your gaming PC, optional",
+      "group": "stack"
+    },
+    {
+      "id": "setup",
+      "label": "setup",
+      "sub": "runs once: config folders",
+      "group": "stack"
+    },
+    {
+      "id": "jellyfin",
+      "label": "Jellyfin",
+      "sub": "films, shows, music, books",
+      "group": "stack"
+    },
+    {
+      "id": "seerr",
+      "label": "Seerr",
+      "sub": "who asked for what",
+      "group": "stack"
+    },
+    {
+      "id": "bazarr",
+      "label": "Bazarr",
+      "sub": "subtitles",
+      "group": "stack"
+    },
+    {
+      "id": "arr",
+      "label": "Sonarr, Radarr, Lidarr",
+      "sub": "find and file",
+      "group": "stack"
+    },
+    {
+      "id": "idx",
+      "label": "Prowlarr + FlareSolverr",
+      "sub": "where to look",
+      "group": "stack"
+    },
+    {
+      "id": "dl",
+      "label": "qBittorrent",
+      "sub": "downloads",
+      "group": "stack"
+    },
+    {
+      "id": "vpn",
+      "label": "Gluetun",
+      "sub": "the VPN, its only way out",
+      "group": "stack"
+    },
+    {
+      "id": "clean",
+      "label": "Cleanuparr",
+      "sub": "clears stuck downloads",
+      "group": "stack"
+    },
+    {
+      "id": "outside",
+      "label": "YouTube, Twitch, Steam",
+      "sub": "fetched through Parlor",
+      "group": "net"
+    },
+    {
+      "id": "media",
+      "label": "Media folders",
+      "sub": "saved here, played by Jellyfin",
+      "group": "disk"
+    }
   ],
   "edges": [
-    {"from": "browser", "to": "app", "label": "HTTPS"},
-    {"from": "tv", "to": "app", "label": "/tv"},
-    {"from": "app", "to": "ui"},
-    {"from": "app", "to": "jf"},
-    {"from": "app", "to": "req"},
-    {"from": "jf", "to": "jellyfin", "label": "plays"},
-    {"from": "req", "to": "seerr", "label": "asks"},
-    {"from": "seerr", "to": "arr"},
-    {"from": "arr", "to": "dl"},
-    {"from": "dl", "to": "media", "label": "saves"}
+    {
+      "from": "browser",
+      "to": "app",
+      "label": "HTTPS"
+    },
+    {
+      "from": "tv",
+      "to": "app",
+      "label": "/tv"
+    },
+    {
+      "from": "app",
+      "to": "jf"
+    },
+    {
+      "from": "app",
+      "to": "req"
+    },
+    {
+      "from": "app",
+      "to": "watch"
+    },
+    {
+      "from": "app",
+      "to": "games"
+    },
+    {
+      "from": "jf",
+      "to": "jellyfin",
+      "label": "plays"
+    },
+    {
+      "from": "req",
+      "to": "seerr",
+      "label": "asks"
+    },
+    {
+      "from": "seerr",
+      "to": "arr"
+    },
+    {
+      "from": "arr",
+      "to": "idx"
+    },
+    {
+      "from": "arr",
+      "to": "dl"
+    },
+    {
+      "from": "arr",
+      "to": "bazarr"
+    },
+    {
+      "from": "clean",
+      "to": "dl"
+    },
+    {
+      "from": "dl",
+      "to": "vpn"
+    },
+    {
+      "from": "dl",
+      "to": "media",
+      "label": "saves"
+    },
+    {
+      "from": "games",
+      "to": "moon"
+    },
+    {
+      "from": "app",
+      "to": "outside",
+      "label": "fetches"
+    }
   ]
 }

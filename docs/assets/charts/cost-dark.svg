@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 524" width="760" height="524" role="img" aria-labelledby="t d" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace">
-<title id="t">Parlor costs about one more app: a 1.26 GB image and 219 MiB idle</title><desc id="d">Image size in MB: Seerr 1,343, Jellyfin 1,268, Parlor 1,258, Radarr 309, Sonarr 299, Prowlarr 274. Idle memory in MiB: Parlor 219, Prowlarr 207, Sonarr 195, Radarr 194, Seerr 181, Jellyfin 181.</desc>
+<title id="t">Parlor costs about one more app: a 1.26 GB image and 198 MiB idle</title><desc id="d">Image size in MB: Seerr 1,343, Jellyfin 1,268, Parlor 1,258, Radarr 309, Sonarr 299, Prowlarr 274. Idle memory in MiB: Prowlarr 212, Radarr 198, Parlor 198, Jellyfin 195, Sonarr 195, Seerr 170.</desc>
 <style>.b{transform-box:fill-box;transform-origin:left;animation:g .5s cubic-bezier(.2,.7,.2,1) both}@keyframes g{from{transform:scaleX(0)}}@media (prefers-reduced-motion:reduce){.b{animation:none}}</style>
 <rect width="760" height="524" rx="10" fill="#0a0e16"/>
-<text x="28" y="38" font-size="16" font-weight="700" fill="#d6deeb">Parlor costs about one more app: a 1.26 GB image and 219 MiB idle</text>
+<text x="28" y="38" font-size="16" font-weight="700" fill="#d6deeb">Parlor costs about one more app: a 1.26 GB image and 198 MiB idle</text>
 <text x="28" y="78" font-size="13" font-weight="700" fill="#d6deeb">Image on disk, in MB (smaller is lighter)</text>
 <line x1="120" y1="88" x2="120" y2="248" stroke="#1c2433"/>
 <text x="110" y="109" font-size="12" text-anchor="end" fill="#9aa7bd">Seerr</text>
@@ -25,24 +25,24 @@
 <text x="223.8" y="239" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">274 MB</text>
 <text x="28" y="288" font-size="13" font-weight="700" fill="#d6deeb">Memory when idle, in MiB</text>
 <line x1="120" y1="298" x2="120" y2="458" stroke="#1c2433"/>
-<text x="110" y="319" font-size="12" text-anchor="end" fill="#d6deeb" font-weight="700">Parlor</text>
-<rect class="b" x="120" y="306" width="470.0" height="16" rx="2" fill="#FFB547" style="animation-delay:0ms"/>
-<text x="598.0" y="319" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">219 MiB</text>
-<text x="110" y="345" font-size="12" text-anchor="end" fill="#9aa7bd">Prowlarr</text>
-<rect class="b" x="120" y="332" width="445.7" height="16" rx="2" fill="#5d6b82" style="animation-delay:60ms"/>
-<text x="573.7" y="345" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">207 MiB</text>
-<text x="110" y="371" font-size="12" text-anchor="end" fill="#9aa7bd">Sonarr</text>
-<rect class="b" x="120" y="358" width="419.9" height="16" rx="2" fill="#5d6b82" style="animation-delay:120ms"/>
-<text x="547.9" y="371" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">195 MiB</text>
-<text x="110" y="397" font-size="12" text-anchor="end" fill="#9aa7bd">Radarr</text>
-<rect class="b" x="120" y="384" width="416.5" height="16" rx="2" fill="#5d6b82" style="animation-delay:180ms"/>
-<text x="544.5" y="397" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">194 MiB</text>
-<text x="110" y="423" font-size="12" text-anchor="end" fill="#9aa7bd">Seerr</text>
-<rect class="b" x="120" y="410" width="389.4" height="16" rx="2" fill="#5d6b82" style="animation-delay:240ms"/>
-<text x="517.4" y="423" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">181 MiB</text>
-<text x="110" y="449" font-size="12" text-anchor="end" fill="#9aa7bd">Jellyfin</text>
-<rect class="b" x="120" y="436" width="388.5" height="16" rx="2" fill="#5d6b82" style="animation-delay:300ms"/>
-<text x="516.5" y="449" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">181 MiB</text>
-<text x="28" y="482" font-size="11" fill="#9aa7bd">One machine, nothing playing. Images: docker image inspect. Memory: docker stats for the apps</text>
-<text x="28" y="498" font-size="11" fill="#9aa7bd">that were running; for Parlor, a fresh process after 30 s idle (its resident set).</text>
+<text x="110" y="319" font-size="12" text-anchor="end" fill="#9aa7bd">Prowlarr</text>
+<rect class="b" x="120" y="306" width="470.0" height="16" rx="2" fill="#5d6b82" style="animation-delay:0ms"/>
+<text x="598.0" y="319" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">212 MiB</text>
+<text x="110" y="345" font-size="12" text-anchor="end" fill="#9aa7bd">Radarr</text>
+<rect class="b" x="120" y="332" width="440.0" height="16" rx="2" fill="#5d6b82" style="animation-delay:60ms"/>
+<text x="568.0" y="345" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">198 MiB</text>
+<text x="110" y="371" font-size="12" text-anchor="end" fill="#d6deeb" font-weight="700">Parlor</text>
+<rect class="b" x="120" y="358" width="438.5" height="16" rx="2" fill="#FFB547" style="animation-delay:120ms"/>
+<text x="566.5" y="371" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">198 MiB</text>
+<text x="110" y="397" font-size="12" text-anchor="end" fill="#9aa7bd">Jellyfin</text>
+<rect class="b" x="120" y="384" width="432.9" height="16" rx="2" fill="#5d6b82" style="animation-delay:180ms"/>
+<text x="560.9" y="397" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">195 MiB</text>
+<text x="110" y="423" font-size="12" text-anchor="end" fill="#9aa7bd">Sonarr</text>
+<rect class="b" x="120" y="410" width="432.3" height="16" rx="2" fill="#5d6b82" style="animation-delay:240ms"/>
+<text x="560.3" y="423" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">195 MiB</text>
+<text x="110" y="449" font-size="12" text-anchor="end" fill="#9aa7bd">Seerr</text>
+<rect class="b" x="120" y="436" width="378.3" height="16" rx="2" fill="#5d6b82" style="animation-delay:300ms"/>
+<text x="506.3" y="449" font-size="12" fill="#d6deeb" style="font-variant-numeric:tabular-nums">170 MiB</text>
+<text x="28" y="482" font-size="11" fill="#9aa7bd">One machine, nothing playing. Images: docker image inspect (MB). Memory: docker stats (MiB),</text>
+<text x="28" y="498" font-size="11" fill="#9aa7bd">each app in its own container, measured the same way on 2026-11-08.</text>
 </svg>

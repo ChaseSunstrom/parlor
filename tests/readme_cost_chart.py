@@ -1,14 +1,16 @@
 """Draw the cost chart (dark and light SVG) from the measured numbers: python tests/readme_cost_chart.py docs/assets/charts
-Measured on one machine: `docker image inspect <image> --format '{{.Size}}'` for the image sizes; idle memory is
-`docker stats --no-stream` for the apps already running, and for Parlor the resident set of a fresh process after
-30 s idle (tests/readme_idle_rss.py APP_DIR PYTHON), since Parlor's own container wasn't running here."""
+Measured on one machine on 2026-11-08, every app the same way: `docker image inspect <image> --format '{{.Size}}'`
+for the image sizes, and `docker stats --no-stream` (the median of five) for idle memory, with nobody using them.
+Parlor ran in its own container for this, from its image, with empty folders and no other app to talk to:
+  docker run -d --rm --name parlor-idle --network none -e UPDATE_HOURS=0 -e OPEN_SIGNUP=0 -e KEY_DIR=/key --tmpfs /data --tmpfs /key --tmpfs /videos --tmpfs /music parlor:latest
+Measure again and edit IMAGES and IDLE when the images change a lot."""
 import sys
 from html import escape
 from pathlib import Path
 
 IMAGES = {"Seerr": 1342803151, "Jellyfin": 1268426988, "Parlor": 1257998209, "Radarr": 309241979, "Sonarr": 298859087, "Prowlarr": 273741584}
-IDLE = {"Parlor": 218.6, "Prowlarr": 207.3, "Sonarr": 195.3, "Radarr": 193.7, "Seerr": 181.1, "Jellyfin": 180.7}
-TITLE = "Parlor costs about one more app: a 1.26 GB image and 219 MiB idle"
+IDLE = {"Parlor": 197.5, "Prowlarr": 211.7, "Radarr": 198.2, "Jellyfin": 195.0, "Sonarr": 194.7, "Seerr": 170.4}
+TITLE = "Parlor costs about one more app: a 1.26 GB image and 198 MiB idle"
 TOKENS = {
     "dark": dict(bg="#0a0e16", text="#d6deeb", line="#1c2433", accent="#FFB547", muted="#5d6b82", sub="#9aa7bd"),
     "light": dict(bg="#F5F4F8", text="#1C1A24", line="#CECDD2", accent="#A47739", muted="#8a8794", sub="#5e5b68"),
@@ -50,8 +52,8 @@ def svg(mode):
     y2 = 78 + 14 + ROW * 6 + 40
     o += panel(y2, "Memory when idle, in MiB", mem, "MiB", lambda v: f"{v:.0f}", t)
     base = y2 + 14 + ROW * 6 + 24
-    o.append(f'<text x="28" y="{base}" font-size="11" fill="{t["sub"]}">One machine, nothing playing. Images: docker image inspect. Memory: docker stats for the apps</text>')
-    o.append(f'<text x="28" y="{base + 16}" font-size="11" fill="{t["sub"]}">that were running; for Parlor, a fresh process after 30 s idle (its resident set).</text>')
+    o.append(f'<text x="28" y="{base}" font-size="11" fill="{t["sub"]}">One machine, nothing playing. Images: docker image inspect (MB). Memory: docker stats (MiB),</text>')
+    o.append(f'<text x="28" y="{base + 16}" font-size="11" fill="{t["sub"]}">each app in its own container, measured the same way on 2026-11-08.</text>')
     o.append("</svg>")
     return "\n".join(o) + "\n"
 

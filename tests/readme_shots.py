@@ -6,6 +6,8 @@ file kept under the README check's 400 KB budget. No real library, name, address
 Run from app/:  ../.venv/bin/python ../tests/readme_shots.py [OUT_DIR]   (needs Playwright, its Chromium, ffmpeg and Pillow)"""
 import io
 import json
+import re
+import socket
 import sys
 import threading
 import time
@@ -19,6 +21,7 @@ import auth
 import core
 import games
 import jf_standin as jfs
+import live_standin  # noqa: F401  (YouTube and Twitch, standing in, for Watch → Live)
 import uvicorn
 from jf_standin import T
 from PIL import Image, ImageDraw, ImageFont
@@ -139,7 +142,7 @@ def stock_library():
     original = handler.do_GET
 
     def do_get(self):
-        m = __import__("re").fullmatch(r"/Items/(\w+)/Images/(\w+)(?:/\d+)?", urlparse(self.path).path)
+        m = re.fullmatch(r"/Items/(\w+)/Images/(\w+)(?:/\d+)?", urlparse(self.path).path)
         if m and f'Token="{jfs.KEY}"' in (self.headers.get("Authorization") or ""):
             it = items.get(m[1]) or next((v for v in jfs.VIEWS if v["Id"] == m[1]), None)
             if it and m[1] in ART:
@@ -207,6 +210,34 @@ def stock_games():
 
 # ---------------------------------------------------------------- shooting
 
+# ---------------------------------------------------------------- Twitch, standing in, dressed
+
+LIVE = [("speedy", "Speedrun practice", "Retro", 321), ("nightowl", "Late-night lo-fi to read to", "Music", 1840),
+        ("tinkerer", "Building a tiny synth from scratch", "Science & Technology", 212), ("panfry", "Sunday pancakes, live", "Food & Drink", 96)]
+CHAT = [("Ravi", "#FFB547", "that jump was clean"), ("mossy", "#6BE0C4", "first time catching this live"), ("Juno", "#A58BFF", "what route is this?"),
+        ("pip", "#6CC2FF", "the music is so good"), ("Teodor", "#FF6B6B", "GG"), ("leafy", "#6BE0C4", "one more run!")]
+
+
+def stock_live():
+    def png(im):
+        buf = io.BytesIO()
+        im.save(buf, "PNG", optimize=True)
+        return buf.getvalue()
+
+    for n, (login, title, game, viewers) in enumerate(LIVE):
+        live_standin.STREAMS[login] = {"title": title, "viewersCount": viewers, "game": game}
+        live_standin.IMAGES[f"{login}-preview.png"] = png(art(title, 640, 360, n + 3))
+        live_standin.IMAGES[f"{login}-avatar.png"] = png(art(login[0].upper(), 150, 150, n + 3, pad=0.3))
+        live_standin.IMAGES[f"{login}-vod.png"] = png(art("Last night's runs", 320, 180, n + 4))
+        live_standin.IMAGES[f"{login}-clip.png"] = png(art("Big moment", 320, 180, n + 5))
+    live_standin.CHAT[:] = CHAT
+    info = live_standin.yt.video_info
+    live_standin.yt.video_info = lambda *a, **k: {**info(*a, **k), "description": "Soft rain and slow songs, all night. Requests in the chat."}
+    picture = live_standin.SEG / "speedy.png"
+    art(LIVE[0][1], 640, 360, 3).save(picture)
+    live_standin.make_segments("live", ["-loop", "1", "-i", str(picture)])
+
+
 def save_png(data: bytes, dest: Path):
     """the PNG, as small as it goes: lossless first, then fewer colours only if it still won't fit the budget"""
     im = Image.open(io.BytesIO(data)).convert("RGB")
@@ -225,7 +256,7 @@ def main():
     jfs.point(core)
     stock_library()
     steam = stock_games()
-    import socket
+    stock_live()
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -309,15 +340,28 @@ def main():
                 dest = OUT / f"tv-screen-desktop-{scheme}.png"
                 written.append((dest.name, save_png(tv.screenshot(), dest)))
                 print(f"  {dest.name}  {written[-1][1] // 1024} KB")
+            # Live: a Twitch channel followed, a YouTube live in the player
+            for login, *_ in LIVE + [("napper",)]:
+                desk.evaluate(f"fetch('/api/live/tw/follows', {{method: 'POST', headers: {{'Content-Type': 'application/json', 'X-Requested-With': 'parlor'}}, body: JSON.stringify({{login: '{login}'}})}})")
+            shoot(desk, "live", "desktop", "#/live", ".grid .tcard:nth-child(4)", tall=1000)
+            shoot(desk, "twitch", "desktop", "#/live/tw/speedy", "#chat li:nth-child(6)", lambda q: q.wait_for_function(
+                "(() => { const v = document.querySelector('#video'); return v && v.currentTime > 1; })()", timeout=30000))
+            shoot(desk, "games", "desktop", "#/games", "#g-retro .gcard.retro", tall=1300)
+            # a YouTube live in Parlor's player, with its own picture (the YouTube and Twitch addresses differ, so nothing is cached across)
+            picture = live_standin.SEG / "radio.png"
+            art("Rainy night radio", 640, 360, 4).save(picture)
+            live_standin.make_segments("live", ["-loop", "1", "-i", str(picture)])
+            shoot(desk, "watch-live", "desktop", "#/watch/abcdefghijk", ".livebadge", lambda q: q.wait_for_function(
+                "(() => { const v = document.querySelector('#video'); return v && v.currentTime > 1; })()", timeout=30000))
             for view, p in (("desktop", desk), ("phone", phone)):
                 shoot(p, "library", view, "#/jf", ".jcard", tall=1240)
                 shoot(p, "film", view, f"#/jf/item/{jfs.FILM}", ".hero .primary")
-                shoot(p, "games", view, "#/games", "#g-retro .gcard.retro", tall=1300)
             # the remote, with a film playing on the TV
             phone.goto(base + f"/#/jf/item/{jfs.FILM}")
             phone.wait_for_selector("[data-cast-jf]", timeout=30000)
             phone.click("[data-cast-jf]")
             tv.wait_for_function("document.querySelector('#jfVideo') && !document.querySelector('#jfVideo').paused", timeout=30000)
+            phone.set_viewport_size({"width": 390, "height": 866})  # a little taller: the volume row shows whole
             tid = phone.evaluate("fetch('/api/tv').then(r => r.json()).then(r => r.tvs[0].id)")
             shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
                 "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
@@ -330,7 +374,10 @@ def main():
     print("page errors:", errors or "none")
     big = [w for w in written if w[1] > KB_BUDGET * 1024]
     print(f"{len(written)} screenshots in {OUT}; over budget: {big or 'none'}")
-    ok = len(written) == 16 and not big and not errors
+    used = set(re.findall(r"docs/assets/screens/([\w-]+\.png)", (ROOT / "README.md").read_text()))
+    made = {name for name, _ in written}
+    print(f"the README shows {len(used)}; not made: {sorted(used - made) or 'none'}; made but not shown: {sorted(made - used) or 'none'}")
+    ok = made == used and not big and not errors
     print("RESULT:", "ok" if ok else "FAIL")
     return 0 if ok else 1
 
