@@ -612,6 +612,7 @@ async function boot() {
   keepMe();
   applyAccess();
   offRun(); // anything still being saved for offline carries on
+  jfFlush(); // places in films made with no server, not sent yet
   tvBoot(); // a TV listens for casts; anyone else learns their TVs (tv.js)
   $("#account").textContent = (ME.name || "?").trim()[0].toUpperCase();
   $("#account").title = ME.name;

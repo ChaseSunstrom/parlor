@@ -37,6 +37,7 @@ function serverBack() {
   clearInterval(pwaProbe);
   pwaProbe = 0;
   offRun(); // saving for offline carries on
+  jfFlush(); // and the places in films watched with no server get to Jellyfin
   if (!document.body.dataset.offlineStart) return;
   delete document.body.dataset.offlineStart; // opened offline: now open it properly
   if ($("#gate .gate-card")) $("#gate").innerHTML = "";
