@@ -151,7 +151,8 @@ function trackRows(tracks, album) {
     <span class="num"><span class="n">${esc(s.episode ?? i + 1)}</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span></span>
     <span class="what"><button class="title linkish" data-track-play="${i}">${esc(s.name)}</button>${many ? `<span class="by">${esc((s.artists || []).join(", "))}</span>` : ""}</span>
     <span class="alb"></span><span class="dur">${clock(s.runtime)}</span>
-    <button class="icon-btn" data-track-play="${i}" aria-label="Play ${esc(s.name)}">${ICON.play}</button></li>`).join("")}</ol>`;
+    <button class="icon-btn play" data-track-play="${i}" aria-label="Play ${esc(s.name)}">${ICON.play}</button>
+    <button class="icon-btn" data-track-more="${i}" aria-label="More for ${esc(s.name)}" aria-haspopup="menu" aria-expanded="false">${ICON.more}</button></li>`).join("")}</ol>`;
 }
 
 async function showJfItem(t, [id, , ...order]) {
@@ -188,7 +189,8 @@ async function showJfItem(t, [id, , ...order]) {
     jfAlbum = { album: x, tracks };
     return paint(t, hero({ kind: "Album", title: x.name, image: x.image,
       meta: [`<span>${esc((x.artists || []).join(", "))}</span>`, x.year ? `<span>${x.year}</span>` : "", `<span>${plural(tracks.length, "song")}, ${Math.round(length / 60)} min</span>`].join(""),
-      action: tracks.length ? `<button class="primary" data-album-play>${ICON.play}Play</button><button class="ghost" data-album-shuffle>${ICON.shuffle}Shuffle</button>` + toggles(x, ["Played", "Mark played"]) : "" }) +
+      action: tracks.length ? `<button class="primary" data-album-play>${ICON.play}Play</button><button class="ghost" data-album-shuffle>${ICON.shuffle}Shuffle</button>` +
+        toggles(x, ["Played", "Mark played"]) + `<button class="icon-btn ghost-round" data-album-more aria-label="Play next or add to the queue" aria-haspopup="menu" aria-expanded="false">${ICON.more}</button>` : "" }) +
       `<div class="wrap">${tracks.length ? trackRows(tracks, x) : `<div class="empty-state"><strong>No songs in this album</strong></div>`}</div>`);
   }
   if (x.type === "MusicArtist") {
@@ -231,20 +233,17 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (!jfAlbum) return;
-  const one = e.target.closest("[data-track-play]");
+  const one = e.target.closest("[data-track-play]"), more = e.target.closest("[data-track-more], [data-album-more]");
   const queue = () => jfAlbum.tracks.map((s) => dockItem(s, jfAlbum.album));
   if (one) dockPlay(queue(), +one.dataset.trackPlay);
-  else if (e.target.closest("[data-album-play]")) dockPlay(queue(), 0);
-  else if (e.target.closest("[data-album-shuffle]")) {
-    const q = queue();
-    for (let i = q.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [q[i], q[j]] = [q[j], q[i]]; }
-    dockPlay(q, 0);
-  }
+  else if (more) queueMenu(more, () => (more.dataset.trackMore ? [queue()[+more.dataset.trackMore]] : queue()));
+  else if (e.target.closest("[data-album-play]")) dockPlay(queue(), 0, false);
+  else if (e.target.closest("[data-album-shuffle]")) dockPlay(queue(), Math.floor(Math.random() * jfAlbum.tracks.length), true);
 });
 // the album you're looking at marks the song that's playing
-dock.audio.addEventListener("play", () => {
+dockOn("play", () => {
   const id = dock.queue[dock.at]?.jf;
-  document.querySelectorAll(".jtracks .row").forEach((r) => r.classList.toggle("now", r.dataset.jf === id));
+  document.querySelectorAll(".jtracks .row[data-jf]").forEach((r) => r.classList.toggle("now", r.dataset.jf === id)); // the music folder's rows are music.js's
 });
 
 /* ---------- the video player ---------- */

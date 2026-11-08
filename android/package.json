@@ -1,0 +1,14 @@
+{
+  "name": "parlor-android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Capacitor shell that bundles Parlor's web UI",
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "@capgo/capacitor-media-session": "8.1.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

@@ -233,6 +233,7 @@ async function showSettings(t) {
           <label class="field"><span class="vh">What it may do</span><select id="apiKeyScope"><option value="full">Search, download and request</option><option value="search">Search and read only</option></select></label>
           <button class="primary small">Make a key</button></form>
       </section>
+      <section class="panel" id="devicePanel"></section>
       <section class="panel" id="privatePanel"></section>
       <section class="panel"><h3>Your account</h3>
         ${me.local ? `<form id="pwForm"><label class="field"><span>Current password</span><input type="password" id="pwOld" autocomplete="current-password" required></label>
@@ -257,6 +258,7 @@ async function showSettings(t) {
   }));
   drawAppKeys(t);
   drawApiKeys(t);
+  drawDevice();
   drawPrivatePanel();
   $("#apiKeyForm").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -395,6 +397,7 @@ async function adminPanels(t) {
 
 async function showGate(mode) {
   ME = null;
+  forgetMe();
   const state = await fetch("/api/auth/state").then((r) => r.json()).catch(() => ({}));
   mode ||= state.setup ? "setup" : "login";
   const titles = { setup: ["Welcome to Parlor", "Create the admin account. You can add everyone else after."], login: ["Sign in", state.jellyfin ? "Use your Parlor or Jellyfin account." : ""], signup: ["Create an account", ""] };
@@ -597,14 +600,19 @@ page("settings", showSettings, "settings");
 page("you", showYou, "settings");
 
 async function boot() {
+  if (NATIVE && !SERVER && !(await appServer())) return; // the Android app: which Parlor (pwa.js)
   try {
     ME = await api("/api/me");
-  } catch {
-    return; // api() showed the sign-in screen
+  } catch (err) {
+    if (err.offline) bootOffline(); // no network, or no server: what this device has (pwa.js)
+    return; // otherwise api() showed the sign-in screen
   }
+  keepMe();
   applyAccess();
+  offRun(); // anything still being saved for offline carries on
   $("#account").textContent = (ME.name || "?").trim()[0].toUpperCase();
   $("#account").title = ME.name;
+  dockRestore();
   poll();
   route();
 }

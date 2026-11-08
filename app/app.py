@@ -22,6 +22,7 @@ import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
+import pwa
 import security
 import seerr
 import qbit
@@ -104,6 +105,7 @@ app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
 app.include_router(qbit.router)
 app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
+app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline
 app.mount("/music", music.app)  # its API answers at /music/api/...
 
 

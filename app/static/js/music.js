@@ -243,12 +243,14 @@ function showLocalAlbum(t, songs, artist, album) {
     <span class="num"><span class="n">${esc(s.track ?? "")}</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span></span>
     <span class="what"><button class="title linkish" data-local-play="${i}">${esc(s.name)}</button><span class="by">${esc(s.artists.join(", "))}</span></span>
     <span class="alb" title="${esc(s.path)}">${esc(s.path.split("/").pop())}</span>
-    <span class="dur">${mmss(s.ms)}</span><button class="icon-btn" data-local-play="${i}" aria-label="Play ${esc(s.name)}">${ICON.play}</button>
+    <span class="dur">${mmss(s.ms)}</span><button class="icon-btn play" data-local-play="${i}" aria-label="Play ${esc(s.name)}">${ICON.play}</button>
+    <button class="icon-btn" data-local-more="${i}" aria-label="More for ${esc(s.name)}" aria-haspopup="menu" aria-expanded="false">${ICON.more}</button>
   </li>`;
   localAlbum = list.map((s) => ({ src: localSrc(s), title: s.name, by: s.artists.join(", "), album, image: s.art ? coverUrl(s) : art && coverUrl(art),
     href: libHref(artist, album), runtime: (s.ms || 0) / 1000 }));
   paint(t, hero({ kind: "In your library", title: album || "Songs without an album tag", image: art && coverUrl(art), meta,
-      action: `<button class="primary" data-local-play="0">${ICON.play}Play</button><small>${esc(folder)}</small>` }) +
+      action: `<button class="primary" data-local-play="0">${ICON.play}Play</button><button class="ghost" data-local-shuffle>${ICON.shuffle}Shuffle</button>` +
+        `<button class="icon-btn ghost-round" data-local-more="all" aria-label="Play next or add to the queue" aria-haspopup="menu" aria-expanded="false">${ICON.more}</button><small>${esc(folder)}</small>` }) +
     `<div class="wrap">${section("Songs", `<ol class="rows jtracks">${list.map(row).join("")}</ol>`)}</div>`);
   markPlaying();
 }
@@ -256,14 +258,16 @@ function showLocalAlbum(t, songs, artist, album) {
 const localSrc = (s) => "/api/jf/music/" + s.path.split("/").map(encodeURIComponent).join("/");
 let localAlbum = [];
 document.addEventListener("click", (e) => {
-  const b = e.target.closest("[data-local-play]");
-  if (b) dockPlay(localAlbum, +b.dataset.localPlay);
+  const b = e.target.closest("[data-local-play]"), more = e.target.closest("[data-local-more]");
+  if (b) dockPlay(localAlbum, +b.dataset.localPlay, false);
+  else if (more) queueMenu(more, () => (more.dataset.localMore === "all" ? localAlbum : [localAlbum[+more.dataset.localMore]]));
+  else if (e.target.closest("[data-local-shuffle]")) dockPlay(localAlbum, Math.floor(Math.random() * localAlbum.length), true);
 });
 function markPlaying() {
   const src = dock.queue[dock.at]?.src;
   document.querySelectorAll(".jtracks .row[data-src]").forEach((r) => r.classList.toggle("now", !!src && r.dataset.src === src));
 }
-dock.audio.addEventListener("play", markPlaying);
+dockOn("play", markPlaying);
 
 function movesList(items, total) {
   const more = total > items.length ? `<li>…and ${total - items.length} more</li>` : "";

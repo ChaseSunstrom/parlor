@@ -40,7 +40,7 @@ class Routes(unittest.TestCase):
         self.assertEqual(not_admin, [], "routes marked admin that don't depend on core.admin")
 
     def test_rules(self):
-        cases = {"/api/yt/search": ("watch",), "/api/yt/downloads": ("watch", "downloads"), "/api/me/later": ("watch",),
+        cases = {"/sw.js": acl.OPEN, "/api/yt/search": ("watch",), "/api/yt/downloads": ("watch", "downloads"), "/api/me/later": ("watch",),
                  "/api/seerr/discover": ("media",), "/api/arr/queue": ("media",), "/api/arr/music/search": ("music",),
                  "/api/jf/items": ("library",), "/api/jf/music/a.mp3": ("music",), "/rest/ping.view": ("music",),
                  "/music/api/downloads": ("music", "downloads"), "/music/api/import": ("music", "downloads"),

@@ -1,0 +1,11 @@
+# An Android emulator to check the app on (tests/live_android.py): the build image plus what the emulator needs to
+# run headless. The emulator and its system image are kept in a volume (parlor-android-emu), not in the image.
+FROM parlor-android-build:1
+# the emulator needs root for /dev/kvm inside a throwaway test container
+# hadolint ignore=DL3002,DL3008
+USER root
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libpulse0 libgl1 libnss3 libxkbcommon0 libasound2t64 libxcomposite1 libxdamage1 \
+    libxrandr2 libxfixes3 libxcursor1 libxi6 libxtst6 \
+ && rm -rf /var/lib/apt/lists/*

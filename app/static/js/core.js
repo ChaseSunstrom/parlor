@@ -66,14 +66,43 @@ const ICON = {
   shelf: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5v15M9.5 4.5v15M14 6l4.3 13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M3.5 20h17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   book: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6.5C10 5 7.5 4.5 4 4.8v13.5c3.5-.3 6 .2 8 1.7 2-1.5 4.5-2 8-1.7V4.8c-3.5-.3-6 .2-8 1.7zM12 6.5V20" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
   heart: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.5c0 5.4-7.5 10-7.5 10z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  queue: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h11M4 11.5h11M4 16.5h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 13.5v5.2a2 2 0 1 1-1.4-1.9M17 13.5l3 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  repeat: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3.5 19.5 6 17 8.5M4.5 11V9.5A3.5 3.5 0 0 1 8 6h11.5M7 20.5 4.5 18 7 15.5M19.5 13v1.5A3.5 3.5 0 0 1 16 18H4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  repeat1: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3.5 19.5 6 17 8.5M4.5 11V9.5A3.5 3.5 0 0 1 8 6h11.5M7 20.5 4.5 18 7 15.5M19.5 13v1.5A3.5 3.5 0 0 1 16 18H4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 10.5 12.5 9.5v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  more: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.9" fill="currentColor"/><circle cx="12" cy="12" r="1.9" fill="currentColor"/><circle cx="18.5" cy="12" r="1.9" fill="currentColor"/></svg>',
+  grip: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14M5 15h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  offline: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 8.8a14 14 0 0 1 4.6-2.9M10.7 5.1A14 14 0 0 1 21.5 8.8M5.5 12.2a9.6 9.6 0 0 1 3.9-2.3M14.6 9.9a9.6 9.6 0 0 1 3.9 2.3M8.6 15.4a5 5 0 0 1 6.8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="19" r="1.4" fill="currentColor"/><path d="M4 3.5 20 20.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 const SPIN = '<svg class="spin" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14" fill="var(--accent)"/><circle cx="16" cy="16" r="9.5" fill="none" stroke="var(--accent-ink)" stroke-opacity=".3"/><circle cx="16" cy="16" r="4.5" fill="var(--accent-ink)"/><circle cx="20" cy="9" r="1.6" fill="var(--accent-ink)" fill-opacity=".5"/></svg>';
 
 /* ---------- API ---------- */
 
+/* Parlor's Android app bundles this page (it's the app's own, at https://localhost) and the server is elsewhere.
+   The app passes the page's GETs on to the server itself (pictures and streams too, cookies kept by the app);
+   anything with a body goes through native HTTP, since a page's request can't hand its body to the app. */
+const NATIVE = !!window.Capacitor?.isNativePlatform?.();
+let SERVER = ""; // the app's server, once known (pwa.js)
+
+async function nativeSend(path, { method, headers, body }) {
+  let r;
+  try {
+    r = await Capacitor.Plugins.CapacitorHttp.request({ url: SERVER + path, method, headers, data: body, responseType: "text" });
+  } catch (err) { throw new TypeError(err.message || "Can't reach Parlor"); } // like fetch: no network
+  return new Response([204, 304].includes(r.status) ? null : typeof r.data === "string" ? r.data : JSON.stringify(r.data), { status: r.status, headers: r.headers });
+}
+
 async function api(path, options = {}) {
   // the server only accepts changes carrying this header (it blocks other websites)
-  const res = await fetch(path, { ...options, headers: { ...options.headers, "X-Requested-With": "parlor" } });
+  let res;
+  try {
+    const ask = { ...options, headers: { ...options.headers, "X-Requested-With": "parlor" } };
+    res = NATIVE && (options.method || "GET") !== "GET" ? await nativeSend(path, ask) : await fetch(path, ask);
+    if (res.headers.get("x-parlor-offline")) throw new TypeError("Can't reach Parlor"); // the app's way of saying the server didn't answer
+  } catch (err) {
+    serverGone(); // no network, or no server: pwa.js says so and watches for it to come back
+    throw Object.assign(err, { offline: true });
+  }
+  serverBack();
   const body = await res.json().catch(() => ({}));
   if (res.status === 423) {
     showUnlock();

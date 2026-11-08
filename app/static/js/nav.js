@@ -9,7 +9,7 @@ const NAV = [
   { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"], ["Request music", "#/lidarr"]] },
   { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],
     ["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
-    ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Channels", "#/yt/channels", "Follow, import, export", "tv"],
+    ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Saved for offline", "#/offline", "Music and videos on this device", "offline"], ["Channels", "#/yt/channels", "Follow, import, export", "tv"],
     ["Settings", "#/settings", "Playback, account and more", "gear"]] },
 ];
 const TABS = 6; // the phone tab bar: the first sections, then You; the You page lists every page

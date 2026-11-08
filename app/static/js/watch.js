@@ -26,6 +26,7 @@ function vcard(v, { forget = false, remove = false } = {}) {
       <button data-later class="${v.later ? "on" : ""}" title="${v.later ? "In Watch later" : "Watch later"}" aria-label="Watch later">${v.later ? ICON.ok : ICON.clock}</button>
       ${forget ? `<button data-forget title="Remove from history" aria-label="Remove from history">${ICON.x}</button>` : ""}
       ${remove ? `<button data-vkeep class="${v.keep ? "on" : ""}" aria-pressed="${!!v.keep}" title="${v.keep ? "Kept: never deleted automatically" : "Keep: never delete it automatically"}" aria-label="Keep">${v.keep ? ICON.pinned : ICON.pin}</button>
+        ${offWorks ? `<button data-voffline title="Save on this device, to watch offline" aria-label="Save ${esc(v.title)} on this device">${ICON.offline}</button>` : ""}
         <button data-vprivate title="Make it private: only you, and people you share it with, can open it" aria-label="Make it private">${ICON.lock}</button>
         <button data-vdelete title="Delete the file" aria-label="Delete the file">${ICON.trash}</button>` : ""}
     </div>
