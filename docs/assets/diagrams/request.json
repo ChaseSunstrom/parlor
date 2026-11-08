@@ -1,0 +1,24 @@
+{
+  "title": "From asking for a film to watching it",
+  "motion": true,
+  "direction": "TB",
+  "nodes": [
+    {"id": "ask", "label": "You tap Request", "sub": "Movies & TV page"},
+    {"id": "parlor", "label": "Parlor", "sub": "POST /api/seerr/request"},
+    {"id": "seerr", "label": "Seerr", "sub": "records the request"},
+    {"id": "radarr", "label": "Radarr", "sub": "searches via Prowlarr"},
+    {"id": "qbit", "label": "qBittorrent", "sub": "downloads through the VPN"},
+    {"id": "folder", "label": "Movies folder", "sub": "renamed and filed"},
+    {"id": "jellyfin", "label": "Jellyfin", "sub": "adds it to the library"},
+    {"id": "watch", "label": "You press Play", "sub": "Library page, /api/jf/stream"}
+  ],
+  "edges": [
+    {"from": "ask", "to": "parlor"},
+    {"from": "parlor", "to": "seerr", "label": "as you"},
+    {"from": "seerr", "to": "radarr", "label": "approved"},
+    {"from": "radarr", "to": "qbit", "label": "grabs"},
+    {"from": "qbit", "to": "folder", "label": "done"},
+    {"from": "folder", "to": "jellyfin", "label": "scan"},
+    {"from": "jellyfin", "to": "watch"}
+  ]
+}

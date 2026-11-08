@@ -4,6 +4,11 @@ _Formerly yeerr._ A room for watching, listening and playing: YouTube, films and
 
 YouTube, movies and TV, and your music library, in one self-hosted app with accounts.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/library-desktop-dark.png">
+  <img alt="Parlor's Library on a computer: Continue watching with two films part-watched, and the menu down the left." src="docs/assets/screens/library-desktop-light.png">
+</picture>
+
 - **Library**: play what's in Jellyfin right here: films and shows with resume, next up and watched marks kept in your Jellyfin account, music in a player that keeps going while you look around, audiobooks, and books in a reader.
 - **Watch**: YouTube without ads, in up to 4K. Search, channels, playlists, your subscriptions feed, recommendations, continue watching, watch later and history. Fast downloads with chapters, subtitles and the thumbnail built in, or just the audio, straight into your music library.
 - **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. Trailers play in the ad-free player.
@@ -102,6 +107,29 @@ Don't want a VPN? **Run without a VPN…** in the same place asks you to confirm
 
 Coming from music-fndr? Stop its container first: Parlor uses the same port (8800). Point `DATA` at the folder that holds your music as `music/`; Parlor picks up music-fndr's queue and synced playlists from `music/.music-findr/`.
 
+## How it works
+
+Parlor is the one app you open. It keeps the sign-in and the accounts, and talks to the other apps for you, so each does one job:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/architecture-dark.svg">
+  <img alt="Your browser, phone or TV talks to Parlor. Parlor plays from Jellyfin and asks Seerr for requests. Seerr hands them to Sonarr, Radarr and Lidarr, which use qBittorrent behind the VPN and save to your media folders." src="docs/assets/diagrams/architecture-light.svg" width="420">
+</picture>
+
+Asking for a film shows the whole path. You never leave Parlor, and the film turns up in your Library when it has downloaded:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/request-dark.svg">
+  <img alt="You tap Request. Parlor sends it to Seerr as you. Seerr approves it for Radarr, which searches through Prowlarr and hands the film to qBittorrent. It downloads through the VPN into the Movies folder, Jellyfin scans it, and you press Play." src="docs/assets/diagrams/request-light.svg" width="340">
+</picture>
+
+What it costs to run, measured on one machine against the apps beside it:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/charts/cost-dark.svg">
+  <img alt="Bar charts. Parlor's image is 1,258 MB, close to Jellyfin's 1,268 MB. Idle, Parlor uses 219 MiB of memory, against 181 to 207 MiB for Jellyfin, Seerr, Sonarr, Radarr and Prowlarr." src="docs/assets/charts/cost-light.svg">
+</picture>
+
 ## Accounts
 
 The first account is the admin, created on first visit (nobody can sign in, not even with Jellyfin, until it exists). After that, accounts come from:
@@ -126,6 +154,11 @@ Settings → People → **Access** sets, for each member, what they can use:
 Admins always have everything, and accounts from before this have everything until you change it. The apps' own pages (Sonarr, qBittorrent and the rest) are admin tools outside these settings; keep their ports to your home network.
 
 ## The Library: playing Jellyfin in Parlor
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/film-desktop-dark.png">
+  <img alt="A film's page in the Library: its poster, year and length, Play, Save on this device and Mark watched buttons, and the cast below." src="docs/assets/screens/film-desktop-light.png">
+</picture>
 
 Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person plays as their Jellyfin user (their Jellyfin sign-in, the user an admin linked, or the default in Settings), so resume points, watched marks, favourites and Next up are the same here as in Jellyfin's own apps.
 
@@ -192,6 +225,11 @@ Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p)
 
 ## On phones, tablets and computers
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/library-phone-dark.png">
+  <img alt="The Library on a phone: Continue watching and Next up as swipeable rows, with the menu along the bottom." src="docs/assets/screens/library-phone-light.png" width="260">
+</picture>
+
 Parlor installs as an app: on Android, Chrome's menu has **Install app**; on iPhone and iPad, Safari's **Share → Add to Home Screen**; on a computer, Chrome's and Edge's address bar has an install button (Settings → This device has one too). It opens in its own window with the system's media controls. Installing and saving for offline need Parlor's **https** address: a plain `http://` address on your home network works in the browser but can't install. Put Parlor behind a reverse proxy with a certificate (Caddy gets one on its own), or run `tailscale serve` on the server and use its `https://` address. The Android app (below) works over plain http too.
 
 - **The queue**: every song's and album's **⋯** has **Play next** and **Add to queue**. The queue button in the player shows it: drag a song by its grip (or move it with the arrow keys), take one out, **Shuffle** (the song playing stays; turning it off puts the order back) and **Repeat** (all, or one). The next song loads while this one plays, so it starts the moment this one ends, with no pause to load (it isn't sample-exact gapless, so live albums keep a tiny seam). The queue is kept on the device, per person, and after a reload it's back, paused where it was.
@@ -201,6 +239,16 @@ Parlor installs as an app: on Android, Chrome's menu has **Install app**; on iPh
 - **iPhone and iPad**: a Home Screen app can stop playing when it's in the background or the screen locks, and Safari may clear saved music and videos from a Home Screen app that hasn't been opened for a few weeks.
 
 ## On a TV
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/tv-screen-desktop-dark.png">
+  <img alt="Parlor on a TV: the Library with its menu on the left and a bright ring on the one thing the remote's arrow keys have selected." src="docs/assets/screens/tv-screen-desktop-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/remote-phone-dark.png">
+  <img alt="A phone used as the TV's remote: the TV's name, the film playing with its time, a round pad with arrows and OK, Back and Home, then skip back, pause, skip forward and volume." src="docs/assets/screens/remote-phone-light.png" width="260">
+</picture>
 
 Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the Android app on an Android TV: it's in the TV's launcher and opens this way by itself). The TV shows an 8-character code; on your phone open **You → TVs**, type it and a name under **Add a TV**, press **Pair**, and the TV signs itself in to your account. No password is typed on the TV, and the code works once, for five minutes.
 
@@ -212,6 +260,11 @@ Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the 
 - The remote talks over server-sent events, so it works through the Android app and any reverse proxy. nginx must not buffer `/api/tv/events` (Parlor sends `X-Accel-Buffering: no`, which nginx honours).
 
 ## Games
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/games-desktop-dark.png">
+  <img alt="Games: a Steam library with recently and most played, then retro games to play in the browser and a gaming PC to stream." src="docs/assets/screens/games-desktop-light.png">
+</picture>
 
 **Games** has three parts: your Steam library, retro games played right in Parlor, and your gaming PC streamed to any screen. Each person sees their own.
 
