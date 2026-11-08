@@ -325,3 +325,4 @@ python3 tests/smoke.py http://127.0.0.1:8800                     # live check ag
 - `app/music.py` is music-fndr's backend, copied by `scripts/vendor-music.sh ../music-fndr`. Change it in music-fndr, then copy it again.
 - `app/static/` is the whole UI, with no build step. `js/music.js` is music-fndr's page code.
 - [DESIGN.md](DESIGN.md) describes the look.
+- `constraints.txt` pins every Python package in the image except yt-dlp (which updates itself on purpose), so a rebuild gives the same ones. To move them on: drop `-c /tmp/constraints.txt` from the Dockerfile, `docker compose build --no-cache parlor`, run the checks, then `docker run --rm --entrypoint pip parlor:latest freeze | grep -v -i -e '^yt-dlp' -e '@ file'` into `constraints.txt` (keeping its header) and put the `-c` back.

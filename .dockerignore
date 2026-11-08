@@ -1,6 +1,5 @@
-.git
-.env
-tests
-scripts
+# the image needs only these; everything else (the apps' config folders, ./parlor/key, .env) stays out of the build
+*
+!app
+!constraints.txt
 **/__pycache__
-*.md
