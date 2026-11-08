@@ -24,6 +24,36 @@ function pcard(x) {
   </article>`;
 }
 const pstrip = (items) => (items?.length ? `<div class="pstrip">${items.map(pcard).join("")}</div>` : "");
+
+/* what Sonarr and Radarr are fetching and what's coming up, as posters */
+function dayLabel(iso) {
+  // a release date is a calendar day at 00:00 UTC: read it as that day wherever you are
+  const d = /T00:00:00(\.0+)?Z$/.test(iso) ? new Date(`${iso.slice(0, 10)}T00:00:00`) : new Date(iso), today = new Date();
+  const days = Math.round((new Date(d.toDateString()) - new Date(today.toDateString())) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Tomorrow";
+  if (days === -1) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+function ucard(x, label, progress) {
+  const art = `<div class="poster">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : `<span class="noart">${esc(x.title)}</span>`}
+    ${x.have ? pill("available") : ""}<span class="kindtag">${x.app === "sonarr" ? "TV" : "FILM"}</span>
+    ${progress != null ? `<div class="meter"><i style="width:${(100 * progress).toFixed(1)}%"></i></div>` : ""}</div>`;
+  return `<article class="pcard">${x.link ? `<a href="${esc(x.link)}" tabindex="-1" aria-hidden="true">${art}</a>` : art}
+    ${x.link ? `<a class="t" href="${esc(x.link)}">${esc(x.title)}</a>` : `<span class="t">${esc(x.title)}</span>`}
+    <span class="s">${esc(label)}</span></article>`;
+}
+async function arrShelves(t) {
+  const [q, c] = await Promise.allSettled([api("/api/arr/queue"), api("/api/arr/calendar?days=14")]);
+  const box = $("#arrShelves");
+  if (!box || t !== ticket) return;
+  const video = (r) => (r.status === "fulfilled" ? r.value.items.filter((x) => x.app !== "lidarr") : []);
+  const fetching = video(q).map((x) => ucard(x, [x.subtitle, x.state === "downloading" ? `${Math.floor(100 * x.progress)}%` : arrState(x)].filter(Boolean).join(" · "),
+    x.state === "downloading" ? x.progress : null));
+  const soon = video(c).map((x) => ucard(x, [dayLabel(x.date), x.app === "sonarr" ? x.subtitle : x.what].filter(Boolean).join(" · ")));
+  box.innerHTML = shelf("Downloading now", fetching.length ? `<div class="pstrip even">${fetching.join("")}</div>` : "")
+    + shelf("Coming up", soon.length ? `<div class="pstrip even">${soon.join("")}</div>` : "");
+}
 const pgrid = (items) => (items?.length ? `<div class="pgrid">${items.map(pcard).join("")}</div>` : "");
 
 function notConnected(t, reason) {
@@ -53,12 +83,14 @@ async function showMedia(t, [what = "", ...rest]) {
   const spot = (d.trending || []).filter((x) => x.backdrop && x.type !== "person").slice(0, 6);
   paint(t, `<div id="spotlight">${spot.length ? spotlight(spot[0]) : ""}</div>
     <div class="wrap">${mediaChips("")}
+      <div id="arrShelves"></div>
       ${shelf("Trending this week", pstrip(d.trending), "#/media/more/trending")}
       ${shelf("Popular films", pstrip(d.movies), "#/media/more/movies")}
       ${shelf("Popular shows", pstrip(d.tv), "#/media/more/tv")}
       ${shelf("Coming soon to cinemas", pstrip(d.upcoming), "#/media/more/upcoming")}
       ${shelf("New and upcoming shows", pstrip(d.upcoming_tv), "#/media/more/upcoming_tv")}
     </div>`);
+  arrShelves(t);
   // the spotlight cycles through what's trending
   let i = 0;
   const timer = setInterval(() => {

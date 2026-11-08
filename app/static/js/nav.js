@@ -5,7 +5,7 @@ const NAV = [
   { key: "home", label: "Home", icon: "home", href: "#/" },
   { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Recommended", "#/yt/rec"]] },
   { key: "media", label: "Movies & TV", icon: "film", pages: [["Discover", "#/media"], ["Requests", "#/requests"]] },
-  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"]] },
+  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"], ["Request music", "#/lidarr"]] },
   { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],
     ["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
     ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Channels", "#/yt/channels", "Follow, import, export", "tv"],

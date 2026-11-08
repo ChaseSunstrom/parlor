@@ -445,3 +445,54 @@ page("playlist", withLibrary((t, parts) => showPlaylist(t, parts.join("/"))), "m
 page("artist", withLibrary((t, parts) => showArtist(t, parts.join("/"))), "music");
 page("library", (t, parts) => showLibrary(t, parts), "music");
 page("playlists", (t) => showPlaylists(t), "music");
+
+/* ---------- requests through Lidarr: it finds, downloads and keeps the best copy ---------- */
+
+function lidarrCard(x) {
+  const album = x.type === "album";
+  const ask = x.have ? "Search again" : album ? "Request album" : "Request artist";
+  return `<article class="tile ${album ? "album" : "artist"}">
+    <div class="cover">${img(x.image)}</div>
+    <span class="name">${esc(album ? x.title : x.name)}</span>
+    <span class="sub">${esc(album ? [x.artist, x.year].filter(Boolean).join(", ") : x.have ? "In Lidarr" : "Artist")}</span>
+    <button class="ghost lreq" data-lreq="${esc(JSON.stringify({ type: x.type, id: x.id }))}" aria-label="${esc(`${ask}: ${album ? x.title : x.name}`)}">${esc(ask)}</button>
+  </article>`;
+}
+async function showLidarr(t, parts) {
+  const q = parts.join("/");
+  paint(t, `<section class="home">${aurora}<h1>Request music</h1>
+      <p>Lidarr finds albums and artists, downloads them in the best quality it can and keeps them in your music library. Ask for one album, or an artist and everything they make.</p>
+      ${musicChips("lidarr")}
+      <form id="lidarrForm" class="actions"><label class="field grow"><span class="vh">Artist or album</span><input id="lidarrQ" type="search" placeholder="Artist or album" value="${esc(q)}"></label><button class="primary">Search</button></form>
+    </section><div class="wrap" id="lidarrOut">${q ? SPIN : ""}</div>`);
+  $("#lidarrForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#lidarrQ").value.trim();
+    if (v) go(`#/lidarr/${encodeURIComponent(v)}`);
+  });
+  const out = (html) => { if (t === ticket) $("#lidarrOut").innerHTML = html; };
+  const { apps } = await api("/api/arr/apps").catch(() => ({ apps: [] }));
+  if (!apps.includes("lidarr")) {
+    return out(`<div class="note"><strong>Lidarr isn't connected</strong>Music requests go to Lidarr. In the full stack Parlor sets it up for you; for a Lidarr elsewhere, set LIDARR_URL and LIDARR_API_KEY.</div>`);
+  }
+  if (!q) return $("#lidarrQ").focus();
+  let r;
+  try { r = await api(`/api/arr/music/search?q=${encodeURIComponent(q)}`); } catch (err) {
+    return out(`<div class="note"><strong>Lidarr didn't answer</strong>${esc(err.message)}</div>`);
+  }
+  const artists = r.items.filter((x) => x.type === "artist").map(lidarrCard).join("");
+  const albums = r.items.filter((x) => x.type === "album").map(lidarrCard).join("");
+  out((artists || albums) ? section("Artists", grid(artists, "strip")) + section("Albums", grid(albums))
+    : `<div class="note"><strong>Nothing matches “${esc(q)}”</strong>Try just the artist, or the album's name.</div>`);
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-lreq]");
+  if (!b) return;
+  b.disabled = true;
+  try {
+    const r = await post("/api/arr/music/request", JSON.parse(b.dataset.lreq));
+    b.textContent = "Requested";
+    toast(`${r.already ? "Lidarr is searching again for" : "Lidarr is looking for"} ${r.title}. It shows in Downloads once it's found.`);
+  } catch (err) { b.disabled = false; toast(err.message); }
+});
+page("lidarr", showLidarr, "music");

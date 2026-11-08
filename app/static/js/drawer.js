@@ -108,23 +108,80 @@ function videoItem(j) {
   </li>`;
 }
 
-/* ---------- both ---------- */
+/* ---------- films, shows and albums (Sonarr, Radarr, Lidarr) ---------- */
+
+const ARR_KIND = { sonarr: "Episode", radarr: "Film", lidarr: "Album" };
+let arrJobs = [], arrErrors = [], arrShape = "", arrAt = 0, arrBusy = false;
+
+function arrState(x) {
+  if (x.state === "downloading") {
+    return [`${Math.floor(100 * x.progress)}%`, x.left && `${bytes(x.left)} left`, x.eta != null && `${clock(x.eta)} to go`].filter(Boolean).join(" · ");
+  }
+  return { importing: "Moving into your library…", queued: "Waiting to start", paused: "Paused in qBittorrent",
+    stuck: x.why || "Stuck: open its app to see why", failed: `Failed${x.why ? `: ${x.why}` : ""}` }[x.state] || x.state;
+}
+
+const arrKey = (x) => `${x.app}-${x.id}`;
+function arrItem(x) {
+  const title = x.link ? `<a href="${esc(x.link)}">${esc(x.title)}</a>` : esc(x.title);
+  return `<li class="job arr" data-k="${esc(arrKey(x))}">
+    ${img(x.image)}
+    <div>
+      <strong>${title}</strong>
+      <span class="sub">${esc([ARR_KIND[x.app], x.subtitle, x.quality].filter(Boolean).join(" · "))}</span>
+      ${x.state === "downloading" ? `<div class="meter"><i style="width:${(100 * x.progress).toFixed(1)}%"></i></div>` : ""}
+      <span class="state ${["stuck", "failed"].includes(x.state) ? "failed" : ""}">${esc(arrState(x))}</span>
+    </div>
+    <span></span>
+  </li>`;
+}
+
+/* the list is rebuilt only when what's in it changes; progress updates in place, so focus stays put */
+function renderArr() {
+  const shape = JSON.stringify([arrErrors, arrJobs.map((x) => [arrKey(x), x.state, x.title, x.subtitle, x.why, x.link, x.image])]);
+  $("#arrHead").hidden = $("#arrJobs").hidden = !arrJobs.length && !arrErrors.length;
+  if (shape !== arrShape) {
+    arrShape = shape;
+    $("#arrJobs").innerHTML = arrErrors.map((e) => `<li class="empty failed">${esc(e)}</li>`).join("") + arrJobs.map(arrItem).join("");
+    return;
+  }
+  for (const x of arrJobs) {
+    const li = $(`#arrJobs [data-k="${CSS.escape(arrKey(x))}"]`);
+    const bar = li?.querySelector(".meter i");
+    if (bar) bar.style.width = `${(100 * x.progress).toFixed(1)}%`;
+    if (li) li.querySelector(".state").textContent = arrState(x);
+  }
+}
+
+// the *arrs' queues cost three calls, on their own clock so a slow app never holds up the rest:
+// every few seconds with the drawer open, every half minute for the badge, never in a hidden tab
+async function pollArr() {
+  if (arrBusy || document.hidden || Date.now() - arrAt < (drawer.classList.contains("open") ? 4000 : 30000)) return;
+  arrBusy = true;
+  arrAt = Date.now();
+  try {
+    const r = await api("/api/arr/queue");
+    arrJobs = r.items;
+    arrErrors = r.errors;
+  } catch { /* Parlor itself didn't answer: the other lists say so */ }
+  arrBusy = false;
+  renderArr();
+  drawCount();
+}
+
+/* ---------- all of them ---------- */
 
 let wasActive = 0, lastVideos = "";
 function renderJobs() {
   const musicActive = jobs.filter((j) => RUNNING.includes(j.status)).length;
   if (musicActive < wasActive) loadLibrary().catch(() => {});
   wasActive = musicActive;
-  const videoActive = videoJobs.filter((j) => V_RUNNING.includes(j.status)).length;
-  const active = musicActive + videoActive;
   const failedJobs = retryable().length + videoJobs.filter((j) => ["failed", "stopped"].includes(j.status)).length;
   $("#retryFailed").hidden = !failedJobs;
   $("#retryFailed").textContent = `Retry ${failedJobs} failed`;
   $("#torrentsLink").hidden = !ME?.admin;
-  $("#count").hidden = !active;
-  $("#count").textContent = active;
   $("#eq").hidden = !videoJobs.some((j) => j.status === "downloading") && !jobs.some((j) => j.status === "downloading");
-  document.body.classList.toggle("busy", active > 0);
+  drawCount();
   $("#jobs").innerHTML = jobs.length
     ? jobs.map(jobItem).join("")
     : `<li class="empty">No music downloads. Use the download buttons on songs, albums, playlists and artists.</li>`;
@@ -132,12 +189,21 @@ function renderJobs() {
     ? videoJobs.map(videoItem).join("")
     : `<li class="empty">No video downloads. Use the download button on any video.</li>`;
 }
+/** the badge counts everything running; Parlor's own downloads also make the page poll quickly */
+function drawCount() {
+  const own = jobs.filter((j) => RUNNING.includes(j.status)).length + videoJobs.filter((j) => V_RUNNING.includes(j.status)).length;
+  const all = own + arrJobs.filter((x) => ["downloading", "importing"].includes(x.state)).length;
+  $("#count").hidden = !all;
+  $("#count").textContent = all;
+  document.body.classList.toggle("busy", own > 0);
+}
 $("#jobs").addEventListener("toggle", (e) => {
   const id = e.target.dataset.job;
   if (id) e.target.open ? expanded.add(id) : expanded.delete(id);
 }, true);
 
 async function poll() {
+  pollArr();
   const [m, v] = await Promise.allSettled([api("/music/api/downloads"), api("/api/yt/downloads")]);
   let changed = false;
   if (m.status === "fulfilled") { const s = JSON.stringify(m.value); if (s !== lastJobs) { lastJobs = s; jobs = m.value; changed = true; } }
@@ -165,6 +231,7 @@ $("#clearDone").addEventListener("click", async () => {
   poll();
 });
 document.addEventListener("click", (e) => {
+  if (e.target.closest("#queue a[href^='#/']")) setDrawer(false); // a title or Play link: show the page, not the drawer over it
   const rm = e.target.closest("[data-vremove]");
   if (rm) {
     rm.disabled = true;

@@ -75,6 +75,17 @@ def subject(app, r):
     return artist.get("artistName") or "", album.get("title") or "", image(album.get("images"), "cover") or image(artist.get("images"), "poster")
 
 
+def link(app, r):
+    """Parlor's own page for a film or show (Seerr's TMDB ids), or None."""
+    if app == "radarr":
+        tmdb = (r.get("movie") or r).get("tmdbId")
+        return f"#/movie/{tmdb}" if tmdb else None
+    if app == "sonarr":
+        tmdb = (r.get("series") or {}).get("tmdbId")
+        return f"#/tv/{tmdb}" if tmdb else None
+    return None
+
+
 def why(r):
     msgs = [m for s in r.get("statusMessages") or [] for m in (s.get("messages") or [s.get("title")]) if m]
     return r.get("errorMessage") or (msgs[0] if msgs else None)
@@ -95,7 +106,7 @@ def state(r):
 @router.get("/queue")
 def queue(_=Depends(me)):
     def one(app):
-        return arr.call(app, "GET", "/queue", params={"pageSize": 200, **INCLUDE[app]}).get("records", [])
+        return arr.call(app, "GET", "/queue", params={"pageSize": 200, **INCLUDE[app]}, timeout=8).get("records", [])
     found, errors = each(present(), one)
     items = []
     for app, records in found.items():
@@ -104,7 +115,7 @@ def queue(_=Depends(me)):
             size, left = r.get("size") or 0, r.get("sizeleft") or 0
             items.append({"app": app, "id": r.get("id"), "title": title, "subtitle": sub, "image": pic, "release": r.get("title"),
                           "state": state(r), "why": why(r), "progress": round(1 - left / size, 4) if size else 0, "size": size, "left": left,
-                          "eta": seconds(r.get("timeleft")), "client": r.get("downloadClient"),
+                          "eta": seconds(r.get("timeleft")), "client": r.get("downloadClient"), "link": link(app, r),
                           "quality": ((r.get("quality") or {}).get("quality") or {}).get("name")})
     order = {"stuck": 0, "failed": 1, "downloading": 2, "importing": 3, "queued": 4, "paused": 5}
     return {"items": sorted(items, key=lambda i: (order[i["state"]], -(i["progress"] or 0))), "errors": errors}
@@ -113,7 +124,8 @@ def queue(_=Depends(me)):
 @router.get("/calendar")
 def calendar(days: int = Query(14, ge=1, le=90), _=Depends(me)):
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-    span = {"start": (today - timedelta(days=1)).isoformat(), "end": (today + timedelta(days=days)).isoformat()}
+    zulu = "%Y-%m-%dT%H:%M:%SZ"  # the *arrs' own form, so dates compare as text
+    span = {"start": (today - timedelta(days=1)).strftime(zulu), "end": (today + timedelta(days=days)).strftime(zulu)}
     found, errors = each(present(), lambda app: arr.call(app, "GET", "/calendar", params={**span, **INCLUDE[app]}))
     items = []
     for app, records in found.items():
@@ -128,7 +140,7 @@ def calendar(days: int = Query(14, ge=1, le=90), _=Depends(me)):
             else:
                 when, what = r.get("releaseDate"), "Album"
             if when:
-                items.append({"app": app, "id": r.get("id"), "date": when, "what": what, "title": title, "subtitle": sub, "image": pic,
+                items.append({"app": app, "id": r.get("id"), "date": when, "what": what, "title": title, "subtitle": sub, "image": pic, "link": link(app, r),
                               "have": bool(r.get("hasFile") or (r.get("statistics") or {}).get("percentOfTracks") == 100), "monitored": r.get("monitored", True)})
     return {"items": sorted(items, key=lambda i: i["date"]), "errors": errors}
 
@@ -145,6 +157,12 @@ def history(limit: int = Query(30, ge=1, le=200), _=Depends(me)):
             items.append({"app": app, "date": r.get("date"), "event": EVENTS.get(r.get("eventType"), r.get("eventType")), "title": title,
                           "subtitle": sub, "image": pic, "release": r.get("sourceTitle"), "quality": ((r.get("quality") or {}).get("quality") or {}).get("name")})
     return {"items": sorted(items, key=lambda i: i["date"] or "", reverse=True)[:limit], "errors": errors}
+
+
+@router.get("/apps")
+def apps(_=Depends(me)):
+    """The media apps connected to Parlor, so pages show only what works."""
+    return {"apps": present()}
 
 
 @router.get("/summary")

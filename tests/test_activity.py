@@ -48,7 +48,7 @@ class FakeArrs:
             return 200, {"records": [
                 {"id": 1, "title": "Show.S01E02.1080p", "size": 1000, "sizeleft": 250, "timeleft": "00:10:05", "status": "downloading",
                  "trackedDownloadStatus": "ok", "trackedDownloadState": "downloading", "downloadClient": "qBittorrent",
-                 "quality": {"quality": {"name": "WEBDL-1080p"}}, "series": {"title": "The Show", "images": POSTER},
+                 "quality": {"quality": {"name": "WEBDL-1080p"}}, "series": {"title": "The Show", "images": POSTER, "tmdbId": 1399},
                  "episode": {"seasonNumber": 1, "episodeNumber": 2, "title": "Second"}},
                 {"id": 2, "title": "Show.S01E03", "size": 1000, "sizeleft": 1000, "timeleft": None, "status": "warning",
                  "trackedDownloadStatus": "warning", "trackedDownloadState": "importPending",
@@ -66,9 +66,10 @@ class FakeArrs:
     def radarr(self, method, path, q, body):
         if path == "/queue":
             return 200, {"records": [{"id": 9, "title": "Film.2026", "size": 4000, "sizeleft": 0, "status": "completed", "trackedDownloadState": "importing",
-                                      "movie": {"title": "A Film", "year": 2026, "images": POSTER}}]}
+                                      "movie": {"title": "A Film", "year": 2026, "images": POSTER, "tmdbId": 550}}]}
         if path == "/calendar":
-            return 200, [{"id": 3, "title": "A Film", "year": 2026, "inCinemas": LATER, "digitalRelease": SOON, "hasFile": False, "images": POSTER},
+            return 200, [{"id": 3, "title": "A Film", "year": 2026, "inCinemas": LATER, "digitalRelease": SOON, "hasFile": False, "images": POSTER,
+                          "tmdbId": 550},
                          {"id": 4, "title": "Old", "year": 2001, "inCinemas": "2001-01-01T00:00:00Z"}]
         if path == "/history":
             return 200, {"records": [{"eventType": "grabbed", "date": "2026-11-07T10:00:00Z", "sourceTitle": "Film.2026", "movie": {"title": "A Film", "year": 2026}}]}
@@ -148,6 +149,19 @@ class Views(Base):
         r = self.c.get("/api/arr/calendar?days=14").json()
         self.assertEqual([(i["app"], i["what"]) for i in r["items"]], [("sonarr", "Episode"), ("radarr", "Digital"), ("lidarr", "Album")])
         self.assertEqual(r["items"][2]["image"], "https://img.test/c.jpg")
+        self.assertEqual([i["link"] for i in r["items"]][1:], ["#/movie/550", None], "films and shows open their page in Parlor")
+
+    def test_a_release_on_the_last_day_of_the_window_counts(self):
+        last = (datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        with mock.patch.object(self.fake, "radarr", lambda m, p, q, b: (200, [{"id": 5, "title": "Edge", "physicalRelease": last}])
+                               if p == "/calendar" else self.fake.common(p)):
+            items = self.c.get("/api/arr/calendar?days=14").json()["items"]
+        self.assertIn(("Edge", "On disc"), [(i["title"], i["what"]) for i in items])
+
+    def test_links_and_connected_apps(self):
+        items = self.c.get("/api/arr/queue").json()["items"]
+        self.assertEqual({i["id"]: i["link"] for i in items}, {1: "#/tv/1399", 2: None, 9: "#/movie/550"})
+        self.assertEqual(self.c.get("/api/arr/apps").json(), {"apps": ["sonarr", "radarr", "lidarr"]})
 
     def test_history_newest_first_with_plain_words(self):
         r = self.c.get("/api/arr/history").json()
