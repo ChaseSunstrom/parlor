@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import core
 from core import admin, db, one
 
-SECTIONS = {"watch": "Watch", "media": "Movies & TV", "music": "Music", "library": "Library", "downloads": "Downloads"}
+SECTIONS = {"watch": "Watch", "media": "Movies & TV", "music": "Music", "library": "Library", "games": "Games", "downloads": "Downloads"}
 EVERYONE, ADMIN = ("everyone",), ("admin",)  # no section: any signed-in person; or admins only (core.admin decides)
 SECRET = ("secret",)  # no session at all: another app calls it, and the address carries a secret the route checks
 OPEN = ("open",)  # no session at all: part of the app itself, which has to load to show its sign-in
@@ -26,6 +26,7 @@ RULES = [
     ("/api/seerr/users", ADMIN), ("/api/seerr/", ("media",)),
     ("/api/arr/music/", ("music",)), ("/api/arr/", ("media",)),
     ("/api/jf/music/", ("music",)), ("/api/jf/", ("library",)),
+    ("/api/games/settings", ADMIN), ("/api/games/", ("games",)), ("/games/stream", ("games",)),  # a gaming PC (games.py)
     # music-fndr: everything that queues downloads or moves files needs Downloads as well
     ("/music/api/downloads", ("music", "downloads")), ("/music/api/import", ("music", "downloads")),
     ("/music/api/organize", ("music", "downloads")), (re.compile(r"/music/api/playlists/[^/]+/sync"), ("music", "downloads")),

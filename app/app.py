@@ -22,6 +22,7 @@ import library
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
+import games
 import pwa
 import tv
 import security
@@ -45,7 +46,7 @@ async def guard(request: Request, call_next):
     """Every API call needs a session, and every change needs a header other
     websites can't send without a CORS preflight (which is never granted)."""
     path = request.url.path
-    if path.startswith(("/api/", "/music/api/", "/rest/", "/qbit/")) and not security.is_open(path):
+    if path.startswith(("/api/", "/music/api/", "/rest/", "/qbit/", "/games/")) and not security.is_open(path):
         return JSONResponse({"detail": "Parlor is locked: enter the passphrase"}, status_code=423)
     if path.startswith(("/api/", "/music/api/")) and (key := request.headers.get("x-api-key") or _bearer(request)):
         # another program, with an API key: no cookies are involved, so no cross-site header is needed either
@@ -107,6 +108,8 @@ app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
 app.include_router(qbit.router)
 app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
+app.include_router(games.router)  # /api/games: Steam, retro games, streaming from a PC
+app.include_router(games.page)  # /games/stream/: the bridge to a gaming PC, behind the sign-in
 app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline
 app.include_router(tv.router)  # /api/tv: pairing TVs, casting and the remote
 app.include_router(tv.page)  # /tv: Parlor on a TV

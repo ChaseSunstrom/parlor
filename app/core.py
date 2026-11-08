@@ -168,6 +168,7 @@ COLUMNS = [
     ("users", "blocked", "TEXT NOT NULL DEFAULT ''"),  # sections an admin closed to them (acl.py)
     ("users", "libraries", "TEXT"),  # NULL: every Jellyfin library; else a JSON list of library ids (jfaccess.py)
     ("users", "jf_own", "INTEGER NOT NULL DEFAULT 0"),  # 1: jf_user is a Jellyfin user Parlor made for them alone
+    ("users", "steam_id", "TEXT"),  # their Steam profile's 17-digit id, for Games (games.py)
 ]
 
 _local = threading.local()

@@ -515,7 +515,7 @@ async function accessEditor(row, u, opener) {
 /** a person's own view: sections closed to them leave the menus, and download buttons go */
 function applyAccess() {
   const closed = (s) => ME?.sections && ME.sections[s] === false;
-  for (const key of ["library", "watch", "media", "music"]) {
+  for (const key of ["library", "watch", "media", "music", "games"]) {
     const i = NAV.findIndex((g) => g.key === key);
     if (i >= 0 && closed(key)) NAV.splice(i, 1);
   }

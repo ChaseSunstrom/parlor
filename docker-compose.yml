@@ -20,6 +20,7 @@ services:
   parlor:
     build: .
     image: parlor:latest
+    networks: [default, games]   # games: the streaming bridge's own network (Games → Play from your PC)
     init: true                 # passes stop signals on while the start-up yt-dlp update runs
     depends_on:
       setup:
@@ -36,6 +37,7 @@ services:
       VIDEO_DIR: /data/youtube
       SEERR_URL: http://seerr:5055
       JELLYFIN_URL: http://jellyfin:8096
+      GAMES_STREAM_URL: ${GAMES_STREAM:+http://moonlight-web:8080}   # Games → Play from your PC, when it's on
     ports:
       - "${PORT:-8800}:8800"
     volumes:
@@ -224,3 +226,25 @@ services:
     ports: ["11011:11011"]
     volumes:
       - ./cleanuparr/config:/config
+
+  moonlight-web:               # Games → Play from your PC, optional: COMPOSE_PROFILES=games-stream in .env (README → Games)
+    image: mrcreativ3001/moonlight-web-stream:v3.0.1   # pinned: it trusts the X-Parlor-User header; check its notes before moving on
+    profiles: [games-stream]
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    environment:
+      FORWARDED_HEADER: X-Parlor-User      # Parlor says who's asking, so the bridge's own login never shows
+      PATH_PREFIX: /games/stream           # served by Parlor at /games/stream/, behind its sign-in
+      WEBRTC_PORT_RANGE: "40000:40100"
+      WEBRTC_NAT_1TO1_HOST: ${GAMES_STREAM_HOST:-}   # this server's address on your network, for the picture
+    ports:
+      - "40000-40100:40000-40100/udp"      # the picture and sound go straight to the browser; the web port stays private
+    volumes:
+      - ./moonlight-web/config:/moonlight-web/server   # its paired PCs
+    networks: [games]                      # only Parlor can reach it, so only Parlor says who's asking
+    restart: unless-stopped
+
+networks:
+  games: {}                                # Parlor and the streaming bridge, nobody else

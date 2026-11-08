@@ -56,6 +56,7 @@ const ICON = {
   door: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 8l-4 4 4 4M6 12h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   film: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7.5 4v16M16.5 4v16" stroke="currentColor" stroke-width="2"/></svg>',
   tv: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m10.2 9.4 4.6 2.6-4.6 2.6z" fill="currentColor"/></svg>',
+  pad: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.6a2.6 2.6 0 0 1-4.4 1.2L13.9 16h-3.8l-2.3 1.8a2.6 2.6 0 0 1-4.4-1.2L2.6 13A5 5 0 0 1 7.5 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7.5 10v4M5.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1.2" fill="currentColor"/><circle cx="17.8" cy="13.2" r="1.2" fill="currentColor"/></svg>',
   screen: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   wide: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
   full: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -196,8 +197,9 @@ const SECTIONS = {
   music: "Artists, albums, songs, playlists or a Spotify link",
   library: "Search your films, shows, music and books",
   settings: "Search videos, movies, shows and music",
+  games: "Search videos, movies, shows and music",
 };
-const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/" };
+const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/" };
 let ticket = 0, current = "home";
 const paint = (t, html) => { if (t === ticket) main.innerHTML = html; };
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }

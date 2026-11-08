@@ -18,7 +18,7 @@ COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 COPY --from=sqlcipher /wheels /wheels
 # yt-dlp is the newest on purpose: an older one stops working with YouTube within weeks
 # hadolint ignore=DL3013
-RUN pip install --no-cache-dir "spotdl~=4.5.2" "spotapi~=1.2.8" "pillow~=13.0" "cryptography~=50.0" /wheels/*.whl \
+RUN pip install --no-cache-dir "websockets>=14" "spotdl~=4.5.2" "spotapi~=1.2.8" "pillow~=13.0" "cryptography~=50.0" /wheels/*.whl \
     && pip install --no-cache-dir -U "yt-dlp[default]" && rm -rf /wheels
 
 COPY app /app

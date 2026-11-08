@@ -46,7 +46,7 @@ DATA/
   movies/  shows/  music/  youtube/  books/  games/
 ```
 
-`games/` is kept for the games apps to come; nothing uses it yet.
+`games/` holds retro games for Games → Retro, in `games/roms/<system>/` (see [Games](#games)).
 
 ### Folders per kind
 
@@ -118,7 +118,7 @@ Each account has its own subscriptions, history, resume points, watch later and 
 
 Settings → People → **Access** sets, for each member, what they can use:
 
-- **Watch** (YouTube), **Movies & TV** (discovering and requesting), **Music** (finding and requesting music, and music apps over Subsonic), **Library** (playing what's in Jellyfin) and **Downloads** (saving videos and songs to the server). A section that's off leaves their menus, and the server refuses it too, from the page, the API or a music app.
+- **Watch** (YouTube), **Movies & TV** (discovering and requesting), **Music** (finding and requesting music, and music apps over Subsonic), **Library** (playing what's in Jellyfin), **Games** and **Downloads** (saving videos and songs to the server). A section that's off leaves their menus, and the server refuses it too, from the page, the API or a music app.
 - **Which Jellyfin libraries they see.** Jellyfin holds this itself: a member limited to some libraries plays as a Jellyfin user of their own (their Jellyfin sign-in, or one Parlor makes for them, hidden and with a password nobody needs), whose library list Parlor keeps in step. Search, Next up, pictures and streams follow it, in Parlor and in Jellyfin's own apps. Someone sharing the default Jellyfin user is given their own first, so the others keep theirs. If Jellyfin can't be reached while you save, they see no library until it can, never every library.
 
 **Private items.** Anyone can make a video they downloaded private (the lock button on Downloaded): it leaves the shared video folder and is encrypted with a key of its own, which is sealed to the people it's for. Each person turns this on once in Settings → Private items, which makes them a key pair: the private half is sealed by their password, and by a **recovery code shown once**. Parlor opens it only in memory, for a signed-in session, so after a restart the page asks for the password again. The owner shares it by name with people who have it turned on, and taking someone off re-encrypts the file with a new key, so a key they kept opens nothing. Nobody else sees it, its title included, and an admin can't open it without being given it. Changing your password in Parlor keeps it; an admin resetting your password (or a Jellyfin account's password changing in Jellyfin) can't open it, and your recovery code then seals it to the new password (without the code it's lost). Private videos play in Parlor, with seeking, and stay out of Jellyfin's and the music apps' reach; the thumbnail and subtitle files are left behind (deleted), and deleting an account deletes its private files. **Back to the shared library** decrypts one into the video folder again. A deleted file can linger on an SSD until it's overwritten, so for the strongest protection encrypt the disk as well (see [Encrypted at rest](#encrypted-at-rest)).
@@ -203,6 +203,22 @@ Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the 
 - The remote's volume is Parlor's on the TV; switching the TV set on, its input and its own volume aren't there yet.
 - The remote talks over server-sent events, so it works through the Android app and any reverse proxy. nginx must not buffer `/api/tv/events` (Parlor sends `X-Accel-Buffering: no`, which nginx honours).
 
+## Games
+
+**Games** has three parts: your Steam library, retro games played right in Parlor, and your gaming PC streamed to any screen. Each person sees their own.
+
+- **Steam.** An admin adds a Steam Web API key once, on the Games page (get one at steamcommunity.com/dev/apikey). It stays on the server: no browser ever sees it. Each person then links their profile by its address (`steamcommunity.com/id/yourname` or `/profiles/7656…`), its custom name or its 17-digit id, and sees what they own, most played first, with what they played in the last two weeks above. Steam is asked at most once an hour per person, and its pictures come through Parlor and are kept. A private profile shows nothing; Games says which Steam privacy setting to change (Game details: Public).
+- **Retro.** Put games in `GAMES/roms/<system>/` (`nes`, `snes`, `n64`, `gb`, `gbc`, `gba`, `nds`, `vb`, `genesis`, `sms`, `gamegear`, `32x`, `segacd`, `psx`, `pce`, `atari2600`, `atari7800`, `lynx`, `ngp`, `ws`, `coleco`, `arcade`, `c64`, `dos`, `psp`), with a picture of the same name beside each if you like (`Game.png`). **Play** opens the game on its own page with [EmulatorJS](https://emulatorjs.org) 4.2.3: Parlor fetches each emulator file from EmulatorJS's server the first time it's needed and keeps it only if it matches the sha256 pinned in `app/emulatorjs.json`, so after that it plays without the internet. The game's own save (its battery memory) goes to Parlor whenever it changes, and save states when you save one from the emulator's menu, both sealed like the rest of Parlor's data and each person's own; on another device they come back. Parlor only reads from inside `GAMES/roms` (links out of it are ignored). Bring your own games: only ones you own.
+- **From your PC.** [Sunshine](https://app.lizardbyte.dev/Sunshine/) on your PC streams its screen; Parlor's bridge ([Moonlight Web](https://github.com/MrCreativ3001/moonlight-web-stream)) plays it in any browser, the TV's included. It's off until you turn it on in `.env`:
+
+  ```sh
+  COMPOSE_PROFILES=games-stream
+  GAMES_STREAM=1
+  GAMES_STREAM_HOST=192.168.1.20   # this server's address on your network
+  ```
+
+  then `docker compose up -d`. The bridge's own page is only reachable through Parlor, at Games → From your PC (an admin opens it once first): Parlor tells it who you are, so there's no second login, and each person keeps their own PCs. Add your PC by its address, and type the PIN it shows into Sunshine's page on the PC (Sunshine → PIN). The picture and sound go straight from the bridge to your browser over WebRTC on UDP ports 40000–40100, so those must reach the server; from outside your home, add a TURN server in `./moonlight-web/config/config.json` (`webrtc.ice_servers`). Gamepads and keyboard capture need Parlor on https.
+
 ## Music apps (Subsonic)
 
 Parlor speaks the Subsonic/OpenSubsonic API, so Symfonium, Tempo, DSub, Feishin and similar apps can play your music folder.
@@ -254,6 +270,7 @@ Set these in `.env` (see `.env.example`).
 | `ENCRYPT` | `1` | Parlor's data encrypted at rest; `0` keeps a new install plain. See [Encrypted at rest](#encrypted-at-rest). |
 | `KEY_DIR` | `./parlor/key` in the compose, else `DATA_DIR/key` | Where the encryption key lives. Keep it apart from the data, and back it up. |
 | `HEAL` | `1` | When YouTube changes something and downloads start failing, update yt-dlp straight away instead of at the next check. `0` turns that off (so does `UPDATE_HOURS=0`). |
+| `GAMES_STREAM`, `GAMES_STREAM_HOST` | off | Any value (leave it out for off) and this server's address on your network turn on Games → From your PC, with `COMPOSE_PROFILES=games-stream` (see [Games](#games)) |
 | `OFFLINE` | on | `off` makes the app's copy on phones and computers remove itself (see [On phones, tablets and computers](#on-phones-tablets-and-computers)) |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 

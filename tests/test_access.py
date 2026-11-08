@@ -49,7 +49,9 @@ class Routes(unittest.TestCase):
                  "/api/me": acl.EVERYONE, "/api/users/3": acl.ADMIN,
                  "/api/qbit/torrents": acl.ADMIN, "/qbit/": acl.ADMIN, "/api/nope": None,
                  "/tv": acl.OPEN, "/api/tv/code": acl.OPEN, "/api/tv/claim": acl.OPEN, "/api/tv/me": acl.OPEN,
-                 "/api/tv/pair": acl.EVERYONE, "/api/tv/3/do": acl.EVERYONE, "/api/tv/events": acl.EVERYONE}
+                 "/api/tv/pair": acl.EVERYONE, "/api/tv/3/do": acl.EVERYONE, "/api/tv/events": acl.EVERYONE,
+                 "/api/games/steam": ("games",), "/api/games/play/nes/x.nes": ("games",), "/api/games/settings": acl.ADMIN,
+                 "/games/stream/api/pair": ("games",), "/games/stream": ("games",)}
         for path, want in cases.items():
             self.assertEqual(acl.rule(path), want, path)
 
