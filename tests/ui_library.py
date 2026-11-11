@@ -111,8 +111,12 @@ with sync_playwright() as p:
         # a show: its season, then an episode
         page.goto(BASE + f"/#/jf/item/{SERIES}")
         page.wait_for_selector(".jstrip .jcard a.t:has-text('Season 1')", timeout=30000)
+        # the show's page has an episode list of its own (Next up, one row): the season's answer is held back a moment
+        # here, so a check that counts before the season's page is painted fails every time, not now and then
+        page.route("**/api/jf/**", lambda r: (time.sleep(0.5), r.continue_()))
         page.click(".jstrip .jcard a.t:has-text('Season 1')")
-        page.wait_for_selector(".eps li", timeout=30000)
+        page.wait_for_selector("h2:has-text('Episodes') + .eps li", timeout=30000)  # the season's list, not the show's Next up
+        page.unroute("**/api/jf/**")
         checks["the show lists its season and episodes"] = page.locator(".eps li").count() == 2
         settle(page)
         page.screenshot(path=str(OUT / "season-desk.png"))
