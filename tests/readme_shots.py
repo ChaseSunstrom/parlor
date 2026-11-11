@@ -419,6 +419,7 @@ def main():
             desk, phone = signed_in(b, "desktop"), signed_in(b, "phone")
             # Steam: an admin's key, then this person's profile
             desk.goto(base + "/#/games/steam")
+            desk.click(".gkey > summary", timeout=20000)  # the key is the other way in: the first is a QR code, which needs a phone
             desk.wait_for_selector("#steamKey", timeout=20000)
             desk.fill("#steamKeyIn", KEY)
             desk.click("#steamKey .primary")

@@ -1,5 +1,6 @@
 """Games in a browser: the Games page (Steam linked, shelves with art, retro tiles, the PC card) on a computer and a
-phone, then a retro game played in Parlor: EmulatorJS (its files fetched once from its CDN and checked against the
+phone; a member signing in to Steam by QR code with no key (a stand-in Steam approves it), on both; then a retro game
+played in Parlor: EmulatorJS (its files fetched once from its CDN and checked against the
 pinned sha256s) runs a tiny NES program made here, which paints the screen green and writes its battery save. The
 save goes up to Parlor and comes back on a second device; a save state does too.
 
@@ -17,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
 
+import auth
 import core
 import games
 import uvicorn
@@ -40,13 +42,39 @@ STEAM_ID, KEY = "76561197960287930", "0123456789ABCDEF0123456789ABCDEF"
 SAMPLE = [(620, "Portal 2", 1500, 90), (440, "Team Fortress 2", 30, 0), (570, "Dota 2", 9000, 0), (730, "Counter-Strike 2", 4000, 30)]
 
 
+def token(kind):
+    """shaped like one of Steam's: three parts, the middle one saying whose it is"""
+    return "eyJhbGciOiJFZERTQSJ9." + base64.urlsafe_b64encode(json.dumps({"sub": STEAM_ID, "kind": kind, "exp": int(time.time()) + 86400}).encode()).decode().rstrip("=") + ".c2ln"
+
+
+SIGNIN = {"approved": False, "polls": 0}  # the stand-in's phone: it approves when the check says so
+
+
 class Steam(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def do_POST(self):  # Steam's sign-in service: no key
+        call = urlparse(self.path).path.split("/")[2]
+        sent = json.loads(parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode())["input_json"][0])
+        SIGNIN["polls"] += call == "PollAuthSessionStatus"
+        body = json.dumps({"response": {
+            "BeginAuthSessionViaQR": {"client_id": "4242", "request_id": "cmVxdWVzdA==", "challenge_url": "https://s.team/q/1/4242", "interval": 2},
+            "PollAuthSessionStatus": {"refresh_token": token("refresh"), "account_name": "pats_login"} if SIGNIN["approved"] else {"had_remote_interaction": SIGNIN["polls"] > 1},
+            "GenerateAccessTokenForApp": {"access_token": token("access")} if sent.get("refresh_token", "").startswith("eyJ") else {},
+        }[call]}).encode()
+        self.send_response(200)
+        for k, v in (("Content-Type", "application/json"), ("Content-Length", str(len(body))), ("x-eresult", "1")):
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         u, q = urlparse(self.path), {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
-        if u.path.startswith("/img/"):
+        if u.path.startswith("/profiles/"):
+            body, kind = b"<profile><steamID><![CDATA[Pat]]></steamID></profile>", "text/xml"
+            self.send_response(200)
+        elif u.path.startswith("/img/"):
             body, kind = b"", "image/jpeg"  # no art: the card shows the name
             self.send_response(404)
         else:
@@ -56,7 +84,7 @@ class Steam(BaseHTTPRequestHandler):
                 "/IPlayerService/GetOwnedGames/v1/": {"game_count": len(SAMPLE), "games": [{"appid": a, "name": n, "playtime_forever": m} for a, n, m, _ in SAMPLE]},
                 "/IPlayerService/GetRecentlyPlayedGames/v1/": {"games": [{"appid": a, "name": n, "playtime_2weeks": r, "playtime_forever": m} for a, n, m, r in SAMPLE if r]},
             }.get(u.path, {})}).encode()
-            self.send_response(200 if q.get("key") == KEY else 403)
+            self.send_response(200 if q.get("key") == KEY or (q.get("access_token", "").startswith("eyJ") and u.path.startswith("/IPlayerService/")) else 403)
         self.send_header("Content-Type", kind)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -67,6 +95,7 @@ steam_server = ThreadingHTTPServer(("127.0.0.1", 0), Steam)
 threading.Thread(target=steam_server.serve_forever, daemon=True).start()
 games.STEAM_API = f"http://127.0.0.1:{steam_server.server_port}"
 games.STEAM_ART = f"http://127.0.0.1:{steam_server.server_port}/img/{{appid}}/{{kind}}.jpg"
+games.STEAM_PROFILE = f"http://127.0.0.1:{steam_server.server_port}/profiles/{{sid}}/?xml=1"
 
 with socket.socket() as s:
     s.bind(("127.0.0.1", 0))
@@ -80,13 +109,13 @@ CHROME = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium-*/chro
 checks, errors = {}, []
 
 
-def device(b, width=1280, height=860):
+def device(b, width=1280, height=860, name="admin"):
     ctx = b.new_context(viewport={"width": width, "height": height}, color_scheme="dark", is_mobile=width < 500, has_touch=width < 500)
     p = ctx.new_page()
     p.on("pageerror", lambda e: errors.append(str(e)[:200]))
     p.goto(BASE + "/")
     p.wait_for_selector("#gateForm")
-    p.fill("#gName", "admin")
+    p.fill("#gName", name)
     p.fill("#gPw", "correct horse")
     p.click("#gateForm .primary")
     p.wait_for_selector("#gateForm", state="detached", timeout=30000)
@@ -116,7 +145,10 @@ try:
         p.wait_for_selector("#g-steam .gsetup", timeout=20000)
         checks["with no Steam linked, the page leads with the games there are; Steam is one line to open"] = (
             p.eval_on_selector_all(".gsec", "els => els.map(e => e.id)") == ["g-retro", "g-pc", "g-steam"] and not p.locator("#steamKey").is_visible())
-        p.click("#g-steam .gsetup summary")
+        p.click("#g-steam .gsetup > summary")
+        checks["opened, it offers the sign-in with Steam's app first, and the key as the other way"] = (
+            p.locator("#steamQr [data-steam-qr]").is_visible() and not p.locator("#steamKey").is_visible() and "Or with a Steam Web API key" in p.inner_text(".gkey"))
+        p.click(".gkey > summary")
         p.fill("#steamKeyIn", KEY)
         p.click("#steamKey .primary")
         p.wait_for_selector("#steamLink", timeout=10000)  # Steam's own page now, the profile box open
@@ -142,6 +174,33 @@ try:
         phone.wait_for_selector("#g-retro .gcard", timeout=20000)
         checks["on a phone: no sideways scroll"] = phone.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")
         phone.screenshot(path=str(OUT / "games-phone.png"), full_page=True)
+        # no key anywhere: a member signs in to Steam by QR code, on a computer and on a phone
+        core.set_setting("steam_key", "")
+        auth.create_user("pal", "correct horse", False)
+        pal = device(b, name="pal")
+        pal.goto(BASE + "/#/games/steam")
+        pal.click("#steamQr [data-steam-qr]", timeout=20000)
+        pal.wait_for_selector("#steamQr .gqr svg path", timeout=10000)
+        box = pal.locator("#steamQr .gqr").bounding_box()
+        white = pal.evaluate("getComputedStyle(document.querySelector('.gqr')).backgroundColor")
+        checks["a member with no key anywhere gets a QR code: square, black on white, with a link that opens Steam's app"] = (
+            abs(box["width"] - box["height"]) < 2 and box["width"] >= 180 and white == "rgb(255, 255, 255)"
+            and pal.get_attribute("#steamQr a", "href") == "https://s.team/q/1/4242" and "Waiting for your phone" in pal.inner_text("#steamQrSay"))
+        pal.wait_for_function("document.querySelector('#steamQrSay')?.textContent.includes('Approve it')", timeout=15000)
+        pal.screenshot(path=str(OUT / "steam-qr.png"), full_page=True)
+        small = device(b, 390, 844, name="pal")
+        small.goto(BASE + "/#/games/steam")
+        small.click("#steamQr [data-steam-qr]", timeout=20000)
+        small.wait_for_selector("#steamQr .gqr svg path", timeout=10000)
+        checks["on a phone the code and its link fit the screen"] = small.evaluate("document.documentElement.scrollWidth <= innerWidth + 1") and small.locator("#steamQr a").is_visible()
+        small.screenshot(path=str(OUT / "steam-qr-phone.png"), full_page=True)
+        SIGNIN["approved"] = True  # the phone says yes
+        small.wait_for_selector("#g-steam .gshelf .gcard", timeout=20000)
+        names = small.eval_on_selector_all("#steamGrid .gname", "els => els.map(e => e.textContent)")
+        html = small.content() + json.dumps(small.evaluate("fetch('/api/games/steam').then((r) => r.json())"))
+        checks["approved on the phone, the page goes to their games by itself; no sign-in is in the page"] = (
+            names[:2] == ["Dota 2", "Counter-Strike 2"] and "· Pat" in small.inner_text("#g-steam") and "eyJ" not in html and "pats_login" not in html and "cmVxdWVzdA" not in html)
+        small.screenshot(path=str(OUT / "steam-signed-in-phone.png"), full_page=True)
         # play: the tile opens the game's page; EmulatorJS runs the program
         p.goto(BASE + "/#/games/retro")
         p.wait_for_selector("#g-retro .gcard.retro", timeout=20000)
@@ -204,6 +263,6 @@ for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 print("page errors:", errors or "none")
 print("screenshots:", OUT)
-ok = len(checks) == 12 and all(checks.values()) and not errors
+ok = len(checks) == 16 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

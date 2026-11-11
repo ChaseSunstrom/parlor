@@ -48,13 +48,17 @@ async function showGames(t, [part] = []) {
     const keyForm = `<form class="actions" id="steamKey"><label class="field grow"><span>Steam Web API key (steamcommunity.com/dev/apikey)</span>
           <input id="steamKeyIn" maxlength="40" autocomplete="off" spellcheck="false" placeholder="32 letters and digits" required></label><button class="primary small">Save</button></form>
           <p class="dim">The key stays on this server; nobody's browser sees it.</p>`;
-    if (steam.error) return `<p class="note-inline">${esc(steam.error)}</p>${ME.admin && steam.status === 502 ? keyForm : ""}<button class="ghost" data-unlink>Unlink Steam</button>`;
+    // signing in with Steam's phone app: no key, and each person does it for themselves
+    const signIn = (say) => `<div class="gsign" id="steamQr"><button class="primary" data-steam-qr>Sign in with Steam's app</button><p class="dim">${say}</p></div>`;
+    if (steam.error) return `<p class="note-inline">${esc(steam.error)}</p>${signIn("Parlor shows a code; you scan it with Steam's phone app.")}${ME.admin && steam.status === 502 ? keyForm : ""}<button class="ghost" data-unlink>Unlink Steam</button>`;
     if (!steam.linked) {  // not linked: a line to open, under the games there are; Steam's own page has it open
-      return `<details class="gsetup"${part === "steam" ? " open" : ""}><summary>Show the games you own on Steam here</summary>${!info.steam_key_set ? (ME.admin ? keyForm : `<p class="dim">An admin adds a Steam Web API key here first.</p>`) : ""}
-        <form class="actions" id="steamLink"><label class="field grow"><span>Your Steam profile</span><input id="steamProfile" maxlength="200" autocomplete="off"
-          placeholder="steamcommunity.com/id/yourname, or its 17-digit id" required></label><button class="primary small">Link</button></form></details>`;
+      return `<details class="gsetup"${part === "steam" ? " open" : ""}><summary>Show the games you own on Steam here</summary>
+        ${signIn("Parlor shows a code; you scan it with Steam's phone app. No key, and no password typed here. The sign-in stays on this server, and unlinking forgets it.")}
+        <details class="gkey"${info.steam_key_set && part === "steam" ? " open" : ""}><summary>Or with a Steam Web API key</summary>
+        ${!info.steam_key_set ? (ME.admin ? keyForm : `<p class="dim">An admin adds a Steam Web API key here first.</p>`) : `<form class="actions" id="steamLink"><label class="field grow"><span>Your Steam profile (its games must be public)</span><input id="steamProfile" maxlength="200" autocomplete="off"
+          placeholder="steamcommunity.com/id/yourname, or its 17-digit id" required></label><button class="primary small">Link</button></form>`}</details></details>`;
     }
-    if (steam.private) return `<p class="note-inline">${esc(steam.note)}</p><button class="ghost" data-unlink>Unlink ${esc(steam.profile.name || "Steam")}</button>`;
+    if (steam.private) return `<p class="note-inline">${esc(steam.note)}</p>${steam.signed_in ? "" : signIn("Or sign in with Steam's phone app: your games then show to you here, and stay private on Steam.")}<button class="ghost" data-unlink>Unlink ${esc(steam.profile.name || "Steam")}</button>`;
     const all = part === "steam" ? steam.games : steam.games.slice(0, 12);
     return `${steam.recent.length && part !== "steam" ? `<h3>Recently played</h3><div class="gshelf">${steam.recent.map((g) => steamCard(g, true)).join("")}</div>` : ""}
       <h3>${part === "steam" ? `All ${plural(steam.games.length, "game")}` : "Most played"} <small class="dim">· ${esc(steam.profile.name)}</small></h3>
@@ -82,6 +86,26 @@ async function showGames(t, [part] = []) {
     e.preventDefault();
     try { await send("PUT")("/api/games/settings", { steam_key: $("#steamKeyIn").value }); go("#/games/steam"); } catch (err) { toast(err.message); }  // on to Steam's own page: the next box, your profile, is open there
   });
+  $("#steamQr")?.addEventListener("click", async (e) => {
+    const press = e.target.closest("[data-steam-qr]"), box = $("#steamQr");
+    if (!press || press.disabled) return;
+    press.disabled = true;  // one code at a time: a second press would show another while the first was being scanned
+    let q, shown = "";
+    try { q = await post("/api/games/steam/qr"); } catch (err) { press.disabled = false; return toast(err.message); }
+    while (t === ticket && box.isConnected) {  // until the phone says yes, the code runs out or the page is left
+      if (q.state === "done") return go("#/games");
+      if (q.state === "gone") { box.innerHTML = `<p class="note-inline">That code ran out before it was approved.</p><button class="primary small" data-steam-qr>Show a new code</button>`; return; }
+      if (q.url !== shown) {  // Steam changes the code every half minute or so
+        shown = q.url;
+        box.innerHTML = `<div class="gqr" role="img" aria-label="A QR code to scan with Steam's phone app">${q.svg}</div>
+          <div><p><b>Scan this with Steam's phone app.</b> In the app: Steam Guard (the shield), then scan the code and approve.</p>
+          <p>Reading this on that phone? <a class="ghost small" href="${esc(q.url)}" target="_blank" rel="noopener">Open Steam's app</a></p><p class="dim" id="steamQrSay" role="status"></p></div>`;
+      }
+      $("#steamQrSay").textContent = q.seen ? "Scanned. Approve it in Steam's app." : "Waiting for your phone…";
+      await new Promise((r) => setTimeout(r, (q.every || 5) * 1000));
+      try { q = await api("/api/games/steam/qr"); } catch { if ($("#gateForm")) return; }  // Steam missed a beat: ask again; signed out of Parlor: stop
+    }
+  });
   $("#steamLink")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     try { await send("PUT")("/api/games/steam", { profile: $("#steamProfile").value }); go("#/games"); } catch (err) { toast(err.message); }
@@ -91,7 +115,7 @@ async function showGames(t, [part] = []) {
     $("#steamGrid").innerHTML = steam.games.filter((g) => g.name.toLowerCase().includes(q)).map((g) => steamCard(g)).join("");
   });
   document.querySelectorAll("[data-unlink]").forEach((b) => b.addEventListener("click", async () => {
-    if (!confirm("Unlink your Steam profile from Parlor?")) return;
+    if (!confirm("Unlink Steam from Parlor? Parlor forgets your profile, and your sign-in if you made one.")) return;
     try { await del("/api/games/steam"); route(); } catch (err) { toast(err.message); }
   }));
 }

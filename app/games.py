@@ -1,6 +1,8 @@
-"""Games: each person's Steam library (the Steam Web API, with an admin's key that never leaves the server), retro games
-from the GAMES folder played in Parlor, and streaming from a gaming PC. Steam's answers are kept an hour, and its
-art comes through Parlor from Steam's image server only, kept on disk."""
+"""Games: each person's Steam library (asked with their own sign-in, made once by scanning a QR code with Steam's phone
+app, or with an admin's Steam Web API key; neither leaves the server), retro games from the GAMES folder played in
+Parlor, and streaming from a gaming PC. Steam's answers are kept an hour, and its art comes through Parlor from
+Steam's image server only, kept on disk."""
+import base64
 import hashlib
 import html
 import json
@@ -35,7 +37,12 @@ STEAM_ART = "https://shared.steamstatic.com/store_item_assets/steam/apps/{appid}
 ART = {"header", "capsule_616x353", "library_600x900", "library_hero"}  # the art Steam has for every game
 HOUR = 3600
 _now = time.time  # the clock (tests move it)
-_cache: dict = {}  # steam id -> (when, answer)
+_cache: dict = {}  # (steam id, asked with their own sign-in?) -> (when, answer): a sign-in sees what a private profile hides
+STEAM_PROFILE = "https://steamcommunity.com/profiles/{sid}/?xml=1"  # the public profile, for its name: no key
+_qr: dict = {}  # user id -> a sign-in waiting to be scanned: Steam's two ids for it, its address, when Steam was last asked
+_tokens: dict = {}  # user id -> (Steam's day-long pass, when it ends)
+_began: dict = {}  # user id -> when they last had Steam start a sign-in: one every ten seconds, so a page in a loop can't get this server turned away
+BUSY = {0, 2, 3, 10, 16, 20, 84}  # Steam's result codes for "not now" (failed, no connection, busy, timed out, unavailable, too many asks): nothing is decided by them
 
 
 class GameSettings(BaseModel):
@@ -73,15 +80,18 @@ def put_settings(body: GameSettings, user=Depends(admin)):
 
 # --- Steam ------------------------------------------------------------------------------
 
-def steam(path: str, key: str = "", **params) -> dict:
-    key = key or setting("steam_key")
-    if not key:
-        raise HTTPException(409, "Steam isn't set up: an admin adds a Steam Web API key on the Games page")
+def steam(path: str, key: str = "", token: str = "", **params) -> dict:
+    """Steam's Web API, asked with a person's own pass (token) or the admin's key"""
+    key = "" if token else key or setting("steam_key")
+    if not key and not token:
+        raise HTTPException(409, "Steam isn't set up: sign in with Steam's app on the Games page, or an admin adds a Steam Web API key there")
     try:
-        r = requests.get(f"{STEAM_API}/{path}", params={"key": key, "format": "json", **params}, timeout=15, allow_redirects=False)
+        r = requests.get(f"{STEAM_API}/{path}", params={**({"access_token": token} if token else {"key": key}), "format": "json", **params}, timeout=15, allow_redirects=False)
     except requests.RequestException as exc:
-        log.warning("Steam: %s", type(exc).__name__)  # never the address: it carries the key
+        log.warning("Steam: %s", type(exc).__name__)  # never the address: it carries the key or the pass
         raise HTTPException(502, "Steam isn't answering; try again in a while")
+    if r.status_code in (401, 403) and token:
+        raise HTTPException(409, "Steam no longer takes your sign-in: sign in again with Steam's app")
     if r.status_code in (401, 403):
         raise HTTPException(502, "Steam refused Parlor's key: an admin replaces it on the Games page")
     if r.status_code != 200:
@@ -117,17 +127,147 @@ class Link(BaseModel):
     profile: str = Field(min_length=1, max_length=200)
 
 
+def _keep(user: dict, sid: Optional[str], token: Optional[str] = None):
+    """whose Steam library this person sees, and the sign-in to ask with (none: the admin's key asks)"""
+    db().execute("UPDATE users SET steam_id = ?, steam_token = ? WHERE id = ?", (sid, token, user["id"]))
+    _tokens.pop(user["id"], None)
+    _qr.pop(user["id"], None)
+
+
 @router.put("/steam")
 def link(body: Link, user=Depends(me)):
     sid = steam_id(body.profile)
-    db().execute("UPDATE users SET steam_id = ? WHERE id = ?", (sid, user["id"]))
+    _keep(user, sid)  # a sign-in is for one profile: it never asks about another
     return {"steam_id": sid}
 
 
 @router.delete("/steam")
 def unlink(user=Depends(me)):
-    db().execute("UPDATE users SET steam_id = NULL WHERE id = ?", (user["id"],))
+    # ponytail: forgotten here, not ended at Steam (its app still lists "Parlor" under authorized devices until removed
+    # there); ending it there too needs a signed call Steam's app makes, add if people ask
+    _keep(user, None)
     return {"ok": True}
+
+
+# --- signing in to Steam by QR code: no key, no password typed here -----------------------
+
+def steam_auth(call: str, **fields) -> tuple:
+    """Steam's sign-in service (the one its own apps use; it takes no key): Steam's result code (1 is yes) and its answer"""
+    try:
+        r = requests.post(f"{STEAM_API}/IAuthenticationService/{call}/v1/", data={"input_json": json.dumps(fields)}, timeout=15, allow_redirects=False)
+    except requests.RequestException as exc:
+        log.warning("Steam sign-in: %s", type(exc).__name__)
+        raise HTTPException(502, "Steam isn't answering; try again in a while")
+    if r.status_code != 200:
+        raise HTTPException(502, f"Steam isn't answering ({r.status_code}); try again in a while")
+    try:
+        code, got = int(r.headers.get("x-eresult") or 0), r.json().get("response") or {}
+    except (ValueError, AttributeError):
+        code, got = 1, None
+    if not isinstance(got, dict):
+        raise HTTPException(502, "Steam sent something Parlor can't read")
+    if code in BUSY:
+        raise HTTPException(502, "Steam is busy; try again in a while")
+    return code, got
+
+
+def _claims(token: str) -> dict:
+    """what one of Steam's tokens says about itself (whose it is, when it ends). Read, not checked: it came from Steam"""
+    try:
+        got = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+        return got if isinstance(got, dict) else {}
+    except (ValueError, IndexError):
+        return {}
+
+
+def _code(q: dict, **more) -> dict:
+    """what the page gets of a waiting sign-in: its address (Steam's app opens it on a phone) and that address as a QR code"""
+    import segno  # here, so a setup without it loses this picture and nothing else
+
+    return {"state": "waiting", "url": q["url"], "svg": segno.make(q["url"], error="m").svg_inline(border=3, omitsize=True), "every": q["every"], **more}
+
+
+@router.post("/steam/qr")
+def qr_begin(user=Depends(me)):
+    """start a sign-in: Steam gives an address to scan with its phone app, good for a short while"""
+    q = _qr.get(user["id"])
+    if _now() - _began.get(user["id"], 0) < 10:  # a button pressed twice, or a page in a loop: Steam isn't asked again
+        if q and "url" in q:
+            return _code(q, seen=q["seen"])
+        raise HTTPException(429, "Steam was asked for a code a moment ago; try again in a few seconds")
+    _began[user["id"]] = _now()
+    # Parlor asks as Steam's phone app does: the kind of sign-in Steam gives a pass for its Web API to
+    code, got = steam_auth("BeginAuthSessionViaQR", device_friendly_name="Parlor", platform_type=3, website_id="Mobile",
+                           device_details={"device_friendly_name": "Parlor", "platform_type": 3, "os_type": -500, "gaming_device_type": 528})
+    url = str(got.get("challenge_url") or "")
+    if code != 1 or not url.startswith("https://s.team/") or not got.get("client_id") or not got.get("request_id"):
+        raise HTTPException(502, "Steam wouldn't start a sign-in; try again in a while")
+    every = got.get("interval")
+    every = min(max(every, 2), 30) if isinstance(every, (int, float)) and every == every else 5  # Steam says how often to ask; not a number: five seconds
+    q = _qr[user["id"]] = {"client": str(got["client_id"]), "request": str(got["request_id"]), "url": url, "every": every, "asked": _now(), "seen": False}
+    return _code(q, seen=False)
+
+
+@router.get("/steam/qr")
+def qr_poll(user=Depends(me)):
+    """has the phone approved it yet? The page asks every few seconds while the code is on screen"""
+    q = _qr.get(user["id"])
+    if not q or "url" not in q:  # nothing waiting: it ran out, or it was approved and another of this person's tabs heard first
+        return {"state": "done" if q else "gone"}
+    if _now() - q["asked"] < q["every"] - 1:  # a page asking faster than Steam said to: the last answer again
+        return _code(q, seen=q["seen"])
+    q["asked"] = _now()
+    code, got = steam_auth("PollAuthSessionStatus", client_id=q["client"], request_id=q["request"])
+    now = _qr.get(user["id"])
+    if now is not q:  # while Steam answered, another tab finished it, or the person unlinked: that stands
+        return {"state": "done" if now and "url" not in now else "gone"}
+    if code != 1:  # the code ran out, or the phone said no
+        _qr.pop(user["id"], None)
+        return {"state": "gone"}
+    token = got.get("refresh_token")
+    if token:
+        sid = str(_claims(str(token)).get("sub") or "")
+        if not re.fullmatch(r"7656119\d{10}", sid):
+            _qr.pop(user["id"], None)
+            raise HTTPException(502, "Steam sent something Parlor can't read")
+        _keep(user, sid, str(token))
+        _qr[user["id"]] = {"done": _now()}  # so this person's other tabs showing the code hear it too
+        return {"state": "done"}
+    url = str(got.get("new_challenge_url") or "")
+    if url.startswith("https://s.team/"):  # Steam changes the code every half minute or so
+        q["url"], q["client"] = url, str(got.get("new_client_id") or q["client"])
+    q["seen"] = bool(got.get("had_remote_interaction"))
+    return _code(q, seen=q["seen"])
+
+
+def _pass(user: dict, sid: str, token: str) -> str:
+    """Steam's day-long pass for this person's sign-in, asked for again when it is about to end"""
+    hit = _tokens.get(user["id"])
+    if hit and hit[1] - _now() > 300:
+        return hit[0]
+    # ponytail: the sign-in itself lasts about 200 days, then the person scans again; Steam can renew it in this same
+    # call (renewal_type), add that if the yearly scans annoy
+    code, got = steam_auth("GenerateAccessTokenForApp", refresh_token=token, steamid=sid)
+    fresh = str(got.get("access_token") or "")
+    if code != 1 or not fresh:
+        log.warning("Steam sign-in: no pass for a kept sign-in (result %s)", code)
+        raise HTTPException(409, "Steam no longer takes your sign-in: sign in again with Steam's app")
+    try:
+        ends = float(_claims(fresh).get("exp") or 0)
+    except (TypeError, ValueError):
+        ends = 0
+    _tokens[user["id"]] = (fresh, ends or _now() + HOUR)
+    return fresh
+
+
+def _name(sid: str) -> str:
+    """a profile's public name, from its public page: no key. Nothing, when Steam won't say"""
+    try:
+        r = requests.get(STEAM_PROFILE.format(sid=sid), timeout=10, allow_redirects=False)
+        m = re.search(r"<steamID><!\[CDATA\[(.*?)\]\]></steamID>", r.text[:20000], re.S) if r.status_code == 200 else None
+        return m[1][:64] if m else ""
+    except requests.RequestException:
+        return ""
 
 
 def _game(g: dict) -> dict:
@@ -138,24 +278,33 @@ def _game(g: dict) -> dict:
 @router.get("/steam")
 def library(user=Depends(me)):
     """this person's Steam games: most played first, and the last two weeks'"""
-    sid = (one("SELECT steam_id FROM users WHERE id = ?", user["id"]) or {}).get("steam_id")
+    row = one("SELECT steam_id, steam_token FROM users WHERE id = ?", user["id"]) or {}
+    sid, token = row.get("steam_id"), row.get("steam_token")
     if not sid:
         return {"linked": False, "key_set": bool(setting("steam_key"))}
-    hit = _cache.get(sid)
+    hit = _cache.get((sid, bool(token)))
     if hit and _now() - hit[0] < HOUR:
         return hit[1]
-    players = steam("ISteamUser/GetPlayerSummaries/v2/", steamids=sid).get("players") or [{}]
-    p = players[0]
-    owned = steam("IPlayerService/GetOwnedGames/v1/", steamid=sid, include_appinfo=1, include_played_free_games=1)
-    recent = steam("IPlayerService/GetRecentlyPlayedGames/v1/", steamid=sid, count=12) if owned else {}
+    for again in (True, False):
+        how = {"token": _pass(user, sid, token)} if token else {}  # their own sign-in, or the admin's key
+        try:
+            name = _name(sid) if token else (steam("ISteamUser/GetPlayerSummaries/v2/", steamids=sid).get("players") or [{}])[0].get("personaname")
+            owned = steam("IPlayerService/GetOwnedGames/v1/", steamid=sid, include_appinfo=1, include_played_free_games=1, **how)
+            recent = steam("IPlayerService/GetRecentlyPlayedGames/v1/", steamid=sid, count=12, **how) if owned else {}
+            break
+        except HTTPException as exc:
+            if not (token and exc.status_code == 409 and again):
+                raise
+            _tokens.pop(user["id"], None)  # a pass Steam turned away before its time: one new one is asked for, then it's said
     hidden = "game_count" not in owned  # a private profile, or private game details, answer with nothing at all
-    answer = {"linked": True, "steam_id": sid, "private": hidden,
-              "profile": {"name": p.get("personaname") or ""},
+    answer = {"linked": True, "steam_id": sid, "private": hidden, "signed_in": bool(token),
+              "profile": {"name": name or ""},
               "games": sorted((_game(g) for g in owned.get("games", [])), key=lambda g: (-g["minutes"], g["name"])),
               "recent": [{**_game(g), "minutes_2weeks": g.get("playtime_2weeks", 0)} for g in recent.get("games", [])],
-              "note": "Steam keeps this profile's games private. In Steam: Profile → Edit Profile → Privacy Settings, set "
-                      "My profile and Game details to Public." if hidden else ""}
-    _cache[sid] = (_now(), answer)
+              "note": "" if not hidden else "Steam took your sign-in but sent no list of games. Unlink and sign in again; if it stays empty, a Steam Web API key shows them."
+                      if token else "Steam keeps this profile's games private. In Steam: Profile → Edit Profile → Privacy Settings, set "
+                                    "My profile and Game details to Public."}
+    _cache[(sid, bool(token))] = (_now(), answer)
     return answer
 
 

@@ -11,7 +11,27 @@
 
 ## Steam
 
-An admin adds a Steam Web API key once: on the Games page, open **Show the games you own on Steam here** (get a key at steamcommunity.com/dev/apikey). Until someone links Steam, that line sits under the retro games and the PC. It stays on the server: no browser ever sees it.
+There are two ways to show a person's Steam games. The first needs no key and no admin. Until someone links Steam, the line **Show the games you own on Steam here** sits under the retro games and the PC.
+
+### Sign in with Steam's app (no key)
+
+1. On the Games page, open **Show the games you own on Steam here** and press **Sign in with Steam's app**. Parlor shows a QR code.
+2. In Steam's phone app, open **Steam Guard** (the shield), scan the code and approve. The app names the sign-in **Parlor**. If you're reading Parlor on that phone, press **Open Steam's app** instead of scanning.
+3. The page goes to your games by itself: what you own, most played first, with what you played in the last two weeks above.
+
+What that leaves on your server:
+
+- **What Parlor keeps**: the sign-in Steam hands back (a token, good for about 200 days), in Parlor's [encrypted database](security.md). It is never sent to a browser or written to a log, and Parlor never sees your password.
+- **What it is**: a sign-in to your Steam account, the kind Steam's own phone app holds. Parlor asks Steam two things with it, the games you own and the games you played lately, and nothing else. Whoever controls the server controls that sign-in, so use this on a server you trust.
+- **Ending it**: **Unlink Steam** on the Games page makes Parlor forget it. To end it at Steam's side too, remove **Parlor** from your authorized devices in Steam's app (Steam Guard, then its settings).
+- **Private profile**: your games show to you here anyway, because it is you asking. Nobody else in Parlor sees them.
+- **When it runs out** or Steam ends it, Games says so and offers the button again.
+
+> This way in hasn't been tried with a real Steam account yet. Starting a sign-in and waiting for the phone are checked against Steam itself; what comes after the phone approves is built from the calls Steam's own apps make and tested against a stand-in. If it doesn't work for you, the key below does.
+
+### With a Steam Web API key
+
+An admin adds a key once: on the Games page, open **Show the games you own on Steam here**, then **Or with a Steam Web API key** (get a key at steamcommunity.com/dev/apikey). It stays on the server: no browser ever sees it.
 
 Each person then links their profile with any of these:
 
@@ -19,11 +39,12 @@ Each person then links their profile with any of these:
 - its custom name;
 - its 17-digit id.
 
-They see what they own, most played first, with what they played in the last two weeks above.
+A **private profile** shows nothing this way; Games says which Steam privacy setting to change (Game details: Public), or sign in with Steam's app instead.
+
+### Either way
 
 - **How often**: Steam is asked at most once an hour per person.
 - **Pictures**: they come through Parlor and are kept.
-- **Private profile**: it shows nothing; Games says which Steam privacy setting to change (Game details: Public).
 
 ## Retro games
 

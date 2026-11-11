@@ -7,7 +7,7 @@ How to run Parlor from source, run its tests, and where things are.
 ## Running it and testing
 
 ```sh
-uv venv -p 3.12 .venv && VIRTUAL_ENV=.venv uv pip install "spotdl~=4.5.2" "spotapi~=1.2.8" "httpx<0.28" -U "yt-dlp[default]"
+uv venv -p 3.12 .venv && VIRTUAL_ENV=.venv uv pip install "spotdl~=4.5.2" "spotapi~=1.2.8" "segno~=1.6" "httpx<0.28" -U "yt-dlp[default]"
 mkdir -p dev/music && cd dev/music && DATA_DIR=../data VIDEO_DIR=../videos ../../.venv/bin/uvicorn --app-dir ../../app app:app --reload --port 8800
 cd app && ../.venv/bin/python -m unittest discover -s ../tests   # unit tests, no network
 python3 tests/smoke.py http://127.0.0.1:8800                     # live check against a running Parlor

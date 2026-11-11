@@ -140,7 +140,14 @@ body.busy .brand img { animation: spin 3.2s linear infinite; } /* the record tur
 .pick { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-weight: 600; font-size: .88rem; }
 .pick select { max-width: 9.5em; padding: 0 4px 0 10px; field-sizing: content; } /* as wide as what's chosen, where the browser can: three fit a phone's line */
 .gsetup summary { cursor: pointer; font-weight: 600; }
-.gsetup[open] summary { margin-bottom: 14px; }
+.gsetup[open] > summary, .gkey[open] > summary { margin-bottom: 14px; }
+.gkey > summary { color: var(--dim); font-weight: 500; }
+/* signing in to Steam by QR code: the button, then the code beside what to do with it */
+.gsign { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: center; margin-bottom: 18px; }
+.gsign p { margin: 0 0 10px; max-width: 46ch; } .gsign > p { margin: 0; } .gsign > div:last-child { flex: 1 1 260px; min-width: 0; }
+.gqr { flex: none; width: 208px; padding: 8px; border-radius: 12px; background: #fff; line-height: 0; } /* black on white in both themes: a phone's camera needs it */
+.gqr svg { display: block; width: 100%; height: auto; }
+@media (pointer: coarse) { .gsign a.ghost { min-height: 44px; } } /* on a phone, the link is the way in */
 .back-btn {
   display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 10px; border-radius: 20px;
   border: 1px solid var(--line); background: var(--raise); color: var(--text); font-weight: 600; animation: pop .18s ease;

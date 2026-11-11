@@ -21,6 +21,7 @@ Everything Parlor itself writes is encrypted at rest, all with one random 256-bi
 - **Database**: accounts, sessions, settings and the apps' keys, history, subscriptions, with SQLCipher.
 - **Files beside it**: YouTube cookies and the download list, with AES-GCM.
 - **Data folder**: Parlor's alone (folders 0700, files 0600).
+- **Steam sign-ins**: a person who signs in to Steam by QR code ([Games](games.md)) leaves that sign-in in the database, so it is encrypted with everything else; no browser is sent it.
 - **Seerr key**: the stack's own Seerr key isn't copied at all: Parlor reads it from Seerr's settings when it needs it.
 
 ### Details
