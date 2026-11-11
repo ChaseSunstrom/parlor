@@ -38,8 +38,8 @@ services:
       SEERR_URL: http://seerr:5055
       JELLYFIN_URL: http://jellyfin:8096
       GAMES_STREAM_URL: ${GAMES_STREAM:+http://moonlight-web:8080}   # Games → Play from your PC, when it's on
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}   # your reverse proxy's address, so limits count each person (README → Security)
-      LAN_SUBNET: ${LAN_SUBNET:-192.168.0.0/16}   # TV sets: your home network, never Docker's own (README → TV sets)
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}   # your reverse proxy's address, so limits count each person (docs/security.md)
+      LAN_SUBNET: ${LAN_SUBNET:-192.168.0.0/16}   # TV sets: your home network, never Docker's own (docs/tv.md)
     ports:
       - "${PORT:-8800}:8800"
     volumes:
@@ -231,7 +231,7 @@ services:
     volumes:
       - ./cleanuparr/config:/config
 
-  questarr:                    # games: Prowlarr's indexers, qBittorrent behind the VPN, the GAMES folder (README → Games you ask for)
+  questarr:                    # games: Prowlarr's indexers, qBittorrent behind the VPN, the GAMES folder (docs/games.md)
     <<: *app
     image: ghcr.io/doezer/questarr:v1.6.0@sha256:495a1648f1ad8dddd4c7f96b4bf817d9d061bfd5608ef520522f0d891415e972   # pinned: a young project; read its notes before moving on
     depends_on:
@@ -239,7 +239,7 @@ services:
         condition: service_completed_successfully   # its folder must be the apps' user's before it starts
     environment:
       <<: *env
-      # games are looked up by title with no IGDB keys of yours: Parlor answers from Steam's store (README -> Games you ask for)
+      # games are looked up by title with no IGDB keys of yours: Parlor answers from Steam's store (docs/games.md)
       IGDB_CLIENT_ID: parlor
       IGDB_CLIENT_SECRET: parlor
       NODE_OPTIONS: --require /app/data/parlor-lookup.cjs   # setup puts it there, with the key Questarr shows Parlor
@@ -250,7 +250,7 @@ services:
       - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
       - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
 
-  checkrr:                     # finds films, episodes and songs that won't play; their *arr fetches new copies (README → Broken files)
+  checkrr:                     # finds films, episodes and songs that won't play; their *arr fetches new copies (docs/stack.md)
     image: aetaric/checkrr:3.6.1@sha256:c817e081e9397c240e5b13b09363fe26c9f94248489d3b4f0279e67495b1f12e
     user: "${PUID:-1000}:${PGID:-1000}"
     depends_on:
@@ -274,7 +274,7 @@ services:
       - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}:ro
     restart: unless-stopped
 
-  moonlight-web:               # Games → Play from your PC, optional: COMPOSE_PROFILES=games-stream in .env (README → Games)
+  moonlight-web:               # Games → Play from your PC, optional: COMPOSE_PROFILES=games-stream in .env (docs/games.md)
     image: mrcreativ3001/moonlight-web-stream:v3.0.1   # pinned: it trusts the X-Parlor-User header; check its notes before moving on
     profiles: [games-stream]
     user: "${PUID:-1000}:${PGID:-1000}"

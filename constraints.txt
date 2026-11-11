@@ -1,7 +1,7 @@
 # Every Python package in Parlor's image, pinned, so a rebuild gives the same ones (the Dockerfile installs with -c).
 # yt-dlp and yt-dlp-ejs are left out on purpose: they update themselves, an old one stops working with YouTube.
 # Refresh: docker compose build --no-cache parlor with the -c dropped, then: docker run --rm --entrypoint pip parlor:latest freeze
-#   | grep -v -i -e '^yt-dlp' -e '@ file' > constraints.txt   (README → Development)
+#   | grep -v -i -e '^yt-dlp' -e '@ file' > constraints.txt   (docs/development.md)
 annotated-types==0.8.0
 anyio==3.7.1
 beautifulsoup4==4.15.0

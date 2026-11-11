@@ -439,9 +439,10 @@ def main():
     print("page errors:", errors or "none")
     big = [w for w in written if w[1] > KB_BUDGET * 1024]
     print(f"{len(written)} screenshots in {OUT}; over budget: {big or 'none'}")
-    used = set(re.findall(r"docs/assets/screens/([\w-]+\.png)", (ROOT / "README.md").read_text()))
+    pages = [ROOT / "README.md", *(ROOT / "docs").glob("*.md")]  # the docs pages name them as assets/screens/…
+    used = {name for page in pages for name in re.findall(r"assets/screens/([\w-]+\.png)", page.read_text())}
     made = {name for name, _ in written}
-    print(f"the README shows {len(used)}; not made: {sorted(used - made) or 'none'}; made but not shown: {sorted(made - used) or 'none'}")
+    print(f"the README and docs show {len(used)}; not made: {sorted(used - made) or 'none'}; made but not shown: {sorted(made - used) or 'none'}")
     ok = made == used and not big and not errors
     print("RESULT:", "ok" if ok else "FAIL")
     return 0 if ok else 1

@@ -68,7 +68,7 @@ async function showGames(t, [part] = []) {
       + (part !== "retro" && retro.systems.some((s) => s.games.length > 8) ? `<a class="ghost" href="#/games/retro">Every retro game</a>` : ""));
   const pcHtml = () => `<div class="gpc"><div class="gpc-art" aria-hidden="true">${ICON.screen}<i></i></div><div>
       <p>Play the games on your own PC from here, on a phone, a laptop or the TV: <b>Sunshine</b> on the PC sends the picture, Parlor's bridge brings it to this browser.</p>
-      ${!info.stream ? `<p class="dim">It's off on this server. An admin turns it on (README → Games → Play from your PC).</p>`
+      ${!info.stream ? `<p class="dim">It's off on this server. An admin turns it on (docs/games.md in Parlor's repo).</p>`
         : !info.stream_ready && !ME.admin ? `<p class="dim">An admin opens it once first, to set it up.</p>`
         : `<p class="dim">The first time: add your PC by its address, then type the PIN it shows into Sunshine's page on the PC (Sunshine → PIN).</p>
            <a class="primary" href="/games/stream/">${ICON.play}Open</a>`}</div></div>`;

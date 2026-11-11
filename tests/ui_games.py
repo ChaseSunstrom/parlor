@@ -125,7 +125,7 @@ try:
         checks["Steam: linked by profile address, most played first, recently played above"] = names[:2] == ["Dota 2", "Counter-Strike 2"] and recent == ["Portal 2", "Counter-Strike 2"]
         tiles = p.eval_on_selector_all("#g-retro .gcard.retro .gname", "els => els.map(e => e.textContent)")
         checks["Retro: the server's games by system"] = sorted(tiles) == ["Pixel Green", "Tiny Quest"]
-        checks["the PC card says how it's turned on"] = "README" in p.inner_text("#g-pc")
+        checks["the PC card says how it's turned on"] = "docs/games.md" in p.inner_text("#g-pc")
         p.wait_for_timeout(400)
         p.screenshot(path=str(OUT / "games.png"), full_page=True)
         p.goto(BASE + "/#/games/steam")

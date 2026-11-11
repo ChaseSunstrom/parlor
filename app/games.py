@@ -391,7 +391,7 @@ async def _person(cookies, path: str):
     if lacking := await anyio.to_thread.run_sync(acl.allowed, user, f"{PREFIX}/{path}"):
         raise HTTPException(403, f"{lacking} isn't open to your account; ask an admin")
     if not STREAM:
-        raise HTTPException(409, "Streaming from a PC is off: an admin turns on the games-stream profile (README → Games)")
+        raise HTTPException(409, "Streaming from a PC is off: an admin turns on the games-stream profile (docs/games.md)")
     if not user["admin"] and setting("games_stream_admin") != "1":
         raise HTTPException(409, "An admin opens Games → Play from your PC once first, to set it up")
     if path.startswith("/") or any(c in path for c in "\\%#@?") or ".." in path.split("/"):
