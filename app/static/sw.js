@@ -11,7 +11,7 @@ const NEVER = ["/api/", "/music/", "/rest/", "/hooks/", "/qbit/", "/sw.js"];
 
 self.addEventListener("install", (e) => {
   self.skipWaiting(); // the page notices the new worker and offers a reload (pwa.js)
-  if (!OFF) e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  if (!OFF) e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "no-cache" })))));
 });
 
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
@@ -32,10 +32,12 @@ self.addEventListener("fetch", (e) => {
   }
 });
 
-/** the server's copy (kept for next time); the kept one when the server fails, errs or is slow */
+/** the server's copy (kept for next time); the kept one when the server fails, errs or is slow. The server is asked
+    past the browser's own kept copy ("no-cache": unchanged costs a 304), or an old file the browser still thinks good
+    would pass for the server's */
 async function fresh(req, key) {
   const cache = await caches.open(CACHE), kept = await cache.match(key);
-  const net = fetch(req).then((res) => {
+  const net = fetch(req, { cache: "no-cache" }).then((res) => {
     if (res.ok && res.type === "basic") cache.put(key, res.clone()); // only Parlor's own files get here (NEVER keeps data out): bounded
     return res.ok || !kept ? res : kept; // a proxy's 502 while Parlor restarts: the app still opens
   });

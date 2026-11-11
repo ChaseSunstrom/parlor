@@ -118,6 +118,8 @@ More: [the rest of the settings](docs/settings.md).
 docker compose pull && docker compose build --pull && docker compose up -d
 ```
 
+Get the new version of this folder first (`git pull` in a clone). The build step is what picks a change up: `docker compose up -d` alone starts the image you already have. A tab that was open shows **Parlor was updated**: press **Reload**.
+
 yt-dlp needs no updating by hand: Parlor updates it on every start, every `UPDATE_HOURS`, and straight away when YouTube changes something. More: [Keeping up with YouTube](docs/youtube.md#keeping-up-with-youtube).
 
 ## Security

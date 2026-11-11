@@ -37,6 +37,15 @@ class Worker(unittest.TestCase):
         for f in filled(c.get("/sw.js").text)["SHELL"]:
             self.assertEqual(c.get("/" + f.removeprefix("./")).status_code, 200, f)
 
+    def test_a_browser_asks_about_every_file_on_every_load(self):
+        """with no rule a browser guesses how long a file stays good (a tenth of its age: hours), and an update doesn't show"""
+        c = env.client()
+        for f in filled(c.get("/sw.js").text)["SHELL"]:
+            r = c.get("/" + f.removeprefix("./"))
+            self.assertEqual(r.headers.get("cache-control"), "no-cache", f)
+            again = c.get("/" + f.removeprefix("./"), headers={"If-None-Match": r.headers["etag"]})
+            self.assertEqual((again.status_code, again.headers.get("cache-control")), (304, "no-cache"), f"{f}: unchanged costs no download")
+
     def test_a_changed_file_changes_the_version(self):
         before = filled(pwa.worker())["VERSION"]
         pwa.worker.cache_clear()

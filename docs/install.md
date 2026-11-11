@@ -111,4 +111,6 @@ To update everything else:
 docker compose pull && docker compose build --pull && docker compose up -d
 ```
 
+Get the new version of this folder first (`git pull` in a clone). The build step is what picks a change up: `docker compose up -d` alone starts the image you already have. A tab that was open shows **Parlor was updated**: press **Reload**.
+
 yt-dlp updates itself: see [Watching YouTube](youtube.md#keeping-up-with-youtube).

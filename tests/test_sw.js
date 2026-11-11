@@ -22,12 +22,13 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
   const store = (name) => ({
     async match(r) { return stores.get(name).get(key(r)); },
     async put(r, v) { stores.get(name).set(key(r), v); },
-    async addAll(list) { for (const u of list) { const r = await network({ url: key(u) }); if (!r.ok) throw new Error(`can't keep ${u}`); stores.get(name).set(key(u), r); } },
+    async addAll(list) { for (const u of list) { const r = await network({ url: key(u) }, u); if (!r.ok) throw new Error(`can't keep ${u}`); stores.get(name).set(key(u), r); } },
   });
-  const handlers = {}, fetched = [], state = { skipped: false, claimed: false, unregistered: false, navigated: [] };
+  const handlers = {}, fetched = [], asked = [], state = { skipped: false, claimed: false, unregistered: false, navigated: [] };
   // the network: url -> response, "down" (fails), or "hang" (never answers)
-  const network = (req) => {
+  const network = (req, init) => {
     fetched.push(req.url);
+    if (new URL(req.url).origin === ORIGIN) asked.push(init?.cache); // how the browser's own kept copy is treated
     const r = net[req.url] ?? net["*"] ?? res("from the server");
     return r === "down" ? Promise.reject(new TypeError("Failed to fetch")) : r === "hang" ? new Promise(() => {}) : Promise.resolve(r);
   };
@@ -39,6 +40,7 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
   };
   const ctx = {
     self, URL, location: new URL(ORIGIN + "/sw.js"), fetch: network,
+    Request: function (url, init) { return { url, ...init }; },
     setTimeout: (f, ms, v) => setTimeout(f, 20, v), // 3 s becomes 20 ms here
     Response: { error: () => ({ type: "error", ok: false }) },
     caches: {
@@ -55,7 +57,7 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
     handlers.fetch({ request: { url: new URL(url, ORIGIN).href, method, mode }, respondWith(p) { answer = p; } });
     return answer === "network" ? answer : await answer;
   };
-  return { event, request, stores, state, fetched, net };
+  return { event, request, stores, state, fetched, asked, net };
 }
 
 (async () => {
@@ -64,6 +66,9 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
   await w.event("install");
   assert.deepStrictEqual([...w.stores.get("parlor-shell-v1").keys()].sort(), SHELL.map((u) => new URL(u, ORIGIN + "/").href).sort());
   assert.ok(w.state.skipped);
+  await w.request("/app.css");
+  await w.request("/", { mode: "navigate" });
+  assert.ok(w.asked.length === SHELL.length + 2 && w.asked.every((c) => c === "no-cache"), `the server is asked past the browser's kept copy, at install and on every load: ${w.asked}`);
   await w.event("activate");
   assert.deepStrictEqual([...w.stores.keys()].sort(), ["parlor-fonts", "parlor-shell-v1", "someone-else"], "the old version goes; fonts and others' caches stay");
   assert.ok(w.state.claimed);

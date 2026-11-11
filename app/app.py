@@ -159,4 +159,14 @@ def start():
         stack.rechecker()  # the weekly search for better copies
 
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="ui")
+class Page(StaticFiles):
+    """the page's own files. A browser may keep them, but asks each time whether they changed (an unchanged file costs
+    one small 304): with no rule it guesses, keeps a file for a tenth of its age, and an update doesn't show for hours"""
+
+    def file_response(self, *args, **kw):
+        r = super().file_response(*args, **kw)
+        r.headers.setdefault("Cache-Control", "no-cache")
+        return r
+
+
+app.mount("/", Page(directory=Path(__file__).parent / "static", html=True), name="ui")
