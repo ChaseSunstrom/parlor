@@ -10,7 +10,7 @@
 
 ## Request music
 
-See [What the apps are doing](stack.md#what-the-apps-are-doing): **Music → Request music** sends albums and artists to Lidarr.
+See [What the apps are doing](stack.md#what-the-apps-are-doing): **Request → Music** sends albums and artists to Lidarr.
 
 ## Music apps (Subsonic)
 

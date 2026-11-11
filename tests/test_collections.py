@@ -1,7 +1,7 @@
 """Whole sets through Seerr (bulk.py), against a Seerr stand-in shaped like the real one: a collection, a studio, a
 network and a keyword list with Seerr's status and the filters; a plan names only what's missing, at most 250, and
 only for someone with a Seerr user; confirming works once, for the person the plan was made for; the job requests as
-that person, looks at each title again first, survives a restart, and stops when the person loses Movies & TV, Seerr's
+that person, looks at each title again first, survives a restart, and stops when the person loses Films & shows, Seerr's
 quota runs out or Seerr stops answering; Retry carries on; an API key with full scope can do it too.
 
 Run from app/: ../.venv/bin/python -m unittest discover -s ../tests -p 'test_collections*.py'"""
@@ -159,11 +159,11 @@ class Sets(unittest.TestCase):
 
     def test_the_person_as_they_are_now_decides(self):
         r = self.me.post("/api/seerr/sets/request", json={"plan": self.plan(kind="collection", id=100)["plan"]}, headers=H).json()
-        core.db().execute("UPDATE users SET blocked = 'media' WHERE name = 'member'")  # an admin closed Movies & TV to them
+        core.db().execute("UPDATE users SET blocked = 'media' WHERE name = 'member'")  # an admin closed Films & shows to them
         bulk.run(r["id"])
         self.assertEqual(self.fake.posted, [])
         job = core.one("SELECT * FROM bulk_jobs WHERE id = ?", r["id"])
-        self.assertEqual((job["status"], job["note"]), ("stopped", "Movies & TV was closed to this account"))
+        self.assertEqual((job["status"], job["note"]), ("stopped", "Films & shows was closed to this account"))
         self.assertEqual({t["state"] for t in json.loads(job["titles"])}, {"left"})
         # an account that's gone takes its jobs with it
         gone = signed_in("leaver")

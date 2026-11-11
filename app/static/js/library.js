@@ -59,7 +59,8 @@ function jcard(x, { wide = false, play = false } = {}) {
 const jstrip = (items, opts) => (items?.length ? `<div class="jstrip${opts?.wide ? " wide" : ""}">${items.map((x) => jcard(x, opts)).join("")}</div>` : "");
 const jgrid = (items) => items.map((x) => jcard(x)).join("");
 const libChips = (on) => `<nav class="chips">${[["", "Home"], ["movies", "Films"], ["shows", "Shows"], ["music", "Music"], ["artists", "Artists"], ["books", "Books"]]
-  .map(([k, label]) => `<a href="#/jf${k ? "/" + k : ""}"${k === on ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>`;
+  .map(([k, label]) => `<a href="#/jf${k ? "/" + k : ""}"${k === on ? ' aria-current="page"' : ""}>${label}</a>`).join("")}${
+  closedTo("games") ? "" : `<a href="#/games"${on === "games" ? ' aria-current="page"' : ""}>Games</a>`}</nav>`;
 
 /* ---------- home: carry on, then what's new in each library ---------- */
 
@@ -583,7 +584,7 @@ async function showJfSearch(t, q) {
     const items = r.items.filter((x) => types.includes(x.type));
     return items.length ? shelf(title, `<div class="jgrid${types[0] === "Episode" ? " wide" : ""}">${jgrid(items)}</div>`) : "";
   }).join("");
-  paint(t, html ? `<div class="wrap">${html}</div>` : `<div class="note"><strong>Nothing in your library matches “${esc(q)}”</strong>Request it in <a href="#/media/search/${encodeURIComponent(q)}">Movies &amp; TV</a> or <a href="#/music/search/${encodeURIComponent(q)}">Music</a>.</div>`);
+  paint(t, html ? `<div class="wrap">${html}</div>` : `<div class="note"><strong>Nothing in your library matches “${esc(q)}”</strong>Request it in <a href="#/media/search/${encodeURIComponent(q)}">Films &amp; shows</a> or <a href="#/music/search/${encodeURIComponent(q)}">Music</a>.</div>`);
 }
 
 const JF_ID = /^[0-9a-f]{32}$/i;

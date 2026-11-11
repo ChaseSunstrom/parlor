@@ -52,7 +52,7 @@ Parlor then takes each visitor's address from `X-Forwarded-For`, so the limits o
 
 | Variable | Default | What it does |
 |---|---|---|
-| `GAMES_STREAM`, `GAMES_STREAM_HOST` | off | Any value (leave it out for off) and this server's address on your network turn on Games → From your PC, with `COMPOSE_PROFILES=games-stream` (see [Games](games.md)) |
+| `GAMES_STREAM`, `GAMES_STREAM_HOST` | off | Any value (leave it out for off) and this server's address on your network turn on Library → Games → From your PC, with `COMPOSE_PROFILES=games-stream` (see [Games](games.md)) |
 | `OFFLINE` | on | `off` makes the app's copy on phones and computers remove itself (see [On phones, tablets and computers](devices.md)) |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 

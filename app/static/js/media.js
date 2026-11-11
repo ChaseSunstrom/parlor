@@ -1,4 +1,4 @@
-/* Movies & TV: discover, search and request through Seerr, as your own Seerr user. */
+/* Request → Films & shows: discover, search and request through Seerr, as your own Seerr user; and Your requests, every kind in one list. */
 
 const STATUS_LABEL = { available: "Available", partial: "Partly available", processing: "Processing", pending: "Requested", requested: "Requested",
   approved: "Approved", declined: "Declined", failed: "Failed", completed: "Completed", blocked: "Blocked", deleted: "Deleted", missing: "Not requested" };
@@ -57,7 +57,7 @@ async function arrShelves(t) {
 const pgrid = (items) => (items?.length ? `<div class="pgrid">${items.map(pcard).join("")}</div>` : "");
 
 function notConnected(t, reason) {
-  paint(t, `<section class="home">${aurora}<h1>Movies &amp; TV</h1>
+  paint(t, `<section class="home">${aurora}<h1>Films &amp; shows</h1>
     <p>Find films and shows and request them; Seerr gets them into your library.</p>${subnav()}</section>
     <div class="wrap"><div class="panel"><div class="head"><div><h3>Seerr isn't connected yet</h3>
       <p>${ME?.admin ? "Add your Seerr address and API key (Seerr → Settings → General → API Key)." : "Ask an admin to connect Seerr."} ${reason && reason !== "not set up" ? `(${esc(reason)})` : ""}</p></div>
@@ -83,6 +83,7 @@ async function showMedia(t, [what = "", ...rest]) {
   const spot = (d.trending || []).filter((x) => x.backdrop && x.type !== "person").slice(0, 6);
   paint(t, `<div id="spotlight">${spot.length ? spotlight(spot[0]) : ""}</div>
     <div class="wrap">${mediaChips("")}
+      <nav class="chips page-actions" aria-label="More ways to ask"><a href="#/sets">Collections: a whole franchise, studio or network</a></nav>
       <div id="arrShelves"></div>
       <div id="setShelf"></div>
       ${shelf("Trending this week", pstrip(d.trending), "#/media/more/trending")}
@@ -219,10 +220,22 @@ async function showPerson(t, [id]) {
 }
 
 const REQ_FILTERS = [["all", "All"], ["pending", "Waiting for approval"], ["approved", "Approved"], ["processing", "Processing"], ["available", "Available"], ["failed", "Failed"]];
-async function showRequests(t, [scope = "mine", filter = "all"]) {
-  const s = await checkSeerr();
-  if (s !== true && !s.connected) return notConnected(t, s.reason);
-  const r = await api(`/api/seerr/requests?scope=${encodeURIComponent(scope)}&filter=${encodeURIComponent(filter)}`);
+// Your requests: every kind in one list (#/requests), or one kind: #/requests/mine and /all are films & shows (yours, everyone's), /music is music
+const REQ_KINDS = [["", "Everything", () => true], ["mine", "Films & shows", () => !closedTo("media")], ["music", "Music", () => !closedTo("music")]];
+async function showRequests(t, [a = "", filter = "all"]) {
+  const kind = a === "music" ? "music" : a ? "mine" : "", scope = a === "all" ? "all" : "mine";
+  const films = kind !== "music" && !closedTo("media"), music = kind !== "mine" && !closedTo("music");
+  if (kind && !(kind === "music" ? music : films)) return go("#/requests");  // a kind that's closed to you: the list of what isn't
+  let r = null, why = "";
+  if (films) {
+    const s = await checkSeerr();
+    const asked = () => api(`/api/seerr/requests?scope=${encodeURIComponent(scope)}&filter=${encodeURIComponent(filter)}`);
+    if (s !== true && !s.connected) {
+      if (kind) return notConnected(t, s.reason);
+      why = "Seerr isn't connected yet, so there are no film or show requests.";
+    } else if (kind) r = await asked();
+    else r = await asked().catch(() => { why = "Seerr didn't answer, so film and show requests aren't listed."; return null; });  // the music below still shows
+  }
   const scopes = ME?.admin ? `<a href="#/requests/mine/${filter}"${scope === "mine" ? ' aria-current="page"' : ""}>Yours</a><a href="#/requests/all/${filter}"${scope === "all" ? ' aria-current="page"' : ""}>Everyone's</a><span class="sep"></span>` : "";
   const row = (q) => `<li style="${q.backdrop ? esc(`--bd:${cssUrl(q.backdrop)}`) : ""}">
       ${img(q.poster)}
@@ -234,12 +247,20 @@ async function showRequests(t, [scope = "mine", filter = "all"]) {
         ${ME?.admin && q.status === "pending" ? `<button class="ghost" data-decide="approve" data-id="${q.id}">Approve</button><button class="ghost danger" data-decide="decline" data-id="${q.id}">Decline</button>` : ""}
         ${(q.mine || ME?.admin) && q.status === "pending" ? `<button class="ghost danger" data-cancel-req="${q.id}">Cancel</button>` : ""}
       </div></li>`;
-  paint(t, `<section class="home">${aurora}<h1>Requests</h1>
-      <p>${scope === "all" ? "Everything everyone has asked for." : "What you've asked for, and where it's at."}</p>
+  const list = !r ? (why ? `<p class="dim">${why}</p>` : "")
+    : !r.linked ? `<div class="empty-state"><strong>Your account isn't linked to a Seerr user</strong>Ask an admin to link it in Settings → Users.</div>`
+    : r.items.length ? `<ul class="reqs">${r.items.map(row).join("")}</ul>`
+    : kind ? `<div class="empty-state"><strong>No requests here</strong>Find something in <a href="#/media">Films &amp; shows</a> and press Request.</div>` : "";
+  paint(t, `<section class="home">${aurora}<h1>Your requests</h1>
+      <p>${kind === "mine" && scope === "all" ? "Every film and show everyone has asked for." : "What you've asked for, and where it's at."}</p>
       ${mediaChips("requests")}
-      <nav class="chips">${scopes}${REQ_FILTERS.map(([k, label]) => `<a href="#/requests/${scope}/${k}"${k === filter ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav></section>
-    <div class="wrap">${!r.linked ? `<div class="empty-state"><strong>Your account isn't linked to a Seerr user</strong>Ask an admin to link it in Settings → Users.</div>`
-      : r.items.length ? `<ul class="reqs">${r.items.map(row).join("")}</ul>` : `<div class="empty-state"><strong>No requests here</strong>Find something in <a href="#/media">Discover</a> and press Request.</div>`}</div>`);
+      <nav class="chips" aria-label="Kind">${REQ_KINDS.filter(([, , open]) => open()).map(([k, label]) => `<a href="#/requests${k && "/" + k}"${k === kind ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>
+      ${kind === "mine" ? `<nav class="chips" aria-label="Which">${scopes}${REQ_FILTERS.map(([k, label]) => `<a href="#/requests/${scope}/${k}"${k === filter ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>` : ""}</section>
+    <div class="wrap">${kind || !list ? list : shelf("Films & shows", list, "#/requests/mine")}</div>
+    ${music ? `<div class="wrap" id="musicReqs"></div>` : ""}
+    <div class="wrap" id="noReqs" hidden><div class="empty-state"><strong>Nothing requested yet</strong>Ask for a film or a show in <a href="#/media">Films &amp; shows</a>, or an album in <a href="#/lidarr">Music</a>.</div></div>`);
+  const had = music ? await drawRequests(t, kind ? "" : "Music") : 0;
+  if (t === ticket && !kind && !had && !list) $("#noReqs").hidden = false;
 }
 document.addEventListener("click", (e) => {
   const d = e.target.closest("[data-decide]");

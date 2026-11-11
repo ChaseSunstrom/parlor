@@ -1,4 +1,4 @@
-"""Music requests in a real browser: Music → Request music lists your requests with their state and why (searching,
+"""Music requests in a real browser: Request → Music lists your requests with their state and why (searching,
 downloading, getting it from YouTube, stuck, pick the right album, arrived); picking a Spotify album starts the
 YouTube download, Retry and Get it from YouTube work. Lidarr and music-fndr are fakes; no page errors; screenshots
 at desktop and phone width:

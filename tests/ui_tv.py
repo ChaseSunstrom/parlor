@@ -1,6 +1,6 @@
 """Parlor on a TV, in a real browser at 1920×1080 driven by the keyboard alone (the remote's arrows, OK and Back):
-/tv shows a pairing code; a phone signed in enters it and the TV signs itself in; every page of Library, Watch and
-Music is reachable with the arrows from the menu, focus always shows, nothing traps it, Back goes back.
+/tv shows a pairing code; a phone signed in enters it and the TV signs itself in; every page of Library, Watch,
+Music and Request is reachable with the arrows from the menu, focus always shows, nothing traps it, Back goes back.
 With --remote, the phone's remote works the TV: arrows move the TV's focus (key to TV p95 measured, under 300 ms),
 an album and a film are cast from the phone and play on the TV, play/pause, seek, volume and typing act on it, a
 second remote sees the same state, and a TV that drops off says so on the remote and comes back by itself.
@@ -49,7 +49,8 @@ BASE = f"http://127.0.0.1:{PORT}"
 SHELL = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))), None)
 errors, checks = [], {}
 TARGETS = ["#/jf", "#/jf/movies", "#/jf/shows", "#/jf/music", "#/jf/books", "#/yt/home", "#/yt/subs", "#/yt/rec",
-           "#/music", "#/library", "#/playlists", "#/lidarr"]  # every page of Library, Watch and Music in the menu
+           "#/music", "#/library", "#/playlists", "#/media", "#/lidarr", "#/requests"]  # every page of Library, Watch, Music and Request in the menu:
+# a section's own entry first, since the menu lists a section's pages only once it is open
 
 
 def signed_in_phone(b, width=390):
@@ -109,7 +110,7 @@ with sync_playwright() as pw:
     screen.wait_for_function("ME && ME.name === 'family' && tvMe && tvMe.name === 'Living room' && document.body.classList.contains('tv')", timeout=30000)
     checks["/tv shows a code; a phone enters it and the TV signs itself in"] = len(code) == 8
 
-    # the arrows reach every page of Library, Watch and Music from the menu; Enter opens it; focus shows
+    # the arrows reach every page of Library, Watch, Music and Request from the menu; Enter opens it; focus shows
     reached = []
     for target in TARGETS:
         for _ in range(8):  # left, until the menu
@@ -127,7 +128,7 @@ with sync_playwright() as pw:
             if screen.evaluate("location.hash") == target:
                 reached.append(target)
     print("reached with the arrows:", len(reached), "of", len(TARGETS), [t for t in TARGETS if t not in reached])
-    checks["every page of Library, Watch and Music is reachable with the arrows and OK"] = reached == TARGETS
+    checks["every page of Library, Watch, Music and Request is reachable with the arrows and OK"] = reached == TARGETS
     outline = screen.evaluate("parseFloat(getComputedStyle(document.activeElement).outlineWidth)")
     checks["focus always shows"] = outline >= 3
 

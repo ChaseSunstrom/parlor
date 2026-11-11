@@ -56,11 +56,11 @@ Once you have an account, Parlor, in the background:
 What the apps are doing, in Parlor:
 
 - **Downloads drawer**: lists what Sonarr, Radarr and Lidarr are fetching beside your videos and songs: progress, time left, and why one is stuck (a download that won't import says so in red).
-- **Movies & TV**: opens with *Downloading now* and *Coming up*, the episodes and films due in the next two weeks; each opens its page in Parlor.
+- **Request → Films & shows**: opens with *Downloading now* and *Coming up*, the episodes and films due in the next two weeks; each opens its page in Parlor.
 
 ### Request music
 
-**Music → Request music** sends albums and artists to Lidarr, since Seerr has no Lidarr support.
+**Request → Music** sends albums and artists to Lidarr, since Seerr has no Lidarr support.
 
 - Search, then ask for one album (only it is wanted and searched for, not the artist's whole catalogue) or a whole artist; asking again searches again.
 - Anyone signed in can request, as with Seerr.
@@ -85,7 +85,7 @@ If more than one Spotify album could be it, or none, you pick, and Lidarr keeps 
 
 ### Your requests
 
-- **Your requests** on the same page shows each one's state and why, with **Retry** and **Get it from YouTube** (don't wait for Lidarr).
+- **Request → Your requests** lists them with the films and shows you asked for, each with its state and why, and **Retry** and **Get it from YouTube** (don't wait for Lidarr). The Music page of Request shows the music ones too.
 - Lidarr's own wanted list (albums added in Lidarr, or by watching an artist) is followed too and shown to admins.
 - It goes to YouTube only if an admin turns that on (Settings → Music requests), a few albums at a time.
 

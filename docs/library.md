@@ -18,7 +18,7 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 - **Filters**: new to you, in progress, favourites.
 - **Play**: **Play** resumes where you stopped; **From the start** doesn't.
 - **Your place**: it's saved every few seconds and when you pause. Near the end it's marked watched and the next episode starts after a countdown.
-- **Movies & TV** shows **Play** (or **Watch**, for a show) on a title Jellyfin has, straight into the Library.
+- **Films & shows** (under Request) shows **Play** (or **Watch**, for a show) on a title Jellyfin has, straight into the Library.
 
 ## Playback
 

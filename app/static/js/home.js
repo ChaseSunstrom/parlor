@@ -38,7 +38,7 @@ async function showDashboard(t) {
     : `<div class="shelf-head"><h2>${tag("var(--coral)", "Watch")}</h2></div><div class="empty-state" style="padding-top:0">Follow some YouTube channels and their new videos land here. <a href="#/yt/channels">Import your subscriptions</a>.</div>`),
   () => fill(t, "homeSubs", ""));
   api("/api/seerr/status").then(async (s) => {
-    if (!s.connected) return fill(t, "homeMedia", ME?.admin ? `<div class="shelf-head"><h2>${tag("var(--violet)", "Movies & TV")}</h2></div><div class="empty-state" style="padding-top:0">Connect Seerr in <a href="#/settings">Settings</a> to discover and request films and shows.</div>` : "");
+    if (!s.connected) return fill(t, "homeMedia", ME?.admin ? `<div class="shelf-head"><h2>${tag("var(--violet)", "Films & shows")}</h2></div><div class="empty-state" style="padding-top:0">Connect Seerr in <a href="#/settings">Settings</a> to discover and request films and shows.</div>` : "");
     const [d, mine] = await Promise.all([api("/api/seerr/discover"), api("/api/seerr/requests?filter=pending").catch(() => null)]);
     if (mine?.linked) { stats.requests = mine.items.length; drawStats(); }
     fill(t, "homeMedia", shelf("Trending films and shows", `<div class="pstrip">${(d.trending || []).filter((x) => x.type !== "person").map(pcard).join("")}</div>`, "#/media"));
@@ -501,7 +501,7 @@ async function drawPrivatePanel(code) {
 /* ---------- who may use what (admins) ---------- */
 
 const SECTION_NAMES = {
-  watch: ["Watch", "YouTube: feeds, videos, subscriptions"], media: ["Movies & TV", "discovering and requesting films and shows"],
+  watch: ["Watch", "YouTube: feeds, videos, subscriptions"], media: ["Films & shows", "discovering and requesting films and shows"],
   music: ["Music", "finding and requesting music, and music apps"], library: ["Library", "playing what's in Jellyfin"],
   downloads: ["Downloads", "saving videos and songs to the server"],
 };
@@ -547,12 +547,19 @@ async function accessEditor(row, u, opener) {
   form.querySelector("input")?.focus();
 }
 
+/** is this section closed to the person signed in (an admin's choice in Settings → Users)? */
+const closedTo = (s) => !!ME?.sections && ME.sections[s] === false;
 /** a person's own view: sections closed to them leave the menus, and download buttons go */
 function applyAccess() {
-  const closed = (s) => ME?.sections && ME.sections[s] === false;
-  for (const key of ["library", "watch", "media", "music", "games"]) {
+  const closed = closedTo;
+  const needs = { "#/media": "media", "#/lidarr": "music", "#/games": "games" };  // pages whose section isn't their group's
+  for (const g of NAV) if (g.pages) g.pages = g.pages.filter(([, href]) => !closed(needs[href]));
+  const gone = { library: closed("library"), watch: closed("watch"), music: closed("music"), media: closed("media") && closed("music") };
+  for (const key of Object.keys(gone)) {
     const i = NAV.findIndex((g) => g.key === key);
-    if (i >= 0 && closed(key)) NAV.splice(i, 1);
+    if (i < 0 || !gone[key]) continue;
+    if (key === "library" && !closed("games")) NAV[i] = { key: "games", label: "Games", icon: "pad", href: "#/games" };  // Games without the Library: a section of its own
+    else NAV.splice(i, 1);
   }
   const you = NAV.find((g) => g.key === "you");
   if (you) you.pages = you.pages.filter(([, href]) => !(href.startsWith("#/yt") && (closed("watch") || href === "#/yt/downloads" && closed("downloads"))));

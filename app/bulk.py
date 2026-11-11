@@ -344,7 +344,7 @@ def run(jid: str):
 
         if t is None:
             return close("done")
-        # the person as they are now: removed from Movies & TV, unlinked from Seerr or no longer an admin all count
+        # the person as they are now: removed from Films & shows, unlinked from Seerr or no longer an admin all count
         user = one("SELECT id, name, admin, seerr_id, jellyfin_id FROM users WHERE id = ?", job["user_id"])
         user["admin"] = bool(user["admin"])
         lacking = acl.allowed(user, "/api/seerr/sets/request")

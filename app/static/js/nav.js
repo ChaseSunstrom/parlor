@@ -3,20 +3,20 @@
 
 const NAV = [
   { key: "home", label: "Home", icon: "home", href: "#/" },
-  { key: "library", label: "Library", icon: "shelf", pages: [["Home", "#/jf"], ["Films", "#/jf/movies"], ["Shows", "#/jf/shows"], ["Music", "#/jf/music"], ["Books", "#/jf/books"]] },
+  { key: "library", label: "Library", icon: "shelf", pages: [["Home", "#/jf"], ["Films", "#/jf/movies"], ["Shows", "#/jf/shows"], ["Music", "#/jf/music"], ["Books", "#/jf/books"], ["Games", "#/games"]] },
   { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Live", "#/live"], ["Recommended", "#/yt/rec"]] },
-  { key: "media", label: "Movies & TV", icon: "film", pages: [["Discover", "#/media"], ["Collections", "#/sets"], ["Requests", "#/requests"]] },
-  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"], ["Request music", "#/lidarr"]] },
-  { key: "games", label: "Games", icon: "pad", pages: [["Home", "#/games"], ["Steam", "#/games/steam"], ["Retro", "#/games/retro"], ["From your PC", "#/games/pc"]] },
+  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"]] },
+  // everything you can ask for, in one place: each kind has its page, and Your requests lists them all
+  { key: "media", label: "Request", icon: "plus", pages: [["Films & shows", "#/media"], ["Music", "#/lidarr"], ["Your requests", "#/requests"]] },
   { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],
     ["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
     ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Saved for offline", "#/offline", "Music and videos on this device", "offline"],
     ["TVs", "#/tvs", "Pair a TV, play on it, the remote", "screen"], ["Channels", "#/yt/channels", "Follow, import, export", "tv"],
     ["Settings", "#/settings", "Playback, account and more", "gear"]] },
 ];
-const TABS = 6; // the phone tab bar: the first sections, then You; the You page lists every page
+const TABS = 6; // the phone tab bar: the first sections, then You (all six today); the You page lists every page
 const ALIASES = { "#/yt": "#/yt/home", "": "#/", "#": "#/" };
-const SECTION_GROUP = { settings: "you" }; // a page's section, when no nav link matches the address
+const SECTION_GROUP = { settings: "you", games: "library", musicreq: "media" }; // a page's section, when no nav link matches the address
 
 /** the nav group and page link for an address: the longest link that the address starts with */
 function navAt(hash, section) {
@@ -35,10 +35,11 @@ function navAt(hash, section) {
 const groupHref = (g) => g.href || g.pages[0][1];
 const lit = (on) => (on ? ' aria-current="page"' : "");
 
+/** the sidebar: every section, and the pages of the one you're in (the others' pages are a click on their name away) */
 function sideHtml(at) {
   return NAV.map((g) => `<div class="side-group${g.key === at.group ? " on" : ""}" data-g="${g.key}">
     <a class="side-head" href="${groupHref(g)}"${lit(g.key === at.group && (!g.pages || at.own))}>${ICON[g.icon]}<span>${esc(g.label)}</span></a>
-    ${(g.pages || []).map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</div>`).join("");
+    ${(g.key === at.group ? g.pages || [] : []).map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</div>`).join("");
 }
 
 function tabsHtml(at) {

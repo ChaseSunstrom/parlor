@@ -1,4 +1,4 @@
-/* Games: each person's Steam library (games.py asks Steam with an admin's key), retro games from the server's GAMES
+/* Games, a page of the Library: each person's Steam library (games.py asks Steam with an admin's key), retro games from the server's GAMES
    folder played right here (each opens on its own page, retro.js), and a gaming PC streamed to this browser or TV
    (the Moonlight Web bridge at /games/stream/, behind Parlor's sign-in). */
 
@@ -75,7 +75,8 @@ async function showGames(t, [part] = []) {
   const sections = { steam: ["Steam", steamHtml], retro: ["Retro", retroHtml], pc: ["From your PC", pcHtml] };
   const shown = part && sections[part] ? [part] : ["steam", "retro", "pc"];
   paint(t, `<section class="home">${aurora}<h1>${part && sections[part] ? sections[part][0] : "Games"}</h1>
-      <p>${part === "retro" ? "Played right here, saves kept on this server for every device." : part === "steam" ? "What you own on Steam, most played first." : part === "pc" ? "Your gaming PC, streamed to whatever you're holding." : "Your Steam library, retro games played right here, and your gaming PC streamed to any screen."}</p></section>
+      <p>${part === "retro" ? "Played right here, saves kept on this server for every device." : part === "steam" ? "What you own on Steam, most played first." : part === "pc" ? "Your gaming PC, streamed to whatever you're holding." : "Your Steam library, retro games played right here, and your gaming PC streamed to any screen."}</p>
+      ${closedTo("library") ? "" : libChips("games")}</section>
     <div class="wrap gamespage">${shown.map((k) => `<section class="panel gsec" id="g-${k}">${shown.length > 1 ? `<h2><a href="#/games/${k}">${sections[k][0]} <small>See all ›</small></a></h2>` : ""}${sections[k][1]()}</section>`).join("")}</div>`);
   $("#steamKey")?.addEventListener("submit", async (e) => {
     e.preventDefault();

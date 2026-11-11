@@ -34,7 +34,7 @@ DATA/
   movies/  shows/  music/  youtube/  books/  games/
 ```
 
-`games/` holds retro games for Games → Retro, in `games/roms/<system>/` (see [Games](games.md)).
+`games/` holds retro games for Library → Games → Retro, in `games/roms/<system>/` (see [Games](games.md)).
 
 ### Folders per kind
 

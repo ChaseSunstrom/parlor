@@ -27,7 +27,7 @@ No password is typed on the TV, and the code works once, for five minutes.
 - **Made for a remote**: bigger, with a bright outline on what's selected.
 - **Arrows**: they move to the nearest thing in that direction.
 - **OK and Back**: OK opens it, Back goes back.
-- **The menu** on the left reaches every page.
+- **The menu** on the left reaches every section, and lists a section's pages once it's open.
 
 ## Play on TV
 

@@ -7,7 +7,7 @@
   <img alt="Games: a Steam library with recently and most played, then retro games to play in the browser and a gaming PC to stream." src="assets/screens/games-desktop-light.png">
 </picture>
 
-**Games** has three parts: your Steam library, retro games played right in Parlor, and your gaming PC streamed to any screen. Each person sees their own. A fourth section covers asking for new games with Questarr.
+**Games** (in the menu under **Library**) is one page with three parts: your Steam library, retro games played right in Parlor, and your gaming PC streamed to any screen. Each person sees their own. A fourth section covers asking for new games with Questarr.
 
 ## Steam
 
@@ -51,7 +51,7 @@ GAMES_STREAM_HOST=192.168.1.20   # this server's address on your network
 
 Then run `docker compose up -d`.
 
-- **The bridge's page**: it's only reachable through Parlor, at Games → From your PC (an admin opens it once first).
+- **The bridge's page**: it's only reachable through Parlor, at Library → Games → From your PC (an admin opens it once first).
 - **No second login**: Parlor tells it who you are, and each person keeps their own PCs.
 - **Add your PC**: add it by its address, and type the PIN it shows into Sunshine's page on the PC (Sunshine → PIN).
 - **Picture and sound**: they go straight from the bridge to your browser over WebRTC on UDP ports 40000–40100, so those must reach the server.

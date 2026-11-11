@@ -92,7 +92,7 @@ with sync_playwright() as p:
         page.goto(BASE + "/#/media")
         time.sleep(1)
         nav = page.inner_text("#side") if label == "desk" else page.inner_text(".nav")
-        checks[f"{label}: Watch is gone from the menu"] = "Watch" not in nav and "Movies" in nav
+        checks[f"{label}: Watch is gone from the menu"] = "Watch" not in nav and "Request" in nav
         status = page.evaluate("fetch('/api/me/later').then((r) => r.status)")
         checks[f"{label}: the server refuses Watch"] = status == 403
         page.screenshot(path=str(OUT / f"member-{label}.png"))

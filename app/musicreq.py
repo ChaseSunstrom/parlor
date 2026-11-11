@@ -1,4 +1,4 @@
-"""Music requests that don't get lost. Each album someone asks for (from Music → Request music, an artist's albums,
+"""Music requests that don't get lost. Each album someone asks for (from Request → Music, an artist's albums,
 or Lidarr's own wanted list) gets a row here, and a worker follows it through Lidarr: searching, downloading,
 importing, imported. When Lidarr finds nothing in 6 hours, two of its downloads fail, or a download stops moving
 for 12 hours, the album is handed over: Lidarr stops looking (unmonitored, its queue items removed and

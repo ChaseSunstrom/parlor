@@ -41,11 +41,11 @@ More: [Install, folders and moving in](docs/install.md).
 | In the menu | What it does | More |
 |---|---|---|
 | **Library** | Plays what's in Jellyfin, right here: films and shows with resume and Next up, music in a player that keeps going, audiobooks, and books in a reader. | [The Library](docs/library.md) |
+| Library → **Games** | Your Steam library, retro games played in the browser, your gaming PC streamed to any screen, and games you ask for. | [Games](docs/games.md) |
 | **Watch** | YouTube without ads, in up to 4K: search, channels, your subscriptions feed, recommendations, SponsorBlock, and fast downloads. | [Watching YouTube](docs/youtube.md) |
-| **Live** | YouTube lives and the Twitch channels you follow, in Parlor's player. | [Live](docs/youtube.md#live) |
-| **Movies & TV** | Discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr), one title or a whole collection. | [Movies & TV](docs/movies-tv.md) |
-| **Music** | All of [music-fndr](https://github.com/ChaseSunstrom/music-fndr): browse Spotify and download songs, albums and playlists. Request albums through Lidarr. | [Music](docs/music.md) |
-| **Games** | Your Steam library, retro games played in the browser, your gaming PC streamed to any screen, and games you ask for. | [Games](docs/games.md) |
+| Watch → **Live** | YouTube lives and the Twitch channels you follow, in Parlor's player. | [Live](docs/youtube.md#live) |
+| **Music** | All of [music-fndr](https://github.com/ChaseSunstrom/music-fndr): browse Spotify and download songs, albums and playlists. | [Music](docs/music.md) |
+| **Request** | Ask for what you don't have: films and shows through [Seerr](https://github.com/seerr-team/seerr), one title or a whole collection, and albums and artists through Lidarr. **Your requests** lists all of it, with where each one's at. | [Films & shows](docs/movies-tv.md), [music](docs/stack.md#request-music) |
 
 ## The apps around it
 
@@ -139,7 +139,7 @@ More: [Security](docs/security.md).
 | [Accounts and who can use what](docs/accounts.md) | Sign-in, Seerr users, access per member, private items |
 | [The Library](docs/library.md) | Films, shows, music, audiobooks and books from Jellyfin |
 | [Watching YouTube](docs/youtube.md) | The player, browsing, subscriptions, recommendations, Live and Twitch, downloads |
-| [Movies & TV](docs/movies-tv.md) | Requests through Seerr, and whole collections |
+| [Films & shows](docs/movies-tv.md) | Requests through Seerr, whole collections, and the one list of what you asked for |
 | [Music](docs/music.md) | music-fndr, requesting music, music apps over Subsonic |
 | [Games](docs/games.md) | Steam, retro games, streaming from your PC, Questarr |
 | [Phones, tablets and computers](docs/devices.md) | Installing, the queue, saving for offline, the Android app, the desktop app |

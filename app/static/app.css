@@ -19,7 +19,7 @@
   }
 }
 body[data-section="watch"] { --accent: var(--coral); }
-body[data-section="media"] { --accent: var(--violet); }
+body[data-section="media"], body[data-section="musicreq"] { --accent: var(--violet); }
 body[data-section="music"] { --accent: var(--amber); }
 body[data-section="settings"] { --accent: var(--mint); }
 body[data-section="library"] { --accent: var(--sky); }

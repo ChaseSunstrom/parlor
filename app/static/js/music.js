@@ -534,15 +534,21 @@ function requestRow(x) {
       ${x.why ? `<p class="why">${esc(x.why)}</p>` : ""}${picks}</div>
     <div class="acts">${acts}</div></li>`;
 }
-async function drawRequests(t) {
+/** the music requests into #musicReqs, and how many there are. On Request → Music the list is headed "Your requests" and an
+    empty one says how to ask; on Your requests it is headed by `title` and an empty one shows nothing. */
+let reqTitle; // the heading the list was last drawn under: a press on one of its buttons draws it again the same way
+async function drawRequests(t, title) {
+  reqTitle = title;
   const box = $("#musicReqs");
   const r = await api("/api/arr/music/requests").catch(() => null);
-  if (!box || t !== ticket || !r) return;
+  if (!box || t !== ticket || !r) return 0;
   const open = r.items.filter((x) => x.state !== "imported"), done = r.items.filter((x) => x.state === "imported").slice(0, 12);
-  box.innerHTML = r.items.length ? shelf("Your requests", `<ul class="reqs mreqs">${open.map(requestRow).join("")}</ul>`) +
-      (done.length ? shelf("Arrived lately", `<ul class="reqs mreqs">${done.map(requestRow).join("")}</ul>`) : "")
+  box.innerHTML = r.items.length ? (open.length ? shelf(title || "Your requests", `<ul class="reqs mreqs">${open.map(requestRow).join("")}</ul>`) : "") +
+      (done.length ? shelf(title ? `${title}: arrived lately` : "Arrived lately", `<ul class="reqs mreqs">${done.map(requestRow).join("")}</ul>`) : "")
+    : title !== undefined ? (title ? "" : `<div class="empty-state"><strong>No music requested yet</strong>Ask for an album or an artist in <a href="#/lidarr">Music</a>.</div>`)
     : `<div class="empty-state"><strong>Nothing requested yet</strong>Search above. Lidarr looks first; if it finds nothing or stalls, Parlor gets it from YouTube instead, so a request never just sits there.</div>`;
-  if (open.some((x) => ACTIVE.has(x.state))) setTimeout(() => t === ticket && drawRequests(t), 15000);
+  if (open.some((x) => ACTIVE.has(x.state))) setTimeout(() => t === ticket && $("#musicReqs") === box && drawRequests(t, title), 15000);
+  return r.items.length;
 }
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-mreq]");
@@ -552,7 +558,7 @@ document.addEventListener("click", async (e) => {
   try {
     await post(`/api/arr/music/requests/${b.dataset.id}/${what}`, what === "choose" ? { spotify: b.dataset.spotify } : undefined);
     toast({ retry: "Trying again", youtube: "Getting it from YouTube", choose: "Getting that one from YouTube" }[what]);
-    drawRequests(ticket);
+    drawRequests(ticket, reqTitle);
   } catch (err) { b.disabled = false; toast(err.message); }
 });
-page("lidarr", showLidarr, "music");
+page("lidarr", showLidarr, "musicreq");  // a page of Request; its search box asks Lidarr

@@ -1,7 +1,7 @@
 """The *arr views in a real browser: Parlor runs here with faked Sonarr, Radarr, Lidarr, Prowlarr and Seerr
 (the fakes from test_activity.py), so the queue, calendar and Lidarr search have something to show.
-Checks the Downloads drawer lists the *arr queue, Movies & TV shows "Downloading now" and "Coming up",
-and Music → Request finds and requests an album; no page errors. Screenshots at desktop and phone width:
+Checks the Downloads drawer lists the *arr queue, Films & shows shows "Downloading now" and "Coming up",
+and Request → Music finds and requests an album; no page errors. Screenshots at desktop and phone width:
    python tests/ui_arr.py [OUT_DIR]   (needs Playwright and its Chromium beside the app's packages)"""
 import socket
 import sys
@@ -30,7 +30,7 @@ POSTER = ("data:image/svg+xml," + "%3Csvg xmlns='http://www.w3.org/2000/svg' vie
 
 
 class Seerr:
-    """Just enough of Seerr for Movies & TV to open."""
+    """Just enough of Seerr for Films & shows to open."""
 
     def __call__(self, method, url, headers=None, params=None, json=None, timeout=None, **kw):
         path = url.split("/api/v1/", 1)[1]
@@ -89,7 +89,7 @@ with sync_playwright() as p:
         page.goto(BASE + "/#/media")
         page.wait_for_selector("#arrShelves .pcard", timeout=30000)
         shelves = page.inner_text("#arrShelves")
-        checks[f"{label}: Movies & TV shows what's downloading and coming up"] = "Downloading now" in shelves and "Coming up" in shelves and "A Film" in shelves
+        checks[f"{label}: Films & shows shows what's downloading and coming up"] = "Downloading now" in shelves and "Coming up" in shelves and "A Film" in shelves
         checks[f"{label}: a film opens its page"] = page.get_attribute("#arrShelves a.t", "href") in ("#/tv/1399", "#/movie/550")
         page.screenshot(path=str(OUT / f"media-{label}.png"))
         page.click("#openQueue")
@@ -104,7 +104,7 @@ with sync_playwright() as p:
             page.evaluate("location.hash") == "#/movie/550" and not page.evaluate("document.querySelector('#queue').classList.contains('open')"))
         page.goto(BASE + "/#/lidarr/band%20record")
         page.wait_for_selector("#lidarrOut .lreq", timeout=30000)
-        checks[f"{label}: Music → Request finds artists and albums"] = page.locator("#lidarrOut .lreq").count() == 2
+        checks[f"{label}: Request → Music finds artists and albums"] = page.locator("#lidarrOut .lreq").count() == 2
         page.screenshot(path=str(OUT / f"request-{label}.png"))
         if label == "desk":
             page.locator("#lidarrOut .tile.album .lreq").click()

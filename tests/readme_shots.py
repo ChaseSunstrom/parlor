@@ -242,7 +242,7 @@ def stock_live():
     live_standin.make_segments("live", ["-loop", "1", "-i", str(picture)])
 
 
-# ---------------------------------------------------------------- Seerr, standing in, for Movies & TV → Collections
+# ---------------------------------------------------------------- Seerr, standing in, for Request → Films & shows → Collections
 
 LANTERN = ["The Lantern Keeper", "Lantern Light", "The Paper Lantern", "Last Lantern Home", "Lantern: Embers"]
 SETS = {101: "Night Train Collection", 102: "The Salt Road Trilogy", 103: "Glass Meridian Collection", 104: "Copper Bay Collection"}
@@ -425,7 +425,7 @@ def main():
             shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
                 "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
                 q.wait_for_timeout(600)))  # the toast fades out in 0.18 s: don't shoot it half gone
-            # Movies & TV → Collections, with Seerr standing in from here on
+            # Films & shows → Collections, with Seerr standing in from here on
             stock_sets()
             desk.context.route("https://image.tmdb.org/**", set_picture)
             shoot(desk, "collections", "desktop", "#/sets", ".logogrid + .shelf-head + .logogrid img", tall=1200)
