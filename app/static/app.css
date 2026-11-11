@@ -19,7 +19,7 @@
   }
 }
 body[data-section="watch"] { --accent: var(--coral); }
-body[data-section="media"], body[data-section="musicreq"] { --accent: var(--violet); }
+body[data-section="media"], body[data-section="musicreq"], body[data-section="gamereq"] { --accent: var(--violet); }
 body[data-section="music"] { --accent: var(--amber); }
 body[data-section="settings"] { --accent: var(--mint); }
 body[data-section="library"] { --accent: var(--sky); }
@@ -905,6 +905,13 @@ body:not(.dock-playing) .qrow .eq i { animation-play-state: paused; height: 4px;
 .mpick b { display: block; font-weight: 650; } .mpick small { color: var(--dim); }
 @media (max-width: 600px) { .mreqs li { grid-template-columns: 48px minmax(0, 1fr); } .mreqs .acts { grid-column: 2; } .mreqs img, .mreqs .blank { width: 48px; } }
 .mreqs .acts .ghost { height: 34px; padding: 0 14px; font-size: .9rem; }
+/* game requests: a cover is a poster, a release is a line of its own, and the screenshots of a game are one row to swipe */
+.greqs img, .greqs .blank { aspect-ratio: 2 / 3; }
+.gpicks { flex-direction: column; align-items: stretch; } .gpicks .mpick { padding: 8px 12px; } .gpicks b { overflow-wrap: anywhere; }
+.gshots { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; scroll-snap-type: x proximity; }
+.gshots img { height: clamp(150px, 22vw, 260px); border-radius: 10px; scroll-snap-align: start; background: var(--sunk); }
+.gauto { display: flex; gap: 12px; align-items: flex-start; margin-top: 32px; max-width: 76ch; } .gauto input { width: 18px; height: 18px; margin-top: 3px; flex: none; accent-color: var(--accent); }
+.gauto small { display: block; margin-top: 4px; color: var(--dim); }
 
 /* ---------- the app on devices: offline bar, update notice ---------- */
 .offbar { display: none; position: fixed; z-index: 30; top: calc(78px + env(safe-area-inset-top)); left: 50%; translate: -50% 0; align-items: center; gap: 10px;

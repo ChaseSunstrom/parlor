@@ -25,13 +25,15 @@ async function showDashboard(t) {
   const drawStats = () => fill(t, "stats", [
     stats.subs != null && stat("#/yt/channels", "var(--coral)", ICON.tv, stats.subs, `${stats.subs === 1 ? "channel" : "channels"} you follow`),
     stats.videos != null && stat("#/yt/downloads", "var(--coral)", ICON.dl, stats.videos, `${stats.videos === 1 ? "video" : "videos"} saved${stats.used ? ` · ${bytes(stats.used)}` : ""}`),
-    stats.requests != null && stat("#/requests", "var(--violet)", ICON.film, stats.requests, `${stats.requests === 1 ? "request" : "requests"} waiting for approval`),
+    (stats.requests != null || stats.games > 0) && stat("#/requests", "var(--violet)", ICON.film, (stats.requests || 0) + (stats.games || 0),
+      `${(stats.requests || 0) + (stats.games || 0) === 1 ? "request" : "requests"} waiting for approval`),  // films and shows in Seerr, games in Parlor
     stats.songs != null && stat("#/library", "var(--amber)", ICON.disc, compact.format(stats.songs), `${stats.songs === 1 ? "song" : "songs"} in your library`),
   ].filter(Boolean).join(""));
 
   api("/api/me/history?unfinished=true&limit=12").then((r) => fill(t, "homeContinue", r.items.length
     ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v)).join("")}</div>`, "#/yt/continue") : ""), () => fill(t, "homeContinue", ""));
   api("/api/me/subs").then((s) => { stats.subs = s.length; drawStats(); }).catch(() => {});
+  if (!closedTo("games")) api("/api/games/requests").then((r) => { stats.games = r.items.filter((x) => x.state === "pending").length; drawStats(); }).catch(() => {});
   api("/api/yt/library").then((r) => { stats.videos = r.items.length; stats.used = r.used; drawStats(); }).catch(() => {});
   api("/api/yt/feed?limit=24").then((r) => fill(t, "homeSubs", r.channels
     ? shelf("New from your subscriptions", `<div class="vstrip">${hideShorts(r.items).slice(0, 16).map((v) => vcard(v)).join("")}</div>`, "#/yt/subs")
@@ -552,9 +554,9 @@ const closedTo = (s) => !!ME?.sections && ME.sections[s] === false;
 /** a person's own view: sections closed to them leave the menus, and download buttons go */
 function applyAccess() {
   const closed = closedTo;
-  const needs = { "#/media": "media", "#/lidarr": "music", "#/games": "games" };  // pages whose section isn't their group's
+  const needs = { "#/media": "media", "#/lidarr": "music", "#/games": "games", "#/gamereq": "games" };  // pages whose section isn't their group's
   for (const g of NAV) if (g.pages) g.pages = g.pages.filter(([, href]) => !closed(needs[href]));
-  const gone = { library: closed("library"), watch: closed("watch"), music: closed("music"), media: closed("media") && closed("music") };
+  const gone = { library: closed("library"), watch: closed("watch"), music: closed("music"), media: closed("media") && closed("music") && closed("games") };
   for (const key of Object.keys(gone)) {
     const i = NAV.findIndex((g) => g.key === key);
     if (i < 0 || !gone[key]) continue;

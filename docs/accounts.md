@@ -28,7 +28,7 @@ Requests go to Seerr as the person's own Seerr user, so Seerr's quotas, permissi
 
 Settings → People → **Access** sets, for each member, what they can use:
 
-- **Sections**: **Watch** (YouTube), **Films & shows** (discovering and requesting), **Music** (finding and requesting music, and music apps over Subsonic), **Library** (playing what's in Jellyfin), **Games** and **Downloads** (saving videos and songs to the server).
+- **Sections**: **Watch** (YouTube), **Films & shows** (discovering and requesting), **Music** (finding and requesting music, and music apps over Subsonic), **Library** (playing what's in Jellyfin), **Games** (playing them, and asking for new ones) and **Downloads** (saving videos and songs to the server).
 - **When a section is off**: it leaves their menus, and the server refuses it too, from the page, the API or a music app.
 - **Which Jellyfin libraries they see.** Jellyfin holds this itself. A member limited to some libraries plays as a Jellyfin user of their own: their Jellyfin sign-in, or one Parlor makes for them, hidden and with a password nobody needs. Parlor keeps its library list in step.
   - Search, Next up, pictures and streams follow it, in Parlor and in Jellyfin's own apps.

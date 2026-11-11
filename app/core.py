@@ -135,6 +135,13 @@ CREATE TABLE IF NOT EXISTS music_requests (
   tries INTEGER NOT NULL DEFAULT 0, yt_tries INTEGER NOT NULL DEFAULT 0,  -- errors in a row talking to Lidarr; YouTube downloads that failed
   left_bytes INTEGER, moved REAL, job TEXT, command INTEGER, candidates TEXT, spotify TEXT
 );
+-- games asked for, followed through Questarr (gamereq.py): one per game (its Steam app id); picks are the releases an admin may choose from
+CREATE TABLE IF NOT EXISTS game_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  app INTEGER NOT NULL UNIQUE, title TEXT NOT NULL DEFAULT '', image TEXT, year INTEGER,
+  state TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', ext TEXT, game TEXT, picks TEXT, release TEXT,  -- ext, game: its request and its game in Questarr
+  created REAL NOT NULL, updated REAL NOT NULL, next_at REAL NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0
+);
 -- private items (private.py): each person's key pair, the private half sealed by their password and by a recovery code
 CREATE TABLE IF NOT EXISTS person_keys (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

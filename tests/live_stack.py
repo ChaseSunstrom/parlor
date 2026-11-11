@@ -173,6 +173,33 @@ config = quest("GET", "/api/config", token=token)
 checks["Questarr counts itself set up, and Services asks for no keys"] = (config.get("igdb") or {}).get("configured") is True and "needs" not in row
 without = requests.post(f"{BASE}/lookup/games/v4/games", data='search "portal"; fields name; limit 5;', timeout=30)
 checks["nobody but Questarr gets an answer from Parlor's lookup"] = without.status_code == 401
+# a game asked for in Parlor (Request → Games), the way a film is: found in Steam's store, requested in Questarr by its Steam id,
+# its releases listed for an admin to pick. Nothing is downloaded here: taking a release unseen is switched off first.
+G = f"{BASE}/api/games/requests"
+auto = s.put(f"{G}/auto", json={"on": False}, timeout=30).json()
+rows_ = s.get(f"{G}/discover", timeout=90).json()
+hits = s.get(f"{G}/search", params={"q": "portal 2"}, timeout=90).json().get("items") or []
+portal = next((g for g in hits if g["title"].lower() == "portal 2"), None)
+print("  Parlor's game rows:", {k: len(v) for k, v in rows_.items()}, "· its search for portal 2:", [g["title"] for g in hits][:4])
+checks["Parlor's Request → Games shows games to ask for, from the store Questarr's lookups use"] = bool(rows_.get("popular")) and bool(portal) and auto.get("auto") is False
+asked = s.post(f"{G}/game/{portal['id']}", timeout=60).json() if portal else {}
+mine = asked
+for _ in range(80):  # Questarr searches every indexer for it: minutes, not seconds
+    mine = next((x for x in s.get(G, timeout=30).json()["items"] if x["id"] == asked.get("id")), {})
+    if mine.get("state") != "searching" or "looking again" in mine.get("why", ""):
+        break
+    time.sleep(5)
+inq = [g for g in quest("GET", "/api/games", token=token) if isinstance(g, dict) and (g.get("title") or "").lower() == "portal 2"]
+print(f"  the request: {mine.get('state')} · {mine.get('why')} · {len(mine.get('picks') or [])} releases to pick from, first: {[p['title'] for p in mine.get('picks') or []][:3]}")
+checks["a game asked for in Parlor is a request in Questarr, which looks for it"] = asked.get("state") == "searching" and len(inq) == 1 and inq[0].get("status") == "wanted"
+checks["Parlor has Questarr's releases for an admin to pick (or says none is usable yet), and no link leaves it"] = (
+    (mine.get("state") == "choose" and bool(mine.get("picks"))) or "Nothing usable" in mine.get("why", "")) and "apikey" not in json.dumps(mine).lower() and "link" not in str(mine.get("picks"))
+gone = s.delete(f"{G}/{asked.get('id')}", timeout=60)
+left = [g.get("status") for g in quest("GET", "/api/games?includeHidden=true", token=token) if isinstance(g, dict) and (g.get("title") or "").lower() == "portal 2"]
+grabbed = sh("docker", "exec", f"{RUN.name}-sonarr-1", "curl", "-s", "http://gluetun:8080/api/v2/torrents/info", check=False).stdout.strip()
+print(f"  cancelled: {gone.status_code}; Questarr's game now: {left}; qBittorrent's torrents: {grabbed[:80]}")
+checks["cancelling it in Parlor cancels it in Questarr, and nothing was downloaded"] = gone.ok and "wanted" not in left and grabbed == "[]" and not s.get(G, timeout=30).json()["items"]
+s.put(f"{G}/auto", json={"on": True}, timeout=30)
 if "--only" in sys.argv:  # judge one app's part
     only = sys.argv[sys.argv.index("--only") + 1]
     bad, changed = [x for x in bad if x["app"] == only], [x for x in changed if x["app"] == only]

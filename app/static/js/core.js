@@ -203,8 +203,9 @@ const SECTIONS = {
   settings: "Search videos, movies, shows and music",
   games: "Search videos, movies, shows and music",
   musicreq: "An artist or an album to ask for",
+  gamereq: "A game to ask for",
 };
-const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/lidarr/" };
+const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/lidarr/", gamereq: "#/gamereq/search/" };
 let ticket = 0, current = "home";
 const paint = (t, html) => { if (t === ticket) main.innerHTML = html; };
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }

@@ -68,6 +68,31 @@ It runs at port 5000 (`http://your-server:5000`) and always asks for a login. Se
 - has it read Prowlarr's indexers, and again on any later setup run after you add or remove one in Prowlarr;
 - points its library at your `GAMES` folder (`/data/games`), unless you chose another in Questarr.
 
+### Ask for a game in Parlor
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/game-requests-desktop-dark.png">
+  <img alt="Request → Games: rows of game covers to ask for (popular now, new and popular, coming soon), two of them marked Downloading and Searching, under a search box for a game's title." src="assets/screens/game-requests-desktop-light.png">
+</picture>
+
+You don't need Questarr's own page to ask for a game:
+
+1. Open **Request → Games**. The rows (popular now, new, coming soon) and the search box at the top find games in Steam's store.
+2. Open a game and press **Request**. An admin's request starts at once; a member's waits in **Request → Your requests** until an admin approves or declines it.
+3. Parlor makes the request in Questarr, which searches your indexers for the game.
+4. A release that passes every check is taken by itself. Otherwise the request reads **Pick a release** and an admin picks one from the list under it in **Your requests**.
+5. The request reads **Downloading**, then **Downloaded** once Questarr has the files.
+
+What to know:
+
+- **The checks** for taking a release unseen: it is the whole game (not an update, an add-on or a crack alone), its title matches exactly, it comes from a scene group or a known repacker (or is listed on xREL), at least 5 people seed it, it was posted 3 or more days ago, and the game is out (a release of a game that isn't is never taken unseen). These read names and numbers the uploader chose, so they sort the likely from the unlikely; they can't prove a file is safe.
+- **Switch it off**: an admin unticks **Take a release without asking** at the foot of **Request → Games**, and every request waits for a pick.
+- **A game is a program.** Scan what you download before you run it, whoever picked it.
+- **Nothing found** is tried again every 6 hours; **Search again** on the request looks now (a member can press it once every 5 minutes; each search asks every indexer). **Cancel** takes it out of Questarr too.
+- **Where it lands**: in qBittorrent's `games` folder (`DOWNLOADS/games`). Questarr's moving of finished games into `GAMES` is off unless you turn it on in Questarr's Settings.
+- **Who can ask**: anyone with the **Games** section (Settings → People → Access). The list of releases and the pick are the admins'. Other people see that a game is asked for and where it's at, not by whom.
+- **“Questarr isn't set up yet”** on the page: run **Settings → Services → Set up again**. A Questarr set up by an older Parlor has a login Parlor doesn't know; requests need the one Parlor makes.
+
 ### It needs no keys from you
 
 Questarr looks every game up at IGDB, which wants keys from a Twitch developer account. In this stack you register nothing: Parlor answers those lookups itself, from Steam's public store, so finding a game by its title works on a fresh install.

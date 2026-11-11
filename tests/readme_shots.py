@@ -297,6 +297,29 @@ def set_picture(route):
     route.fulfill(content_type="image/png", body=out.getvalue())
 
 
+def stock_game_requests():
+    """Request → Games: the sample games in a stand-in Steam store, Questarr's login as setup makes it, two requests under way"""
+    import gamelookup
+    import stack
+    import test_gamelookup as shop
+
+    day = 86400
+    shop.SHOP[:] = [shop.item(a, n, [19], when=shop.NOW + 20 * day if i > 9 else shop.NOW - (6 if i > 5 else 300 + 200 * i) * day) for i, (a, n, *_) in enumerate(SAMPLE)]
+    for obj, name, value in ((gamelookup, "steam", shop.Steam()), (gamelookup, "_now", lambda: shop.NOW), (stack, "_questarr_own", lambda: "made-by-setup")):
+        mock.patch.object(obj, name, value).start()
+    for app_, state in ((1002, "downloading"), (1005, "searching")):
+        core.db().execute("INSERT INTO game_requests(user_id, app, title, state, created, updated, next_at) VALUES (1, ?, ?, ?, ?, ?, ?)",
+                          (app_, dict((a, n) for a, n, *_ in SAMPLE)[app_], state, time.time(), time.time(), time.time() + 9e9))
+
+
+def game_picture(route):
+    """a game's cover, painted here: the page asks Steam's image host for it"""
+    appid = int(re.search(r"/apps/(\d+)/", route.request.url)[1])
+    buf = io.BytesIO()
+    art(dict((a, n) for a, n, *_ in SAMPLE)[appid], 600, 900, appid).save(buf, "JPEG", quality=85)
+    route.fulfill(content_type="image/jpeg", body=buf.getvalue())
+
+
 def save_png(data: bytes, dest: Path):
     """the PNG, as small as it goes: lossless first, then fewer colours only if it still won't fit the budget"""
     im = Image.open(io.BytesIO(data)).convert("RGB")
@@ -425,6 +448,10 @@ def main():
             shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
                 "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
                 q.wait_for_timeout(600)))  # the toast fades out in 0.18 s: don't shoot it half gone
+            # Request → Games, with Steam's store and Questarr standing in
+            stock_game_requests()
+            desk.context.route("https://shared.akamai.steamstatic.com/**", game_picture)
+            shoot(desk, "game-requests", "desktop", "#/gamereq", ".pstrip .pcard[data-game] img", tall=1100)
             # Films & shows → Collections, with Seerr standing in from here on
             stock_sets()
             desk.context.route("https://image.tmdb.org/**", set_picture)

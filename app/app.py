@@ -25,6 +25,7 @@ import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
 import gamelookup
+import gamereq
 import games
 import pwa
 import tv
@@ -108,6 +109,7 @@ app.include_router(seerr.router)
 app.include_router(stack.router)
 app.include_router(activity.router)
 app.include_router(musicreq.router)
+app.include_router(gamereq.router)
 app.include_router(musicreq.hooks)  # Lidarr's webhook: /hooks/lidarr/<secret>
 app.include_router(jf.router)
 app.include_router(subsonic.router)  # /rest/*: Subsonic clients, with their own login
@@ -146,6 +148,7 @@ def start():
     yt.start()
     library.start()  # keeps the music index (for /rest) current
     bulk.start()  # carries on with whole-set requests a restart interrupted
+    gamereq.start()  # follows game requests through Questarr
     musicreq.start()  # follows music requests through Lidarr, YouTube as the fallback
     if stack.on():
         stack.read_keys_from_disk()

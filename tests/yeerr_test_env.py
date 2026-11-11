@@ -17,6 +17,9 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import app as yeerr  # noqa: E402
 import core  # noqa: E402
+import gamereq  # noqa: E402
+
+gamereq.start = lambda: None  # the tests step the game-request worker themselves: a live one would step in between
 
 H = {"X-Requested-With": "parlor"}
 
