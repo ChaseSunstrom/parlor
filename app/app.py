@@ -26,6 +26,7 @@ import private
 import games
 import pwa
 import tv
+import tvhw
 import security
 import seerr
 import qbit
@@ -113,6 +114,7 @@ app.include_router(live.router)  # /api/live: YouTube lives and Twitch, in Parlo
 app.include_router(games.router)  # /api/games: Steam, retro games, streaming from a PC
 app.include_router(games.page)  # /games/stream/: the bridge to a gaming PC, behind the sign-in
 app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline
+app.include_router(tvhw.router)  # /api/tv/sets, /api/tv/hw: the TV set's own power, input and volume (before tv's /api/tv/{id})
 app.include_router(tv.router)  # /api/tv: pairing TVs, casting and the remote
 app.include_router(tv.page)  # /tv: Parlor on a TV
 app.mount("/music", music.app)  # its API answers at /music/api/...

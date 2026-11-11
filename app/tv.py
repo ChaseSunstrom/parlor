@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/tv")
 page = APIRouter()  # /tv: the same page, which starts in TV mode there
 ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O, no 1/I/L: 8 of them is about 40 bits
 CODE_LIFE = 300  # seconds a code lasts
-LIMITS = {"pair": 5, "code": 20, "claim": 120}  # tries a minute per address
+LIMITS = {"pair": 5, "code": 20, "claim": 120, "hw": 90, "hwtest": 10}  # tries a minute per address (hw: a TV set's buttons, tvhw.py)
 PING = 15  # seconds between keep-alives on an event stream (and between checks that its session still stands)
 _tries: dict = defaultdict(list)
 _now = time.time  # the clock (tests move it)

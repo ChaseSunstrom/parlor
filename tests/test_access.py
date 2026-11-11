@@ -50,6 +50,7 @@ class Routes(unittest.TestCase):
                  "/api/qbit/torrents": acl.ADMIN, "/qbit/": acl.ADMIN, "/api/nope": None,
                  "/tv": acl.OPEN, "/api/tv/code": acl.OPEN, "/api/tv/claim": acl.OPEN, "/api/tv/me": acl.OPEN,
                  "/api/tv/pair": acl.EVERYONE, "/api/tv/3/do": acl.EVERYONE, "/api/tv/events": acl.EVERYONE,
+                 "/api/tv/sets": acl.ADMIN, "/api/tv/sets/3/test": acl.ADMIN, "/api/tv/hw/3/press": acl.EVERYONE,
                  "/api/games/steam": ("games",), "/api/games/play/nes/x.nes": ("games",), "/api/games/settings": acl.ADMIN,
                  "/games/stream/api/pair": ("games",), "/games/stream": ("games",),
                  "/api/live/tw/follows": ("watch",), "/api/live/seg": ("watch",)}
