@@ -8,7 +8,7 @@ let installPrompt = null;
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; drawDevice(); });
 addEventListener("appinstalled", () => { installPrompt = null; drawDevice(); });
 
-if (SECURE && !NATIVE && "serviceWorker" in navigator) { // the app has its page with it already
+if (SECURE && !APPED && "serviceWorker" in navigator) { // the app has its page with it already
   const had = !!navigator.serviceWorker.controller; // the first worker taking over isn't an update
   navigator.serviceWorker.register("sw.js").catch(() => {});
   navigator.serviceWorker.addEventListener("controllerchange", () => { if (had) pwaUpdated(); });
@@ -60,7 +60,7 @@ function bootOffline() {
   if (!me?.id) {
     $("#gate").innerHTML = `<div class="gate">${aurora}<div class="gate-card"><div class="brand"><img src="logo.svg" alt=""><span>Parlor</span></div>
       <h1>You're offline</h1><p>Parlor can't reach its server. Sign in here once while online, and music and videos you save for offline play without it.</p>
-      ${NATIVE ? `<p>Connecting to <strong>${esc(SERVER)}</strong>. <button class="linkish" id="changeServer">Use another Parlor</button></p>` : ""}</div></div>`;
+      ${APPED ? `<p>Connecting to <strong>${esc(SERVER)}</strong>. <button class="linkish" id="changeServer">Use another Parlor</button></p>` : ""}</div></div>`;
     return;
   }
   ME = me;
@@ -71,7 +71,7 @@ function bootOffline() {
   route();
 }
 
-/* ---------- the Android app: which Parlor it talks to ---------- */
+/* ---------- the Android and desktop apps: which Parlor they talk to ---------- */
 
 const APP = { "X-Parlor-App": "1" }; // the app answers /_parlor/server only to the page's own script
 /** the app's server, asked of the app itself; none yet: the address screen */
@@ -104,7 +104,7 @@ function showServerScreen(error = "", value = "") {
 
 /** Settings → This device in the app: which server, and a way to change it */
 function appServerHtml() {
-  return NATIVE ? `<p>Connected to <strong>${esc(SERVER)}</strong>. <button class="linkish" id="changeServer">Use another Parlor</button></p>` : "";
+  return APPED ? `<p>Connected to <strong>${esc(SERVER)}</strong>. <button class="linkish" id="changeServer">Use another Parlor</button></p>` : "";
 }
 document.addEventListener("click", async (e) => {
   if (!e.target.closest("#changeServer") || !confirm("Sign out here and connect to another Parlor?")) return;
@@ -117,10 +117,11 @@ document.addEventListener("click", async (e) => {
 /* ---------- Settings → This device ---------- */
 
 function deviceHtml() {
-  const installed = NATIVE || matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const installed = APPED || matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const apple = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   let text, action = "";
   if (NATIVE) text = "This is Parlor's Android app.";
+  else if (DESKTOP) text = "This is Parlor's desktop app. Films and episodes open in mpv when this computer has it, and play in this window when it doesn't.";
   else if (installed) text = "Parlor is installed here, and opens as an app of its own.";
   else if (!SECURE) {
     text = `Installing Parlor and saving music and videos for offline need a secure address, and this one is plain http.

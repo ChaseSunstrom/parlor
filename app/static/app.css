@@ -1106,4 +1106,5 @@ dialog.sheet h2 { margin: 0 0 6px; } dialog.sheet p { margin: 6px 0 0; } dialog.
 .job.set > .blank { display: grid; place-items: center; color: var(--accent); }
 @media (max-width: 600px) { .setbar > strong { order: 9; } .setbar .primary { width: 100%; order: 10; } .setbar .grow { display: none; } }
 @media (prefers-reduced-motion: reduce) { .logotile, dialog.sheet[open] { animation: none; transition: none; } }
+.mpvnote { display: grid; gap: 10px; justify-items: center; text-align: center; color: #fff; } .mpvnote strong { font-size: 1.3rem; }
 .svc-ask { margin-top: 10px; } .svc-ask p { margin: 0 0 8px; font-size: .88rem; } .svc-ask p a { color: var(--link); text-decoration: underline; text-underline-offset: 3px; }

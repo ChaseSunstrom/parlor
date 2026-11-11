@@ -1,0 +1,28 @@
+{
+  "name": "parlor-desktop",
+  "productName": "Parlor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Parlor in a window of its own, with films and episodes played by mpv",
+  "homepage": "https://parlor.example.invalid",
+  "author": "Parlor <parlor@example.invalid>",
+  "license": "MIT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "45.3.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "org.parlor.desktop",
+    "files": ["main.js", "preload.js", "www/**"],
+    "directories": { "output": "out" },
+    "linux": { "target": ["AppImage", "deb"], "category": "AudioVideo", "icon": "www/icon-512.png", "artifactName": "Parlor-${arch}.${ext}",
+               "desktop": { "entry": { "Name": "Parlor", "Comment": "Your films, shows, music and games" } } },
+    "deb": { "recommends": ["mpv"] },
+    "win": { "target": ["nsis"], "icon": "www/icon-512.png", "artifactName": "Parlor-Setup-${arch}.${ext}" },
+    "mac": { "target": ["dmg"], "category": "public.app-category.entertainment", "icon": "www/icon-512.png", "artifactName": "Parlor-${arch}.${ext}" }
+  }
+}

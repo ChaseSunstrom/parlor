@@ -84,6 +84,10 @@ const SPIN = '<svg class="spin" viewBox="0 0 32 32" aria-hidden="true"><circle c
    The app passes the page's GETs on to the server itself (pictures and streams too, cookies kept by the app);
    anything with a body goes through native HTTP, since a page's request can't hand its body to the app. */
 const NATIVE = !!window.Capacitor?.isNativePlatform?.();
+/* Parlor's desktop app (desktop/main.js) bundles this page too, and passes every request on itself, bodies included;
+   it plays films and episodes in mpv when the computer has it (library.js). */
+const DESKTOP = !!window.parlorDesktop;
+const APPED = NATIVE || DESKTOP; // the page is the app's own: the server is elsewhere and chosen in the app
 let SERVER = ""; // the app's server, once known (pwa.js)
 
 async function nativeSend(path, { method, headers, body }) {

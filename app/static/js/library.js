@@ -320,6 +320,13 @@ async function attach(video, url, at, s) {
   video.src = url + (at && !/\.m3u8/.test(url) ? `#t=${at}` : "");
 }
 
+// mpv closed (the desktop app): leave the "Playing in mpv" page for where the person came from, which shows the new place
+// mpv never played it (a file it can't open, a server it can't reach): this window's player tries instead
+let mpvDone = ""; // where the "Playing in mpv" page leads when mpv closes: the film's or the show's page
+if (DESKTOP) parlorDesktop.onClosed(({ id, position }) => {
+  if (location.hash.startsWith(`#/jf/play/${id}`) && !location.hash.endsWith("/here") && $(".mpvnote")) location.replace(position == null ? `#/jf/play/${id}/here` : mpvDone);
+});
+
 async function showJfPlay(t, [id, from]) {
   stopJf();
   const saved = offFind({ jf: id }); // this device's copy, if it has one: it plays that first
@@ -329,6 +336,19 @@ async function showJfPlay(t, [id, from]) {
   const eps = season?.episodes || [];
   const next = eps[eps.findIndex((e) => e.id === x.id) + 1] || null;
   const title = x.type === "Episode" ? `${x.series || ""} · ${epCode(x)}` : x.name;
+  // the desktop app: mpv plays the original file with the computer's own decoder. No mpv, or a copy saved here: this player
+  if (DESKTOP && from === "here") await parlorDesktop.stop().catch(() => {});
+  if (DESKTOP && !saved && from !== "here" && (await parlorDesktop.play({ id: x.id, position: from === "start" ? 0 : x.position || 0, title }).catch(() => ({}))).ok) {
+    if (t !== ticket) return;
+    mpvDone = `#/jf/item/${x.type === "Episode" && x.series_id ? x.series_id : x.id}`;
+    return paint(t, `<div class="jwatch">
+      <div class="player" id="jfBox" style="${esc(`--photo:${cssUrl(x.backdrop || x.image)}`)}"><div class="overlay"><div class="mpvnote">
+        <strong>Playing in mpv</strong><span>Its place is saved as it plays.</span><a class="ghost" href="#/jf/play/${esc(x.id)}/here">Play here instead</a></div></div></div>
+      <div class="vinfo"><h1>${esc(title)}</h1>${x.overview ? `<p class="jover">${esc(x.overview)}</p>` : ""}
+        <div class="actions">${next ? `<a class="ghost" href="#/jf/play/${esc(next.id)}/start">${ICON.next}Next episode</a>` : ""}<a class="ghost" href="#/jf/item/${esc(x.type === "Episode" && x.series_id ? x.series_id : x.id)}">Details</a></div></div>
+      ${eps.length ? `<div class="wrap0"><h2>${esc(season.name)}</h2>${episodeRows(eps, x.id)}</div>` : ""}
+    </div>`);
+  }
   paint(t, `<div class="jwatch">
     <div class="player" id="jfBox" style="${esc(`--photo:${cssUrl(x.backdrop || x.image)}`)}">
       <video id="jfVideo" playsinline controls autoplay preload="auto"${x.backdrop ? ` poster="${esc(x.backdrop)}"` : ""}></video>

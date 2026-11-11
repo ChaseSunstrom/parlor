@@ -1,0 +1,40 @@
+# Parlor's desktop app for Windows and macOS (Linux and the Raspberry Pi build on any machine: scripts/build-desktop.sh).
+# Run by hand (Actions → Desktop app → Run workflow) or by a v* tag; the installers are the run's artifacts.
+# Neither is signed: Windows shows SmartScreen's "More info → Run anyway", macOS needs right-click → Open the first time.
+name: Desktop app
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, flags: "--win --x64" }
+          - { os: macos-latest, flags: "--mac --x64 --arm64" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The page, bundled
+        shell: bash
+        run: rm -rf desktop/www && cp -r app/static desktop/www
+      - name: Build
+        shell: bash
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm ci && npx electron-builder ${{ matrix.flags }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parlor-desktop-${{ matrix.os }}
+          path: |
+            desktop/out/*.exe
+            desktop/out/*.dmg
+          if-no-files-found: error

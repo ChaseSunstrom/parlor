@@ -271,6 +271,19 @@ Parlor installs as an app: on Android, Chrome's menu has **Install app**; on iPh
 - **The Android app**: `scripts/build-android.sh` builds `dist/parlor.apk` in Docker (Capacitor, every version pinned; about two minutes the first time). Later builds install over it, keeping what's saved; `--clean` starts over with a new signing key, which means uninstalling the old app first. Install it on the phone (allow installing from your file manager), open it and type Parlor's address, the one you use in a browser, like `http://192.168.1.20:8800`; then sign in as usual. The app carries Parlor's page with it and passes its requests on to your server, so everything works as in the browser, saving for offline included, over plain http on your home network. Music keeps playing with the screen off, with a media notification and lock-screen controls. **Settings → This device → Use another Parlor** switches servers. `tests/live_android.py` checks it on an Android emulator.
 - **iPhone and iPad**: a Home Screen app can stop playing when it's in the background or the screen locks, and Safari may clear saved music and videos from a Home Screen app that hasn't been opened for a few weeks.
 
+### The desktop app
+
+For a computer that plays what the browser can't: a 4K HDR film, DTS or TrueHD sound, an odd container. The desktop app is the same Parlor in a window of its own, and **Play** on a film or episode opens it in [mpv](https://mpv.io), which plays the original file as it is, with the computer's own video decoder. Nothing is converted, so the server does no work. The place is saved every ten seconds and when mpv closes, so Continue watching and Resume work as everywhere else.
+
+- **Get it**: `scripts/build-desktop.sh` builds it in Docker for Linux and the Raspberry Pi 4 and 5 (64-bit): `dist/desktop/Parlor-x86_64.AppImage` and `Parlor-amd64.deb` for a PC, `Parlor-arm64.AppImage` and `Parlor-arm64.deb` for the Pi, each 100 to 130 MB. Windows and macOS build on GitHub (`.github/workflows/desktop.yml`: Actions → Desktop app → Run workflow, then download the run's artifacts). Those two are written but haven't been run yet, and aren't signed: Windows asks **More info → Run anyway**, macOS wants System Settings → Privacy & Security → **Open Anyway** the first time.
+- **Start it**: open it, type Parlor's address (`http://192.168.1.20:8800`, or its https one) and sign in. It stays signed in; Settings → This device changes the address. A plain `http://` address is fine here, and saving for offline works with it.
+- **Install mpv**: Debian, Ubuntu and Raspberry Pi OS: `sudo apt install mpv` (the `.deb` recommends it, so apt brings it along). Fedora: `sudo dnf install mpv`. Arch: `sudo pacman -S mpv`. Windows: `winget install mpv` or `scoop install mpv`, or put `mpv.exe` beside `Parlor.exe`. macOS: `brew install mpv`. The app looks on the `PATH` (and Homebrew's folders); `PARLOR_MPV=/path/to/mpv` names another.
+- **Without mpv** nothing breaks: films play in the window's own player, as in a browser. The mpv page has **Play here instead** too, and a film saved on this device plays from the saved copy.
+- **How mpv runs**: with `--hwdec=auto`, so it uses the graphics card's decoder when there is one (VA-API, NVDEC, D3D11, VideoToolbox, the Pi's V4L2) and the processor when there isn't. `PARLOR_MPV_ARGS` adds options, for example `PARLOR_MPV_ARGS="--fs"` for full screen or `--hwdec=no` when a driver misbehaves; your own `mpv.conf` applies as usual. Your session reaches mpv over a private socket, never its command line.
+- **On a TV** (a Raspberry Pi behind one): start it with `--tv`, or `PARLOR_TV=1`, for the TV layout, full screen.
+- Music, YouTube and retro games play in the app's window, as in a browser. qBittorrent's own page and a gaming PC's stream open in your browser instead.
+- If the AppImage won't start on Ubuntu 24.04 or later (it restricts the sandbox AppImages use), install the `.deb` instead.
+
 ## On a TV
 
 <picture>
@@ -473,4 +486,5 @@ python3 tests/smoke.py http://127.0.0.1:8800                     # live check ag
 - `app/music.py` is music-fndr's backend, copied by `scripts/vendor-music.sh ../music-fndr`. Change it in music-fndr, then copy it again.
 - `app/static/` is the whole UI, with no build step. `js/music.js` is music-fndr's page code.
 - [DESIGN.md](DESIGN.md) describes the look.
+- `desktop/` is the desktop app (Electron): `main.js` serves the bundled page as `parlor://app`, passes its requests on to the server with a cookie jar the page can't read, and runs mpv. `cd app && ../.venv/bin/python ../tests/live_desktop.py` runs the packaged app in Docker against a real mpv (build it first).
 - `constraints.txt` pins every Python package in the image except yt-dlp (which updates itself on purpose), so a rebuild gives the same ones. To move them on: drop `-c /tmp/constraints.txt` from the Dockerfile, `docker compose build --no-cache parlor`, run the checks, then `docker run --rm --entrypoint pip parlor:latest freeze | grep -v -i -e '^yt-dlp' -e '@ file'` into `constraints.txt` (keeping its header) and put the `-c` back.

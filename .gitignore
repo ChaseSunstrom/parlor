@@ -25,3 +25,8 @@ __pycache__/
 /android/node_modules/
 /android/android/
 /dist/
+
+# the desktop app's build artifacts
+/desktop/www/
+/desktop/node_modules/
+/desktop/out/

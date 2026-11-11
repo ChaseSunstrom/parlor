@@ -91,6 +91,7 @@ VIEWS = [{"Id": V_FILMS, "Name": "Films", "Type": "CollectionFolder", "Collectio
          {"Id": V_BOOKS, "Name": "Books", "Type": "CollectionFolder", "CollectionType": "books", "ImageTags": {"Primary": "p"}}]
 STATE: dict = {}  # item id -> UserData
 SAVES: list = []
+DOWNLOADS: list = []  # (item, Range) for each original file asked for
 RANGES: list = []  # (file name, Range header) of every file asked for
 BREAK: set = set()  # file names whose next request for a later piece fails once (a dropped connection)
 NODIRECT: set = set()  # item ids Jellyfin would have to convert (no direct play)
@@ -177,8 +178,9 @@ class StandIn(BaseHTTPRequestHandler):
                 return self.send(200, public(i))
             if m[2] == "Similar":
                 return self.listing([])
-            if m[2] == "Download":
-                return self.file(MEDIA / i["_file"], "application/epub+zip")
+            if m[2] == "Download":  # the original file, as it is
+                DOWNLOADS.append((m[1], self.headers.get("Range")))
+                return self.file(MEDIA / i["_file"], "application/epub+zip" if i["_file"].endswith(".epub") else "video/mp4")
             kind = "wide.png" if "Backdrop" in m[2] or i["Type"] == "Episode" else "square.png" if i["Type"] in ("MusicAlbum", "Audio", "MusicArtist") else "poster.png"
             return self.file(MEDIA / kind, "image/png")
         if re.fullmatch(rf"/Videos/\w+/{MS}/Subtitles/\d+/Stream\.vtt", p):

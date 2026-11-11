@@ -644,7 +644,7 @@ page("settings", showSettings, "settings");
 page("you", showYou, "settings");
 
 async function boot() {
-  if (NATIVE && !SERVER && !(await appServer())) return; // the Android app: which Parlor (pwa.js)
+  if (APPED && !SERVER && !(await appServer())) return; // the Android or desktop app: which Parlor (pwa.js)
   try {
     ME = await api("/api/me");
   } catch (err) {
