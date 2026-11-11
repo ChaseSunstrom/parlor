@@ -10,9 +10,10 @@ FROM python:3.12-slim
 
 # ffmpeg joins video and audio and converts music; deno lets yt-dlp solve
 # YouTube's JavaScript challenges (without it downloads crawl or fail).
-# ffmpeg comes from the base image's Debian release, which pins it already
+# ffmpeg comes from the base image's Debian release, which pins it already.
+# adb and cec-utils (a few MB together) are for TV hardware: an Android TV's buttons, and an HDMI-CEC adapter (tvhw.py)
 # hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg adb cec-utils \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 COPY --from=sqlcipher /wheels /wheels

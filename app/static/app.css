@@ -994,6 +994,14 @@ body.tv .nav a:focus { background: color-mix(in oklab, var(--accent) 18%, transp
 .stick.pressed .knob { animation: knobpress .22s ease; }
 @keyframes knobpress { 50% { scale: .84; } }
 .rrow { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.rhw { display: grid; gap: 12px; padding: 16px 0; border-block: 1px solid var(--line); }
+.rhw .rrow { flex-wrap: wrap; gap: 10px; }
+.rhw select { min-height: 34px; padding: 4px 8px; }
+.hwlist li { grid-template-columns: 14px minmax(0, 1fr) auto; }
+.hwlist li .hwacts, .hwlist li .hwwho { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.hwlist li .hwwho { grid-column: 1 / -1; font-size: .92rem; }
+.hwwho .check { margin-top: 0; }
+#hwAdd { align-items: end; }
 .rrow .icon-btn { width: 52px; height: 52px; color: var(--text); font-weight: 700; }
 .rrow .icon-btn.big { width: 64px; height: 64px; background: var(--text); color: var(--bg); }
 

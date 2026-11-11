@@ -267,6 +267,7 @@ async function showRemote(t, id, everyone) {
       <button class="icon-btn" data-r="skip:1" aria-label="Next song">${ICON.next}</button>
     </div>
     <div class="rrow"><button class="ghost" data-r="volume:-0.1" aria-label="Quieter">−</button><span class="dim" id="rVol">Volume</span><button class="ghost" data-r="volume:0.1" aria-label="Louder">+</button></div>
+    <div class="rhw" id="rHw" hidden></div>
     <form class="actions" id="rType"><label class="field grow"><span class="vh">Type on the TV</span><input id="rText" maxlength="200" placeholder="Type on the TV (search, a name…)" autocomplete="off"></label><button class="primary small">Send</button></form>
   </div>`);
   const all = everyone ? "?everyone=true" : ""; // an admin's remote from Settings → TVs
@@ -302,11 +303,31 @@ async function showRemote(t, id, everyone) {
   };
   addEventListener("hashchange", () => r.stream.close(), { once: true });
   joystick(byId("rStick"), (key) => tvSend(id, { cmd: "key", key }, all));
+  api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(id, sets), () => {});
   $("#rType").addEventListener("submit", (e) => {
     e.preventDefault();
     tvSend(id, { cmd: "type", text: $("#rText").value, key: "enter" }, all).then((ok) => { if (ok) { $("#rText").value = ""; toast("Typed on the TV"); } });
   });
 }
+
+/** the TV set's own buttons on the remote (tvhw.py): power, input and its volume, for the sets an admin gave this account.
+    Which set goes with which paired TV is remembered on this device. */
+const HW = { power: "Power", input: "Input", voldown: "Vol −", mute: "Mute", volup: "Vol +", hdmi1: "HDMI 1", hdmi2: "HDMI 2", hdmi3: "HDMI 3", hdmi4: "HDMI 4" };
+function drawHw(tvId, sets) {
+  const box = byId("rHw");
+  if (!box || !sets.length) return;
+  const set = sets.find((s) => s.id === pref(`hw${tvId}`)) || sets[0];
+  const row = (keys) => keys.some((k) => set.keys.includes(k)) ? `<div class="rrow">${keys.filter((k) => set.keys.includes(k)).map((k) => `<button class="ghost" data-hw="${k}">${HW[k]}</button>`).join("")}</div>` : "";
+  box.hidden = false;
+  box.dataset.set = set.id;
+  box.innerHTML = `<div class="rrow"><b>The TV set</b>${sets.length > 1 ? `<select id="rHwSet" aria-label="Which TV set">${sets.map((s) => `<option value="${s.id}"${s === set ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select>` : `<span class="dim">${esc(set.name)}</span>`}</div>
+    ${row(["power", "input", "voldown", "mute", "volup"])}${row(["hdmi1", "hdmi2", "hdmi3", "hdmi4"])}`;
+  byId("rHwSet")?.addEventListener("change", (e) => { setPref(`hw${tvId}`, +e.target.value); drawHw(tvId, sets); });
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-hw]");
+  if (b) post(`/api/tv/hw/${b.closest("[data-set]").dataset.set}/press`, { key: b.dataset.hw }).catch((err) => toast(err.message));
+});
 
 /** the remote's joystick: drag the knob for an arrow (held, it keeps going, quicker and quicker), press it for OK;
     it springs back to the middle when let go */
@@ -422,12 +443,46 @@ document.addEventListener("click", (e) => {
 // drawn hidden until this account's TVs are known (tvBoot runs alongside the first page)
 const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length ? "" : " hidden"}>${ICON.tv}On TV</button>`);
 
-/** Settings → TVs (admins): every account's TVs, a remote for each, and unpairing */
+/** Settings → TVs (admins): every account's TVs, a remote for each, and unpairing; then the TV sets themselves (tvhw.py) */
 async function drawTvPanel() {
   const box = $("#tvPanel");
   if (!box) return;
-  const { tvs } = await api("/api/tv?everyone=true").catch(() => ({ tvs: [] }));
+  const [{ tvs }, hw, users] = await Promise.all([api("/api/tv?everyone=true").catch(() => ({ tvs: [] })), api("/api/tv/sets").catch(() => ({ sets: [], kinds: {} })), api("/api/users").catch(() => [])]);
+  const members = users.filter((u) => !u.admin);
+  const hwRow = (s) => `<li data-hw-set="${s.id}"><span class="dot${s.paired || !s.pairs ? " on" : ""}"></span>
+    <div><b>${esc(s.name)}</b><small class="dim">${esc(hw.kinds[s.kind])}${s.host ? ` · ${esc(s.host)}` : ""}${s.pairs ? (s.paired ? " · paired" : " · not paired yet") : ""}</small></div>
+    <span class="hwacts"><button class="ghost" data-hw-test>${s.pairs && !s.paired ? "Pair" : "Test"}</button><button class="ghost danger" data-hw-drop>Remove</button></span>
+    <div class="hwwho"><span class="dim">Who may use it (admins always can):</span>${members.length ? members.map((u) => `<label class="check"><input type="checkbox" value="${u.id}"${s.users.includes(u.id) ? " checked" : ""}>${esc(u.name)}</label>`).join("") : `<span class="dim">no other accounts yet</span>`}</div></li>`;
+  const hwPanel = `<section class="panel" id="hwPanel"><h3>TV sets</h3><p>Power, input and volume on the TV itself, from the remote: a Roku, an LG, a Samsung, an Android TV, or anything on an HDMI-CEC adapter plugged into the server. Parlor only connects to addresses on your home network.</p>
+    ${hw.sets.length ? `<ul class="tvlist hwlist">${hw.sets.map(hwRow).join("")}</ul>` : ""}
+    <form class="actions" id="hwAdd"><label class="field"><span>Type</span><select id="hwKind">${Object.entries(hw.kinds).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select></label>
+      <label class="field"><span>Its name</span><input id="hwName" maxlength="40" placeholder="Living room TV" required></label>
+      <label class="field" id="hwHostField"><span>Its address</span><input id="hwHost" maxlength="253" placeholder="192.168.1.40" autocomplete="off" spellcheck="false"></label>
+      <label class="field" id="hwMacField" hidden><span>Its MAC, to switch it on (optional)</span><input id="hwMac" maxlength="17" placeholder="a0:b1:c2:d3:e4:f5" autocomplete="off" spellcheck="false"></label>
+      <button class="primary small">Add</button></form></section>`;
   box.innerHTML = `<section class="panel"><h3>TVs</h3><p>Every account's paired TVs. Only from here can an admin work someone else's TV.</p>
     ${tvs.length ? `<ul class="tvlist">${tvs.map((x) => `<li><span class="dot${x.online ? " on" : ""}"></span><div><b>${esc(x.name)}</b><small class="dim">${esc(x.owner)}${x.online ? " · on" : ""}</small></div>
-      <a class="ghost" href="#/tvs/${x.id}/all">${ICON.tv}Remote</a><button class="ghost danger" data-tv-drop="${x.id}" data-tv-all>Unpair</button></li>`).join("")}</ul>` : `<p class="dim">No TVs are paired.</p>`}</section>`;
+      <a class="ghost" href="#/tvs/${x.id}/all">${ICON.tv}Remote</a><button class="ghost danger" data-tv-drop="${x.id}" data-tv-all>Unpair</button></li>`).join("")}</ul>` : `<p class="dim">No TVs are paired.</p>`}</section>${hwPanel}`;
+  const kind = byId("hwKind"), fields = () => { byId("hwHostField").hidden = kind.value === "cec"; byId("hwMacField").hidden = !["webos", "tizen"].includes(kind.value); };
+  kind.addEventListener("change", fields);
+  fields();
+  byId("hwAdd").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const cec = kind.value === "cec", wakes = !byId("hwMacField").hidden;
+    post("/api/tv/sets", { kind: kind.value, name: byId("hwName").value.trim(), host: cec ? "" : byId("hwHost").value.trim(), mac: wakes ? byId("hwMac").value.trim() : "" })
+      .then(() => { toast("Added: now press Pair or Test"); drawTvPanel(); }, (err) => toast(err.status === 422 ? "Check the name, and the MAC (six pairs like a0:b1:c2:d3:e4:f5)" : err.message));
+  });
 }
+document.addEventListener("click", (e) => {
+  const li = e.target.closest("[data-hw-set]"), test = e.target.closest("[data-hw-test]");
+  if (!li) return;
+  if (test) {
+    test.disabled = true;
+    if (test.textContent === "Pair") toast("Look at the TV: accept Parlor there");
+    post(`/api/tv/sets/${li.dataset.hwSet}/test`).then((r) => toast(r.said), (err) => toast(err.message)).then(drawTvPanel);
+  } else if (e.target.closest("[data-hw-drop]") && confirm("Remove this TV set? Its pairing goes with it.")) del(`/api/tv/sets/${li.dataset.hwSet}`).then(drawTvPanel, (err) => toast(err.message));
+});
+document.addEventListener("change", (e) => {
+  const li = e.target.closest(".hwwho")?.closest("[data-hw-set]");
+  if (li) put(`/api/tv/sets/${li.dataset.hwSet}/users`, { users: [...li.querySelectorAll(".hwwho input:checked")].map((i) => +i.value) }).then(() => toast("Saved"), (err) => { toast(err.message); drawTvPanel(); });
+});

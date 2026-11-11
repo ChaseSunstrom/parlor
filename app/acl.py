@@ -40,6 +40,7 @@ RULES = [
     ("/sw.js", OPEN),  # the app's service worker (pwa.py)
     ("/tv", OPEN),  # Parlor on a TV: the page itself
     ("/api/tv/code", OPEN), ("/api/tv/claim", OPEN), ("/api/tv/me", OPEN),  # a TV pairing (tv.py)
+    ("/api/tv/sets", ADMIN),  # TV hardware: adding sets, pairing them, who may use each (tvhw.py)
     ("/api/tv/", EVERYONE),  # TVs, casting and the remote: what plays checks its own sections
     ("/api/v1/", EVERYONE),  # the API: each source and action checks its own sections (api.py)
     ("/api/me/api-keys", EVERYONE), ("/api/docs", EVERYONE), ("/api/openapi.json", EVERYONE),

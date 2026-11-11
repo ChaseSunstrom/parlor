@@ -154,6 +154,16 @@ CREATE TABLE IF NOT EXISTS tvs (
   session TEXT NOT NULL UNIQUE REFERENCES sessions(token) ON DELETE CASCADE,  -- signing out everywhere unpairs it
   created REAL NOT NULL
 );
+-- TV sets (tvhw.py): the hardware an admin added, and who may press its buttons. secret: an LG's key or a Samsung's token
+CREATE TABLE IF NOT EXISTS tv_sets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, name TEXT NOT NULL, host TEXT NOT NULL DEFAULT '',
+  mac TEXT NOT NULL DEFAULT '', secret TEXT NOT NULL DEFAULT '', created REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tv_access (
+  set_id INTEGER NOT NULL REFERENCES tv_sets(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (set_id, user_id)
+);
 CREATE TABLE IF NOT EXISTS twitch_follows (  -- Twitch channels each person follows in Parlor (live.py); no Twitch account needed
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, login TEXT NOT NULL, added REAL NOT NULL,
   PRIMARY KEY (user_id, login)
