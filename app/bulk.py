@@ -43,6 +43,18 @@ _names = Cache(24 * 3600, 600)  # a set's name and picture
 _home = Cache(3600, 4)
 _plans = Cache(600, 200)  # plan id -> what was shown, until it's confirmed
 _confirming = threading.Lock()
+PLANS_A_MINUTE = 10  # per person: a plan reads up to PAGES pages of Seerr and clears the shared page cache
+_plan_tries: dict = {}  # user id -> times of their plans in the last minute
+
+
+def _limit_plans(uid):
+    now = time.time()
+    if len(_plan_tries) > 10000:  # bounded: forget everything stale
+        for k in [k for k, ts in _plan_tries.items() if not ts or now - ts[-1] >= 60]:
+            del _plan_tries[k]
+    tries = _plan_tries[uid] = [t for t in _plan_tries.get(uid, []) if now - t < 60] + [now]
+    if len(tries) > PLANS_A_MINUTE:
+        raise HTTPException(429, "Too many plans: wait a minute")
 
 
 class Filters(BaseModel):
@@ -132,23 +144,30 @@ def home(_=Depends(me)):
     if hit is not None:
         return hit
 
+    failed = []  # rows Seerr failed to answer (a 404 is a set that isn't there, not a failure)
+
     def named(kind, sid):
         try:
             return about(kind, sid)
-        except HTTPException:
+        except HTTPException as e:
+            if e.status_code != 404:
+                failed.append(e)
             return None
 
     def collection_of(tmdb):
         try:
             return (seerr.details("movie", tmdb).get("collection") or {}).get("id")
-        except HTTPException:
+        except HTTPException as e:
+            if e.status_code != 404:
+                failed.append(e)
             return None
 
     with ThreadPoolExecutor(8) as pool:
         try:
             have = [m["tmdbId"] for m in call("GET", "media", params={"take": 100, "filter": "available", "sort": "mediaAdded"}).get("results") or []
                     if m.get("mediaType") == "movie" and m.get("tmdbId")]
-        except HTTPException:
+        except HTTPException as e:
+            failed.append(e)
             have = []
         owned: dict = {}
         for cid in pool.map(collection_of, have):
@@ -160,7 +179,8 @@ def home(_=Depends(me)):
         networks = [a for a in pool.map(lambda n: named("network", n), NETWORKS) if a]
     if not (franchises or studios or networks):
         call("GET", "status")  # nothing came back: say why
-    return _home.put("all", {"franchises": franchises, "studios": studios, "networks": networks})
+    page = {"franchises": franchises, "studios": studios, "networks": networks}
+    return page if failed else _home.put("all", page)  # a partly empty page isn't kept for an hour: the next visit asks again
 
 
 @router.get("/search")
@@ -200,6 +220,7 @@ class Plan(Filters):
 @router.post("/plan")
 def plan(body: Plan, user=Depends(me)):
     """Which titles Request all would ask for: the missing ones, counted, with what's left out and why."""
+    _limit_plans(user["id"])
     seerr.requester(user)  # no Seerr user: say so now, not title by title
     _forget_pages()  # a plan counts what's missing now, not what a page showed five minutes ago
     first, pages, total = page_of(body.kind, body.id, body, 1)
