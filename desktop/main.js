@@ -9,7 +9,10 @@
    Play on a film or episode starts mpv on the original file (no converting), with hardware decoding when the machine
    has it. The session cookie reaches mpv over its control socket, never its command line (which other programs can
    read). Every ten seconds, and when mpv closes, the place goes back to Jellyfin through Parlor. No mpv: the page's
-   own player plays it. */
+   own player plays it.
+
+   A retro game's card starts RetroArch, when this computer has it and a core for the game's system, on the game fetched
+   into a private folder; the person's save comes from Parlor first and goes back when RetroArch closes. */
 const { app, BrowserWindow, protocol, session, ipcMain, shell } = require("electron");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -17,6 +20,8 @@ const net = require("node:net");
 const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
+const { Readable } = require("node:stream");
+const { pipeline } = require("node:stream/promises");
 
 const ORIGIN = "parlor://app";
 const WWW = path.join(__dirname, "www");
@@ -100,13 +105,13 @@ async function pass(request, u) {
 /* ---------- mpv ---------- */
 
 let mpv = null; // { id, child, sock, dir, position, percent, hwdec, timer, closed }
-function findMpv() {
-  if (process.env.PARLOR_MPV !== undefined) return fs.existsSync(process.env.PARLOR_MPV) ? process.env.PARLOR_MPV : "";
-  const exe = process.platform === "win32" ? "mpv.exe" : "mpv";
-  const dirs = (process.env.PATH || "").split(path.delimiter).concat(path.dirname(process.execPath),
-    process.platform === "darwin" ? ["/opt/homebrew/bin", "/usr/local/bin", "/Applications/mpv.app/Contents/MacOS"] : []);
+function findExe(env, name, more = []) { // a program on this computer: the one the environment names, or on the PATH and the usual places
+  if (process.env[env] !== undefined) return fs.existsSync(process.env[env]) ? process.env[env] : "";
+  const exe = process.platform === "win32" ? `${name}.exe` : name;
+  const dirs = (process.env.PATH || "").split(path.delimiter).concat(path.dirname(process.execPath), process.platform === "darwin" ? ["/opt/homebrew/bin", "/usr/local/bin"] : [], more);
   return dirs.filter(Boolean).map((d) => path.join(d, exe)).find((p) => fs.existsSync(p)) || "";
 }
+const findMpv = () => findExe("PARLOR_MPV", "mpv", ["/Applications/mpv.app/Contents/MacOS"]);
 
 const mpvState = () => ({ available: !!findMpv(), playing: mpv ? mpv.id : null, position: mpv ? mpv.position : null, hwdec: mpv ? mpv.hwdec : null });
 
@@ -192,6 +197,123 @@ async function play({ id, position, title }) {
   }
 }
 
+/* ---------- retro games in RetroArch ---------- */
+
+/* Each system's libretro cores, first the one Parlor's own page (EmulatorJS) uses. A game opens in the RetroArch on this
+   computer when it has one of them; otherwise in the window, as in a browser. */
+const CORES = { nes: ["fceumm", "nestopia", "mesen"], snes: ["snes9x", "bsnes"], n64: ["mupen64plus_next", "parallel_n64"], gb: ["gambatte", "mgba", "sameboy"],
+  gbc: ["gambatte", "mgba", "sameboy"], gba: ["mgba", "vba_next", "vbam"], nds: ["melonds", "desmume"], vb: ["mednafen_vb"], genesis: ["genesis_plus_gx", "picodrive"],
+  megadrive: ["genesis_plus_gx", "picodrive"], sms: ["smsplus", "genesis_plus_gx", "picodrive"], gamegear: ["genesis_plus_gx"], "32x": ["picodrive"],
+  segacd: ["genesis_plus_gx", "picodrive"], psx: ["pcsx_rearmed", "mednafen_psx_hw", "mednafen_psx", "swanstation"], pce: ["mednafen_pce", "mednafen_pce_fast"],
+  atari2600: ["stella2014", "stella"], atari7800: ["prosystem"], lynx: ["handy", "mednafen_lynx"], ngp: ["mednafen_ngp"], ws: ["mednafen_wswan"],
+  coleco: ["gearcoleco", "bluemsx"], arcade: ["fbneo"], c64: ["vice_x64sc", "vice_x64"], dos: ["dosbox_pure"], psp: ["ppsspp"] };
+/* A save goes to Parlor, the same on every device, only when the core here is the page's own (the first of its list),
+   so the bytes mean the same thing in both. One exception, known to be the same in every core: an NES cartridge's
+   battery memory. With any other core the save stays on this computer. */
+const sharesSave = (system, file, core) => core.own || (system === "nes" && !/\.fds$/i.test(file));
+let game = null; // { system, file, child, closed }
+
+const findRetroarch = () => findExe("PARLOR_RETROARCH", "retroarch", process.platform === "darwin" ? ["/Applications/RetroArch.app/Contents/MacOS"] : ["C:\\RetroArch-Win64", "C:\\RetroArch"]);
+function findCore(system, exe) {
+  const ext = { win32: "dll", darwin: "dylib" }[process.platform] || "so";
+  const home = os.homedir();
+  const dirs = [process.env.PARLOR_CORES, path.join(path.dirname(exe), "cores"), path.join(home, ".config/retroarch/cores"),
+    path.join(home, "Library/Application Support/RetroArch/cores"), path.join(home, ".var/app/org.libretro.RetroArch/config/retroarch/cores"),
+    `/usr/lib/${process.arch === "arm64" ? "aarch64" : "x86_64"}-linux-gnu/libretro`, "/usr/lib/libretro", "/usr/lib64/libretro"].filter(Boolean);
+  for (const [i, core] of (CORES[system] || []).entries()) {
+    const found = dirs.map((d) => path.join(d, `${core}_libretro.${ext}`)).find((p) => fs.existsSync(p));
+    if (found) return { path: found, own: i === 0 };
+  }
+  return null;
+}
+
+const retroState = () => ({ available: !!findRetroarch(), playing: game ? { system: game.system, file: game.file } : null });
+const sum = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+
+function stopGame() { // done once RetroArch is gone and its save is back on Parlor
+  if (!game) return Promise.resolve();
+  const g = game;
+  g.child.kill();
+  setTimeout(() => { if (!g.gone) g.child.kill("SIGKILL"); }, 5000).unref(); // one that hangs doesn't hold the app open
+  return g.closed;
+}
+
+const SAVE_WAIT = 15_000; // ms for Parlor to answer about a save
+let starting = false; // one game at a time: a second press while the first is being fetched does nothing
+async function playGame(what) {
+  if (starting) return { ok: true, busy: true };
+  starting = true;
+  try { return await startGame(what); } catch { return { ok: false }; } finally { starting = false; }
+}
+
+async function startGame({ system, file }) {
+  const exe = findRetroarch();
+  file = String(file || "");
+  if (!exe || !server || !Object.hasOwn(CORES, system) || !file || file.length > 255 || file.startsWith(".") || /[/\\\0]/.test(file)) return { ok: false };
+  if (process.platform === "win32" && (/[<>:"|?*]/.test(file) || /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(file))) return { ok: false }; // not a file name there: the window plays it
+  const core = findCore(system, exe);
+  if (!core) return { ok: false };
+  await stopGame();
+  const at = `${server}/api/games/retro`, name = `${system}/${encodeURIComponent(file)}`;
+  const mine = sum(`${server}\n${system}/${file}`).slice(0, 32); // this game on this Parlor, as a folder name
+  const unsent = path.join(app.getPath("userData"), "unsent", `${mine}.srm`); // a save Parlor hasn't got yet (it was away)
+  const put = (bytes) => upstream.fetch(`${at}/save/${name}/sram`, { method: "PUT", body: bytes, redirect: "error", signal: AbortSignal.timeout(SAVE_WAIT),
+    headers: { "x-requested-with": "parlor", "content-type": "application/octet-stream" } }).then((r) => r.ok, () => false);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "parlor-game-")); // 0700; gone when RetroArch closes
+  const drop = () => fs.rmSync(dir, { recursive: true, force: true });
+  try {
+    const rom = path.join(dir, file);
+    const r = await upstream.fetch(`${at}/rom/${name}`);
+    if (!r.ok) throw new Error("no game");
+    await pipeline(Readable.fromWeb(r.body), fs.createWriteStream(rom, { mode: 0o600 }));
+    /* A shared save lives only in this launch's folder, so nothing left from another game, person or day can be taken
+       for it: Parlor's copy comes down first. Can't ask Parlor: don't start (the window says why). Other saves stay in
+       the app's own folder, one per game. */
+    const shared = sharesSave(system, file, core);
+    const saves = shared ? path.join(dir, "saves") : path.join(app.getPath("userData"), "saves", mine);
+    fs.mkdirSync(saves, { recursive: true });
+    const srm = path.join(saves, `${path.parse(file).name}.srm`);
+    let was = "";
+    if (shared && fs.existsSync(unsent)) { // newer than Parlor's: it goes up first, and is the save either way
+      const bytes = fs.readFileSync(unsent);
+      fs.writeFileSync(srm, bytes);
+      if (await put(bytes)) { was = sum(bytes); fs.rmSync(unsent, { force: true }); }
+    } else if (shared) {
+      const got = await upstream.fetch(`${at}/save/${name}/sram`, { cache: "no-store", signal: AbortSignal.timeout(SAVE_WAIT) });
+      if (got.ok) { const bytes = Buffer.from(await got.arrayBuffer()); fs.writeFileSync(srm, bytes); was = sum(bytes); }
+      else if (got.status !== 404) throw new Error("no saves");
+    }
+    const cfg = path.join(dir, "parlor.cfg"), q = (p) => `"${p.replace(/\\/g, "/")}"`;
+    fs.writeFileSync(cfg, [`savefile_directory = ${q(saves)}`, `savestate_directory = ${q(saves)}`, ...["savefiles_in_content_dir", "savestates_in_content_dir", "sort_savefiles_enable",
+      "sort_savefiles_by_content_enable", "sort_savestates_enable", "sort_savestates_by_content_enable", "config_save_on_exit"].map((k) => `${k} = "false"`), // (on exit: or these folders would be written into the person's own config)
+      'autosave_interval = "10"', ""].join("\n")); // the save reaches the disk as the game plays, not only on a clean exit
+    const more = process.env.PARLOR_RETROARCH_CONFIG ? `|${process.env.PARLOR_RETROARCH_CONFIG}` : "";
+    const child = spawn(exe, ["-L", core.path, "--appendconfig", cfg + more, ...(TV ? ["-f"] : []), rom], { stdio: "ignore" });
+    const g = (game = { system, file, child, closed: null, gone: false });
+    g.closed = new Promise((closed) => {
+      const gone = async () => {
+        if (g.gone) return;
+        g.gone = true;
+        if (game === g) game = null;
+        let saved = false;
+        try {
+          const bytes = shared ? fs.readFileSync(srm) : Buffer.alloc(0);
+          if (bytes.length && sum(bytes) !== was && !(saved = await put(bytes))) { // Parlor is away: kept, and sent before the next play
+            fs.mkdirSync(path.dirname(unsent), { recursive: true });
+            fs.writeFileSync(unsent, bytes, { mode: 0o600 });
+          }
+        } catch { /* the game made no save */ }
+        drop();
+        if (win && !win.isDestroyed()) win.webContents.send("game-closed", { system, file, saved });
+        closed();
+      };
+      child.once("exit", gone);
+      child.once("error", gone);
+    });
+    return { ok: true, shared };
+  } catch { drop(); return { ok: false }; }
+}
+
 /* ---------- the window ---------- */
 
 const ours = (event) => String(event.senderFrame?.url || "").startsWith(ORIGIN + "/"); // only the app's own page may ask
@@ -200,6 +322,7 @@ app.whenReady().then(() => {
   upstream = session.fromPartition("persist:parlor-server");
   upstream.cookies.on("changed", () => upstream.cookies.flushStore().catch(() => {})); // on disk at once: a crash or power cut right after signing in doesn't sign the person out
   try { server = JSON.parse(fs.readFileSync(stateFile(), "utf8")).server || ""; } catch { server = ""; }
+  for (const d of fs.readdirSync(os.tmpdir())) if (/^parlor-(game|mpv)-/.test(d)) try { fs.rmSync(path.join(os.tmpdir(), d), { recursive: true, force: true }); } catch { /* another person's */ } // left by a crash
   protocol.handle("parlor", (request) => {
     const u = new URL(request.url);
     if (u.host !== "app") return new Response(null, { status: 404 });
@@ -210,14 +333,16 @@ app.whenReady().then(() => {
   ipcMain.handle("mpv", (e) => (ours(e) ? mpvState() : null));
   ipcMain.handle("play", (e, item) => (ours(e) ? play(item || {}) : { ok: false }));
   ipcMain.handle("stop", (e) => (ours(e) ? stopMpv().then(() => true) : false));
+  ipcMain.handle("retro", (e) => (ours(e) ? retroState() : null));
+  ipcMain.handle("game", (e, what) => (ours(e) ? playGame(what || {}) : { ok: false }));
   win = new BrowserWindow({ fullscreen: TV, width: 1280, height: 820, minWidth: 360, minHeight: 480, title: "Parlor", backgroundColor: "#15131c", autoHideMenuBar: true,
     icon: path.join(WWW, "icon-512.png"), webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false } });
   /* Other sites, Steam's links, and the server's pages this app can't show itself (qBittorrent's, a gaming PC's stream:
      they need WebSockets, which a passed-on request can't carry) open in the person's browser. */
-  const mine = (url) => { const u = new URL(url); return u.origin === ORIGIN && (["/", "/tv"].includes(u.pathname) || PASS.some((p) => u.pathname.startsWith(p))); };
+  const mine = (url) => { const u = new URL(url); return url.startsWith(ORIGIN + "/") && (["/", "/tv"].includes(u.pathname) || PASS.some((p) => u.pathname.startsWith(p))); };
   const outside = (url) => {
     const u = new URL(url);
-    if (u.origin === ORIGIN) { if (server) shell.openExternal(server + u.pathname + u.search); } else if (["http:", "https:", "steam:"].includes(u.protocol)) shell.openExternal(url);
+    if (url.startsWith(ORIGIN + "/")) { if (server) shell.openExternal(server + u.pathname + u.search); } else if (["http:", "https:", "steam:"].includes(u.protocol)) shell.openExternal(url);
   };
   win.webContents.setWindowOpenHandler(({ url }) => { outside(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", (e, url) => { if (!mine(url)) { e.preventDefault(); outside(url); } });
@@ -226,4 +351,6 @@ app.whenReady().then(() => {
 
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on("window-all-closed", () => app.quit());
-app.on("before-quit", (e) => { if (mpv) { e.preventDefault(); stopMpv().then(() => app.quit()); } }); // however it quits: mpv closes and its place is saved
+app.on("before-quit", (e) => { // however it quits: mpv and RetroArch close, and the place and the save are kept
+  if (mpv || game) { e.preventDefault(); Promise.all([stopMpv(), stopGame()]).then(() => app.quit()); }
+});

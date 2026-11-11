@@ -4,8 +4,10 @@ against Parlor served here and the Jellyfin stand-in. Driven through the app's o
 it opens on the address screen, refuses an address that isn't Parlor, signs in (a POST with a body, through the app),
 keeps the session where the page can't see it, passes Range on, and saves a film for offline. Play starts mpv on the
 original file with --hwdec=auto and nothing secret on its command line; the place is saved every 10 s and when mpv
-closes; Resume starts mpv from there. Started again without mpv, the app is still signed in and the film plays in the
-page's own player.
+closes; Resume starts mpv from there. A retro game's card starts a real RetroArch (nestopia, drawing to the virtual
+screen) on the game fetched by the app, with the person's save from Parlor, and the changed save goes back when it
+closes. Started again without mpv or RetroArch, as a TV box, the app is still signed in and the film plays in the
+page's own player, and the game's card opens the page's own emulator.
    cd app && ../.venv/bin/python ../tests/live_desktop.py [OUT_DIR]   (needs Docker, Playwright and ffmpeg; build first)"""
 import os
 import secrets
@@ -21,8 +23,10 @@ import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the a
 
 import auth
 import core
+import games
 import uvicorn
 from jf_standin import DOWNLOADS, FILM, JF, SAVES, T, point
+from nes_rom import nes_rom
 from playwright.sync_api import sync_playwright
 
 REPO = Path(__file__).resolve().parent.parent
@@ -57,7 +61,7 @@ def wait(what, fn, seconds=30, every=0.25):
 def start(cdp, **more):
     """the packaged app in a container that shares this machine's network, on a virtual screen"""
     subprocess.run(["docker", "rm", "-f", TAG], capture_output=True)
-    envs = {"HOME": "/tmp", "PARLOR_DATA": "/profile", "PARLOR_MPV_ARGS": "--vo=null --ao=null", **more}
+    envs = {"HOME": "/tmp", "PARLOR_DATA": "/profile", "PARLOR_MPV_ARGS": "--vo=null --ao=null", "PARLOR_RETROARCH_CONFIG": "/profile/ra.cfg", **more}
     subprocess.run(["docker", "run", "-d", "--init", "--name", TAG, "--network", "host", "--shm-size", "1g", "-u", f"{os.getuid()}:{os.getgid()}",
                     *[x for k, v in envs.items() for x in ("-e", f"{k}={v}")], "-v", f"{APP}:/app:ro", "-v", f"{PROFILE}:/profile", IMAGE,
                     "xvfb-run", "-a", "/app/parlor-desktop", "--no-sandbox", "--disable-gpu", f"--remote-debugging-port={cdp}"], check=True, capture_output=True)
@@ -93,6 +97,11 @@ def need(page, selector, **kw):
 
 core.db()
 auth.create_user(NAME, PASSWORD, True)
+games.GAMES = env.TMP / "games"  # one game: a cartridge with battery memory that writes "PL" at the start of its save
+(games.GAMES / "roms" / "nes").mkdir(parents=True)
+(games.GAMES / "roms" / "nes" / "Pixel Green.nes").write_bytes(nes_rom())
+(PROFILE / "ra.cfg").write_text('video_driver = "sdl2"\naudio_driver = "null"\n')  # no graphics card or sound in the container
+SAVE = "/api/games/retro/save/nes/Pixel%20Green.nes/sram"
 point(core)
 PORT = free()
 server = uvicorn.Server(uvicorn.Config(env.yeerr.app, host="127.0.0.1", port=PORT, log_level="warning"))
@@ -180,9 +189,26 @@ try:
         need(page, "#jfVideo", timeout=15000)
         checks["Play here instead closes mpv"] = wait("mpv stayed open", lambda: mpv(page)["playing"] is None, 10) and not inside("pgrep", "-x", "mpv").strip()
 
+        # a retro game in RetroArch: the save on Parlor is there when it starts, and the game's change goes back
+        card = 'a.gcard.retro[data-file="Pixel Green.nes"]'
+        put = page.evaluate("fetch('%s', { method: 'PUT', headers: { 'X-Requested-With': 'parlor' }, body: new Uint8Array(8192).fill(90) }).then((r) => r.status)" % SAVE)
+        page.goto("parlor://app/#/games")
+        page.click(card, timeout=15000)
+        playing = wait("RetroArch never started", lambda: page.evaluate("parlorDesktop.retro()")["playing"], 30)
+        line = wait("no RetroArch process", lambda: inside("sh", "-c", "tr '\\0' ' ' < /proc/$(pgrep -x retroarch | head -1)/cmdline").strip(), 15)
+        print(f"  RetroArch runs as: {line}")
+        checks["a game's card starts RetroArch with a core for its system"] = put == 200 and playing == {"system": "nes", "file": "Pixel Green.nes"} and "nestopia_libretro" in line
+        checks["RetroArch gets the game as a file: no address or cookie on its command line"] = "Pixel Green.nes" in line and "http" not in line and "ookie" not in line
+        time.sleep(5)  # the cartridge writes its two bytes in its first frames
+        inside("pkill", "-TERM", "-x", "retroarch")
+        wait("RetroArch didn't close", lambda: page.evaluate("parlorDesktop.retro()")["playing"] is None, 20)
+        back = page.evaluate("fetch('%s').then(async (r) => Array.from(new Uint8Array(await r.arrayBuffer()).slice(0, 4)))" % SAVE)
+        checks["the save came from Parlor and the game's change went back (PL over ZZZZ)"] = back == [0x50, 0x4C, 90, 90]
+        checks["the game's file is gone from the computer afterwards"] = not inside("sh", "-c", "ls -d /tmp/parlor-game-* 2>/dev/null").strip()
+
         # again, as a TV box without mpv: still signed in, and the page's own player plays
         cdp = free()
-        start(cdp, PARLOR_MPV="/nowhere/mpv", PARLOR_TV="1")
+        start(cdp, PARLOR_MPV="/nowhere/mpv", PARLOR_RETROARCH="/nowhere/retroarch", PARLOR_TV="1")
         page = window(pw, cdp)
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.wait_for_function("document.querySelector('#account') || document.querySelector('#gateForm')", timeout=30000)
@@ -195,6 +221,11 @@ try:
         page.wait_for_function("document.querySelector('#jfVideo')?.currentTime > 1", timeout=30000)
         checks["without mpv the film plays in the app's own player"] = page.locator(".mpvnote").count() == 0
         page.screenshot(path=str(OUT / "desktop-own-player.png"))
+        page.goto("parlor://app/#/games")
+        page.click(card, timeout=15000, no_wait_after=True)
+        page.wait_for_url("**/api/games/play/nes/**", timeout=30000, wait_until="commit")
+        page.wait_for_selector("#retro", state="attached", timeout=15000)
+        checks["without RetroArch the game opens in the window's own emulator page"] = page.evaluate("JSON.parse(document.getElementById('retro').textContent).core") == "nes"
 finally:
     subprocess.run(["docker", "rm", "-f", TAG], capture_output=True)
     server.should_exit = True
@@ -203,6 +234,6 @@ for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 print("page errors:", errors or "none")
 print(f"screenshots: desktop-address.png, desktop-mpv.png, desktop-own-player.png in {OUT}")
-ok = len(checks) == 19 and all(checks.values()) and not errors
+ok = len(checks) == 24 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

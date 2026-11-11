@@ -15,9 +15,27 @@ function steamCard(g, wide = false) {
     <span class="gname">${esc(g.name)}</span></a><small class="dim">${played} · <a href="steam://rungameid/${g.appid}" title="Starts it on a PC with Steam">Play in Steam</a></small></div>`;
 }
 
+/* The desktop app: a game opens in the RetroArch on this computer when it has a core for it (desktop/main.js), with
+   the person's save from Parlor; without one the card's own link opens it here, as in a browser. */
+if (DESKTOP) {
+  document.addEventListener("click", async (e) => {
+    const card = e.target.closest?.("a.gcard.retro[data-file]");
+    if (!card || e.defaultPrevented || e.button || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const name = card.querySelector(".gname")?.textContent || "The game";
+    if (!(await parlorDesktop.retro().catch(() => null))?.available) return void (location.href = card.href);
+    toast(`Opening ${name} in RetroArch…`);
+    const r = await parlorDesktop.game({ system: card.dataset.system, file: card.dataset.file }).catch(() => ({}));
+    if (!r.ok) return void (location.href = card.href); // no core for it here, or Parlor's saves can't be reached
+    if (r.busy) return;
+    toast(r.shared ? `${name} is open in RetroArch. Its save comes back to Parlor when you close it.` : `${name} is open in RetroArch. Its saves stay on this computer.`);
+  });
+  parlorDesktop.onGameClosed(({ saved }) => { if (saved) toast("Your save is on Parlor"); });
+}
+
 function retroCard(sys, g) {
   const hue = SYS_HUE[sys.id] ?? 200;
-  return `<a class="gcard retro" href="${esc(g.play)}" style="--hue:${hue}" title="Play ${esc(g.name)}">
+  return `<a class="gcard retro" href="${esc(g.play)}" data-system="${esc(sys.id)}" data-file="${esc(g.file)}" style="--hue:${hue}" title="Play ${esc(g.name)}">
     <span class="gart">${g.art ? `<img src="${esc(g.art)}" alt="" loading="lazy">` : `<b>${esc(g.name)}</b>`}</span>
     <span class="gname">${esc(g.name)}</span><small class="dim">${ICON.play}Play</small></a>`;
 }
