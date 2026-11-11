@@ -315,6 +315,10 @@ async function adminPanels(t) {
         <label class="check"><input type="checkbox" id="openSignup"${s.open_signup ? " checked" : ""}><span>Anyone who can reach this page can create an account</span></label>
         <div class="actions"><button class="primary small">Save</button></div></form>
     </section>
+    <section class="panel" id="musicQuality" hidden><h3>Music downloads</h3>
+      <label class="field"><span>New downloads are saved as</span><select id="musicQualitySel"></select>
+        <small id="musicQualityNote"></small></label>
+    </section>
     <section class="panel"><h3>Music requests</h3>
       <p>When Lidarr finds nothing for a requested album in 6 hours, or its download fails or stalls, Parlor gets it from YouTube instead and has Lidarr import it.</p>
       <label class="check"><input type="checkbox" id="fallbackWanted"${s.music_fallback_wanted ? " checked" : ""}><span>Do that for Lidarr's own wanted list too (albums added in Lidarr, or by watching an artist), a few at a time</span></label>
@@ -354,6 +358,18 @@ async function adminPanels(t) {
     e.preventDefault();
     put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
   });
+  // what new music downloads are saved as (music-fndr's choice); songs already there are never fetched again
+  api("/music/api/quality").then((q) => {
+    const sel = $("#musicQualitySel");
+    if (!sel || t !== ticket) return;
+    const note = () => { $("#musicQualityNote").textContent = `${(q.choices.find((c) => c.id === sel.value)?.label.split(": ")[1] || "Set by FORMAT and BITRATE in .env") }. Songs you already have are never fetched again.`; };
+    sel.innerHTML = (q.quality === "custom" ? `<option value="custom" disabled>As set by FORMAT and BITRATE in .env</option>` : "")
+      + q.choices.map((c) => `<option value="${esc(c.id)}">${esc(c.label.split(":")[0])}</option>`).join("");
+    sel.value = q.quality;
+    note();
+    $("#musicQuality").hidden = false;
+    sel.addEventListener("change", () => put("/music/api/quality", { quality: sel.value }).then(() => { note(); toast("Saved: new downloads use it"); }, (err) => toast(err.message)));
+  }, () => {});
   $("#fallbackWanted")?.addEventListener("change", (e) => {
     put("/api/settings", { music_fallback_wanted: e.target.checked }).then(() => toast("Saved"), (err) => { e.target.checked = !e.target.checked; toast(err.message); });
   });

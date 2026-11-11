@@ -774,5 +774,46 @@ class Api(Base):
         self.assertNotIn(KEYS["sonarr"], admin.get("/api/stack").text, "keys never leave the server")
 
 
+class MusicQuality(unittest.TestCase):
+    """What new music downloads are saved as (music-fndr's choice, mounted at /music): admins pick it in Settings, it
+    is kept, a new install starts with the source audio, and FORMAT/BITRATE in .env win until someone picks."""
+
+    def setUp(self):
+        import music
+        self.music = music
+        was = (music.SETTINGS["format"], music.SETTINGS["bitrate"])
+        self.addCleanup(lambda: (music.SETTINGS.update(format=was[0], bitrate=was[1]), music.QUALITY_FILE.unlink(missing_ok=True)))
+
+    def test_admins_pick_and_everyone_else_only_reads(self):
+        admin, member = signed_in("admin"), signed_in("quality-member")
+        self.assertEqual([c["id"] for c in member.get("/music/api/quality").json()["choices"]], ["m4a", "opus", "mp3-320", "mp3-128"])
+        r = member.put("/music/api/quality", json={"quality": "opus"}, headers=H)
+        self.assertEqual(r.status_code, 403, r.text)
+        key = member.post("/api/me/api-keys", json={"name": "q", "scope": "full"}, headers=H).json()
+        from yeerr_test_env import client
+        with_key = client()
+        self.assertEqual(with_key.put("/music/api/quality", json={"quality": "opus"}, headers={"X-Api-Key": key["key"]}).status_code, 403, "nor with a member's key")
+        member.delete(f"/api/me/api-keys/{key['id']}", headers=H)
+        r = admin.put("/music/api/quality", json={"quality": "opus"}, headers=H)
+        self.assertEqual((r.status_code, r.json()["quality"]), (200, "opus"))
+        self.assertEqual((self.music.SETTINGS["format"], self.music.SETTINGS["bitrate"]), ("opus", "disable"), "the source audio, not re-encoded")
+        self.music.SETTINGS.update(format="mp3", bitrate="128k")
+        self.music.load_quality({})  # a restart
+        self.assertEqual(member.get("/music/api/quality").json()["quality"], "opus")
+
+    def test_a_new_install_gets_the_source_audio_and_env_settings_are_kept(self):
+        music = self.music
+        music.QUALITY_FILE.unlink(missing_ok=True)
+        state = music.STATE
+        self.addCleanup(lambda: setattr(music, "STATE", state))
+        music.STATE = state.parent / "no-queue-yet.json"
+        music.SETTINGS.update(format="mp3", bitrate="192k")
+        music.load_quality({"FORMAT": "mp3", "BITRATE": "192k"})
+        self.assertEqual((music.SETTINGS["bitrate"], music.quality(), music.QUALITY_FILE.exists()), ("192k", "custom", False), "what .env says stays")
+        music.SETTINGS.update(format="mp3", bitrate="128k")
+        music.load_quality({})
+        self.assertEqual((music.quality(), music.QUALITY_FILE.read_text().strip()), ("m4a", "m4a"))
+
+
 if __name__ == "__main__":
     unittest.main()

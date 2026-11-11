@@ -293,10 +293,17 @@ class Downloads(unittest.TestCase):
         self.assertTrue(yt_dlp.parse_options(args).ydl_opts["postprocessors"], "yt-dlp accepts them")
 
     def test_music_options_go_to_the_music_library(self):
-        with mock.patch.dict(os.environ, {"FORMAT": "m4a", "BITRATE": "disable"}):
-            args = yt.download_args({"kind": "music", "quality": "best"})
-        self.assertEqual(args[args.index("--audio-format") + 1], "m4a")
-        self.assertEqual(args[args.index("--audio-quality") + 1], "0")
+        """a video saved as music follows the Music downloads choice: for the source-audio choices it takes YouTube's
+        stream in that codec, so yt-dlp copies it and nothing is re-encoded"""
+        import music
+
+        for settings, picks in ((("m4a", "disable"), "bestaudio[ext=m4a]/bestaudio/best"), (("opus", "disable"), "bestaudio[acodec=opus]/bestaudio/best"),
+                                (("mp3", "320k"), "bestaudio/best")):
+            with mock.patch.dict(music.SETTINGS, {"format": settings[0], "bitrate": settings[1]}):
+                args = yt.download_args({"kind": "music", "quality": "best"})
+            self.assertEqual(args[args.index("-f") + 1], picks)
+            self.assertEqual(args[args.index("--audio-format") + 1], settings[0])
+            self.assertEqual(args[args.index("--audio-quality") + 1], "0" if settings[1] == "disable" else "320K")
         self.assertTrue(args[args.index("-o") + 1].startswith(str(Path(os.environ["MUSIC_DIR"]))))
         import yt_dlp
 

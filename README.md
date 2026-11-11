@@ -12,7 +12,7 @@ YouTube, movies and TV, and your music library, in one self-hosted app with acco
 - **Library**: play what's in Jellyfin right here: films and shows with resume, next up and watched marks kept in your Jellyfin account, music in a player that keeps going while you look around, audiobooks, and books in a reader.
 - **Watch**: YouTube without ads, in up to 4K. Search, channels, playlists, your subscriptions feed, recommendations, continue watching, watch later and history. Fast downloads with chapters, subtitles and the thumbnail built in, or just the audio, straight into your music library.
 - **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. **Collections** opens a whole franchise, a studio's films, a network's shows or a theme, and requests everything you're missing in one go. Trailers play in the ad-free player.
-- **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying.
+- **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying. New downloads keep YouTube's source audio as it is, with no re-encoding (AAC `.m4a` on a new install; Opus, MP3 320 or MP3 128 in Settings → Music downloads, for an admin). Songs you already have count as there in any format, so changing it fetches nothing again and converts nothing. A video saved as music from YouTube follows the same choice.
 
 One `docker compose` file runs Parlor and the whole stack around it: Sonarr, Radarr, Lidarr, Prowlarr, FlareSolverr, qBittorrent behind a Gluetun VPN, Bazarr, Jellyfin, Seerr and Cleanuparr. **Parlor sets them all up itself**: you don't sign in to each app, copy API keys or add indexers.
 
@@ -379,7 +379,7 @@ Set these in `.env` (see `.env.example`).
 | `OFFLINE` | on | `off` makes the app's copy on phones and computers remove itself (see [On phones, tablets and computers](#on-phones-tablets-and-computers)) |
 | `TZ` | `Etc/UTC` | Seerr's time zone |
 
-music-fndr's own settings (`FORMAT`, `BITRATE`, `OUTPUT`, `THREADS`, `SYNC_HOURS`, `YT_DLP_ARGS`, `JELLYFIN_API_KEY`, `JELLYFIN_USER`) work as described in [its README](https://github.com/ChaseSunstrom/music-fndr#settings).
+music-fndr's own settings (`QUALITY`, `FORMAT`, `BITRATE`, `OUTPUT`, `THREADS`, `SYNC_HOURS`, `YT_DLP_ARGS`, `JELLYFIN_API_KEY`, `JELLYFIN_USER`) work as described in [its README](https://github.com/ChaseSunstrom/music-fndr#settings).
 
 Per-device choices (playback quality, autoplay, captions language, SponsorBlock categories, Shorts) are in Settings → Playing videos.
 

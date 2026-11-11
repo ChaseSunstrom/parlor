@@ -44,6 +44,7 @@ RULES = [
     ("/api/v1/", EVERYONE),  # the API: each source and action checks its own sections (api.py)
     ("/api/me/api-keys", EVERYONE), ("/api/docs", EVERYONE), ("/api/openapi.json", EVERYONE),
 ]
+ADMIN_WRITES = {"/music/api/quality": "Changing the music quality"}  # anyone with the section reads it; only admins change it
 ADMIN_ITSELF = ("/qbit", "/api/vault/key", "/api/vault/passphrase")  # check core.admin inside, not as a Depends
 
 
@@ -64,8 +65,10 @@ def blocked(user_id: int) -> set:
     return {s for s in ((row or {}).get("blocked") or "").split(",") if s}
 
 
-def allowed(user: dict, path: str) -> Optional[str]:
+def allowed(user: dict, path: str, method: str = "GET") -> Optional[str]:
     """None when this person may use this path, else the name of the section they lack."""
+    if method not in ("GET", "HEAD") and path in ADMIN_WRITES and not user.get("admin"):
+        return ADMIN_WRITES[path]
     need = rule(path)
     if need in (None, EVERYONE, ADMIN, SECRET, OPEN) or user.get("admin"):  # admin pages decide for themselves
         return None

@@ -55,7 +55,7 @@ async def guard(request: Request, call_next):
         user, refused = await anyio.to_thread.run_sync(api.user_for_key, key, request.method, path)
         if refused:
             return JSONResponse({"detail": refused[1]}, status_code=refused[0])
-        lacking = await anyio.to_thread.run_sync(acl.allowed, user, path)
+        lacking = await anyio.to_thread.run_sync(acl.allowed, user, path, request.method)
         if lacking:
             return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)
         request.state.user = user
@@ -70,7 +70,7 @@ async def guard(request: Request, call_next):
             user = await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request))
             if not user:
                 return JSONResponse({"detail": "Sign in first"}, status_code=401)
-            lacking = await anyio.to_thread.run_sync(acl.allowed, user, path)
+            lacking = await anyio.to_thread.run_sync(acl.allowed, user, path, request.method)
             if lacking:
                 return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)
             request.state.user = user

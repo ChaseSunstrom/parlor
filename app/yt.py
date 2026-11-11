@@ -1199,9 +1199,13 @@ def retry_download(job_id: str, user=Depends(me)):
 
 
 def music_settings():
-    fmt = os.environ.get("FORMAT", "mp3")
-    rate = os.environ.get("BITRATE", "128k")
-    return fmt, "0" if rate == "disable" else rate.upper()
+    """(format, yt-dlp's quality, which stream to take) from the Music downloads choice: for the source-audio ones the
+    stream already in that codec, so it's copied, not re-encoded"""
+    import music  # here, not at the top: music is the bigger module and loads after this one
+
+    fmt, rate = music.SETTINGS["format"], music.SETTINGS["bitrate"]
+    own = {"m4a": "bestaudio[ext=m4a]/", "opus": "bestaudio[acodec=opus]/"}.get(fmt, "") if rate == "disable" else ""
+    return fmt, "0" if rate in ("disable", "auto") else rate.upper(), own + "bestaudio/best"
 
 
 def download_args(job) -> list:
@@ -1210,9 +1214,9 @@ def download_args(job) -> list:
             "--fragment-retries", "10", "--socket-timeout", "30", "--embed-metadata", "--embed-thumbnail",
             "--convert-thumbnails", "jpg", "--no-mtime", "--windows-filenames"]
     if job["kind"] == "music":
-        fmt, quality = music_settings()
+        fmt, quality, stream = music_settings()
         who = "%(artists.0,artist,creator,channel,uploader|Unknown artist)s"
-        args += ["-f", "bestaudio/best", "-x", "--audio-format", fmt, "--audio-quality", quality,
+        args += ["-f", stream, "-x", "--audio-format", fmt, "--audio-quality", quality,
                  "--parse-metadata", f"{who}:%(meta_artist)s", "--parse-metadata", f"{who}:%(meta_album_artist)s",
                  "--parse-metadata", "%(album|YouTube)s:%(meta_album)s", "--parse-metadata", "%(track,title)s:%(meta_title)s",
                  # square cover art, like an album's
