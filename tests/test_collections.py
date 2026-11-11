@@ -37,6 +37,7 @@ class Sets(unittest.TestCase):
         for c in (bulk._pages, bulk._names, bulk._home, bulk._plans, seerr._details, seerr._seerr_users):
             with c.lock:
                 c.data.clear()
+        bulk._plan_tries.clear()
         while not bulk._pending.empty():
             bulk._pending.get_nowait()
         self.fake = Seerr()
@@ -281,6 +282,28 @@ class Sets(unittest.TestCase):
         got = self.me.get("/api/seerr/sets").json()
         self.assertEqual([(f["id"], f["name"], f["have"]) for f in got["franchises"]], [(100, "The Lantern Saga", 2)],
                          "the well-known ones this stand-in doesn't have are left out")
+
+    def test_a_person_cannot_hammer_plan(self):
+        for _ in range(10):
+            self.plan(kind="collection", id=100)
+        r = self.me.post("/api/seerr/sets/plan", json={"kind": "collection", "id": 100}, headers=H)
+        self.assertEqual(r.status_code, 429, "the eleventh in a minute")
+        self.assertIn("wait", r.json()["detail"].lower())
+        self.plan(who=self.other, kind="collection", id=100)  # someone else's still works
+
+    def test_a_partly_failed_start_page_is_not_kept(self):
+        real = bulk.about
+
+        def flaky(kind, sid):
+            if (kind, sid) == ("studio", 2):
+                raise bulk.HTTPException(502, "Seerr: hiccup")
+            return real(kind, sid)
+
+        with unittest.mock.patch.object(bulk, "about", flaky):
+            self.assertEqual(self.me.get("/api/seerr/sets").status_code, 200)
+        self.assertIsNone(bulk._home.get("all"), "a row failed: the next visit tries again")
+        self.assertEqual(self.me.get("/api/seerr/sets").status_code, 200)
+        self.assertIsNotNone(bulk._home.get("all"), "every row answered or was simply not there: kept")
 
 
 if __name__ == "__main__":
