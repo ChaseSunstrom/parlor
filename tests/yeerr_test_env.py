@@ -16,10 +16,11 @@ os.chdir(TMP / "music")  # music-fndr writes relative to the working directory
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app as yeerr  # noqa: E402
+import bookreq  # noqa: E402
 import core  # noqa: E402
 import gamereq  # noqa: E402
 
-gamereq.start = lambda: None  # the tests step the game-request worker themselves: a live one would step in between
+bookreq.start = gamereq.start = lambda: None  # the tests step the request workers themselves: a live one would step in between
 
 H = {"X-Requested-With": "parlor"}
 

@@ -312,6 +312,34 @@ def stock_game_requests():
                           (app_, dict((a, n) for a, n, *_ in SAMPLE)[app_], state, time.time(), time.time(), time.time() + 9e9))
 
 
+SHELF = [("The Lighthouse Ledger", "Mara Quill", 1987), ("Orbit of Small Things", "Tomas Ivers", 2014), ("The Clockmaker's Alibi", "Ines Marlow", 1962),
+         ("A Field Guide to Rain", "Odile Brandt", 2003), ("Salt Moon", "Kenji Arroyo", 1998), ("Nine Keys to Harrow Lane", "Peter Voss", 1975),
+         ("Paper Rivers", "Lena Okafor", 2019), ("The Quiet Engine", "Ravi Sandoval", 2008), ("Ink at Low Tide", "Greta Halloran", 1954),
+         ("Winter Almanac", "Jonas Petrik", 1991), ("Glass Orchard", "Amara Lindqvist", 2021), ("The Last Ferry North", "Colm Raines", 1969),
+         ("Letters to a Cartographer", "Sofia Benedek", 2011), ("Tin Stars", "Milo Ashby", 1983), ("The Thirteenth Lamp", "Edith Carrow", 1947),
+         ("Small Hours", "Noor Valdez", 2016), ("Moth Signal", "Henrik Dale", 2000), ("A Door in the Fog", "Beatrix Lowe", 1958)]
+BOOK_ROWS = ["/trending/weekly.json", "/subjects/science_fiction.json", "/subjects/mystery.json"]
+
+
+def stock_book_requests():
+    """Request → Books: sample books in a stand-in Open Library, one request downloading and one in the library"""
+    import bookreq
+
+    work = lambda i: {"key": f"/works/OL{i + 1}W", "title": SHELF[i][0], "author_name": [SHELF[i][1]], "cover_i": i + 1, "first_publish_year": SHELF[i][2]}  # noqa: E731
+    mock.patch.object(bookreq, "ol", lambda path, **kw: {"works": [work(i) for i in range(len(SHELF)) if i % 3 == BOOK_ROWS.index(path)]}).start()
+    for i, state in ((3, "downloading"), (4, "available")):
+        core.db().execute("INSERT INTO book_requests(user_id, work, title, author, state, created, updated, next_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
+                          (f"OL{i + 1}W", *SHELF[i][:2], state, time.time(), time.time(), time.time() + 9e9))
+
+
+def book_cover(route):
+    """a book's cover, painted here: the page asks Open Library's cover host for it"""
+    i = int(re.search(r"/id/(\d+)-", route.request.url)[1]) - 1
+    buf = io.BytesIO()
+    art(SHELF[i][0], 400, 600, i * 5 + 2, SHELF[i][1]).save(buf, "JPEG", quality=85)
+    route.fulfill(content_type="image/jpeg", body=buf.getvalue())
+
+
 def game_picture(route):
     """a game's cover, painted here: the page asks Steam's image host for it"""
     appid = int(re.search(r"/apps/(\d+)/", route.request.url)[1])
@@ -452,6 +480,10 @@ def main():
             stock_game_requests()
             desk.context.route("https://shared.akamai.steamstatic.com/**", game_picture)
             shoot(desk, "game-requests", "desktop", "#/gamereq", ".pstrip .pcard[data-game] img", tall=1100)
+            # Request → Books, with Open Library standing in
+            stock_book_requests()
+            desk.context.route("https://covers.openlibrary.org/**", book_cover)
+            shoot(desk, "book-requests", "desktop", "#/bookreq", ".pstrip .pcard[data-book] img", tall=1100)
             # Films & shows → Collections, with Seerr standing in from here on
             stock_sets()
             desk.context.route("https://image.tmdb.org/**", set_picture)

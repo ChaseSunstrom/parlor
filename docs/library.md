@@ -38,6 +38,7 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 
 - **EPUB**: books open in a reader (pages, contents, text size; it remembers your page on that device).
 - **PDF**: PDFs open in the browser's own viewer.
+- **More books**: **Request → Books** finds a book and fetches it into this library: [Books](stack.md#books).
 - **Needs**: reading needs your Jellyfin user to be allowed to download.
 
 ## The Jellyfin key

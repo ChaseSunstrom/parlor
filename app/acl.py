@@ -27,6 +27,7 @@ RULES = [
     ("/api/seerr/users", ADMIN), ("/api/seerr/", ("media",)),
     ("/api/arr/music/", ("music",)), ("/api/arr/", ("media",)),
     ("/api/jf/music/", ("music",)), ("/api/jf/", ("library",)),
+    ("/api/books/", ("library",)),  # asking for books (bookreq.py): they land in the Library's Books
     ("/api/games/settings", ADMIN), ("/api/games/", ("games",)), ("/games/stream", ("games",)),  # a gaming PC (games.py)
     # music-fndr: everything that queues downloads or moves files needs Downloads as well
     ("/music/api/downloads", ("music", "downloads")), ("/music/api/import", ("music", "downloads")),

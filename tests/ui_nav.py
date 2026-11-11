@@ -95,8 +95,8 @@ with sync_playwright() as p:
             page.wait_for_function("location.hash === '#/media'")
             page.wait_for_selector("main a[href='#/sets']")
             page.wait_for_selector("#side a[href='#/requests']")
-            checks["desk: Request opens with its four pages listed under it, and only its own"] = side() == [
-                "Home", "Library", "Watch", "Music", "Request", "Films & shows", "Music", "Games", "Your requests", "You"]
+            checks["desk: Request opens with its five pages listed under it, and only its own"] = side() == [
+                "Home", "Library", "Watch", "Music", "Request", "Films & shows", "Music", "Games", "Books", "Your requests", "You"]
             checks["desk: Films & shows links Collections"] = page.locator("main a[href='#/sets']").count() >= 1
             page.screenshot(path=str(OUT / "request-desk.png"))
             page.click("#side a[href='#/lidarr']")
@@ -116,7 +116,7 @@ with sync_playwright() as p:
             checks[f"{label}: every section is a tab"] = tabs == ["Home", "Library", "Watch", "Music", "Request", "You"]
             page.click(".nav a[data-nav='media']")
             page.wait_for_selector("main .subnav")
-            checks[f"{label}: Request's pages are a row on its pages"] = [t.strip() for t in page.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Your requests"]
+            checks[f"{label}: Request's pages are a row on its pages"] = [t.strip() for t in page.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Books", "Your requests"]
             page.screenshot(path=str(OUT / f"request-{label}.png"))
             opened(page, "#/games", "#g-pc")
             checks[f"{label}: Games shows the Library's row, with Games lit"] = page.get_attribute("main .chips a[href='#/games']", "aria-current") == "page"

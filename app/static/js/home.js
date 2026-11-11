@@ -554,9 +554,9 @@ const closedTo = (s) => !!ME?.sections && ME.sections[s] === false;
 /** a person's own view: sections closed to them leave the menus, and download buttons go */
 function applyAccess() {
   const closed = closedTo;
-  const needs = { "#/media": "media", "#/lidarr": "music", "#/games": "games", "#/gamereq": "games" };  // pages whose section isn't their group's
+  const needs = { "#/media": "media", "#/lidarr": "music", "#/games": "games", "#/gamereq": "games", "#/bookreq": "library" };  // pages whose section isn't their group's
   for (const g of NAV) if (g.pages) g.pages = g.pages.filter(([, href]) => !closed(needs[href]));
-  const gone = { library: closed("library"), watch: closed("watch"), music: closed("music"), media: closed("media") && closed("music") && closed("games") };
+  const gone = { library: closed("library"), watch: closed("watch"), music: closed("music"), media: closed("media") && closed("music") && closed("games") && closed("library") };
   for (const key of Object.keys(gone)) {
     const i = NAV.findIndex((g) => g.key === key);
     if (i < 0 || !gone[key]) continue;

@@ -7,7 +7,7 @@ const NAV = [
   { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Live", "#/live"], ["Recommended", "#/yt/rec"]] },
   { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"]] },
   // everything you can ask for, in one place: each kind has its page, and Your requests lists them all
-  { key: "media", label: "Request", icon: "plus", pages: [["Films & shows", "#/media"], ["Music", "#/lidarr"], ["Games", "#/gamereq"], ["Your requests", "#/requests"]] },
+  { key: "media", label: "Request", icon: "plus", pages: [["Films & shows", "#/media"], ["Music", "#/lidarr"], ["Games", "#/gamereq"], ["Books", "#/bookreq"], ["Your requests", "#/requests"]] },
   { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],
     ["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
     ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Saved for offline", "#/offline", "Music and videos on this device", "offline"],
@@ -16,7 +16,7 @@ const NAV = [
 ];
 const TABS = 6; // the phone tab bar: the first sections, then You (all six today); the You page lists every page
 const ALIASES = { "#/yt": "#/yt/home", "": "#/", "#": "#/" };
-const SECTION_GROUP = { settings: "you", games: "library", musicreq: "media", gamereq: "media" }; // a page's section, when no nav link matches the address
+const SECTION_GROUP = { settings: "you", games: "library", musicreq: "media", gamereq: "media", bookreq: "media" }; // a page's section, when no nav link matches the address
 
 /** the nav group and page link for an address: the longest link that the address starts with */
 function navAt(hash, section) {

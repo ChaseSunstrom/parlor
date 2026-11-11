@@ -35,7 +35,7 @@ assert.deepStrictEqual(at("#/sets", "media"), ["media", null], "Collections is r
 
 // six sections; Request has every way of asking, in one place
 assert.deepStrictEqual(Array.from(NAV, (g) => g.label), ["Home", "Library", "Watch", "Music", "Request", "You"]);
-assert.deepStrictEqual(Array.from(NAV.find((g) => g.key === "media").pages, ([label]) => label), ["Films & shows", "Music", "Games", "Your requests"]);
+assert.deepStrictEqual(Array.from(NAV.find((g) => g.key === "media").pages, ([label]) => label), ["Films & shows", "Music", "Games", "Books", "Your requests"]);
 assert.deepStrictEqual(at("#/gamereq/game/620", "gamereq"), ["media", "#/gamereq"], "asking for a game is under Request");
 assert.ok(!NAV.find((g) => g.key === "music").pages.some(([, href]) => href === "#/lidarr"));
 // the sidebar lists the pages of the section you're in, not every section's
@@ -84,7 +84,7 @@ const menuFor = (closed) => {
 };
 const full = menuFor([]);
 assert.deepStrictEqual(Object.keys(full), ["home", "library", "watch", "music", "media", "you"], "nothing closed: the whole menu");
-assert.deepStrictEqual(full.media, ["#/media", "#/lidarr", "#/gamereq", "#/requests"]);
+assert.deepStrictEqual(full.media, ["#/media", "#/lidarr", "#/gamereq", "#/bookreq", "#/requests"]);
 let m = menuFor(["library"]);
 assert.deepStrictEqual([Object.keys(m), m.games], [["home", "games", "watch", "music", "media", "you"], ["#/games"]], "Library closed, Games open: Games takes its place");
 m = menuFor(["library", "games"]);
@@ -93,13 +93,18 @@ m = menuFor(["games"]);
 assert.ok(!m.library.includes("#/games") && m.library.includes("#/jf/books"), "Games closed: the Library keeps its other pages");
 assert.ok(!m.media.includes("#/gamereq"), "Games closed: nothing to ask for either");
 m = menuFor(["music"]);
-assert.deepStrictEqual([Object.keys(m), m.media], [["home", "library", "watch", "media", "you"], ["#/media", "#/gamereq", "#/requests"]], "Music closed: Request keeps films, shows and games");
+assert.deepStrictEqual([Object.keys(m), m.media], [["home", "library", "watch", "media", "you"], ["#/media", "#/gamereq", "#/bookreq", "#/requests"]], "Music closed: Request keeps films, shows, games and books");
 m = menuFor(["media"]);
-assert.deepStrictEqual(m.media, ["#/lidarr", "#/gamereq", "#/requests"], "Films & shows closed: Request keeps music and games");
+assert.deepStrictEqual(m.media, ["#/lidarr", "#/gamereq", "#/bookreq", "#/requests"], "Films & shows closed: Request keeps music, games and books");
 m = menuFor(["media", "music"]);
-assert.ok(!("music" in m) && String(m.media) === "#/gamereq,#/requests", "films, shows and music closed: Request keeps games");
+assert.ok(!("music" in m) && String(m.media) === "#/gamereq,#/bookreq,#/requests", "films, shows and music closed: Request keeps games and books");
 m = menuFor(["media", "music", "games"]);
-assert.ok(!("media" in m) && !("music" in m), "all three closed: no Request and no Music");
+assert.deepStrictEqual(m.media, ["#/bookreq", "#/requests"], "films, shows, music and games closed: Request keeps books (they go to the Library)");
+m = menuFor(["library"]);
+assert.ok(!m.media.includes("#/bookreq"), "Library closed: no books to ask for");
+m = menuFor(["media", "music", "games", "library"]);
+assert.ok(!("media" in m) && !("music" in m), "all four closed: no Request and no Music");
+assert.deepStrictEqual(at("#/bookreq/book/OL1W", "bookreq"), ["media", "#/bookreq"], "asking for a book is under Request");
 m = menuFor(["watch"]);
 assert.ok(!("watch" in m) && !m.you.some((h) => h.startsWith("#/yt")), "Watch closed: its lists leave You too");
 console.log("nav ok");

@@ -4,7 +4,9 @@ from this repo. Create the admin account over HTTP, wait for the automatic setup
 run setup again: it must change nothing. Exit 0 when all of that holds. The stack is removed at the end
 (--keep leaves it running for a look). Needs Docker and internet: python tests/live_stack.py [--keep]
 --only questarr judges only Questarr's part (the whole stack still runs: it needs Prowlarr and qBittorrent). A game is
-searched by title there with no IGDB keys of anyone's: Parlor answers Questarr from Steam's store."""
+searched by title there with no IGDB keys of anyone's: Parlor answers Questarr from Steam's store.
+--only prowlarr judges Prowlarr's part, and with it the books Parlor fetches itself: found on Prowlarr's indexers, and
+every call Parlor makes to qBittorrent, the library folder and Jellyfin for one, without downloading anything."""
 import json
 import socket
 import subprocess
@@ -200,6 +202,66 @@ grabbed = sh("docker", "exec", f"{RUN.name}-sonarr-1", "curl", "-s", "http://glu
 print(f"  cancelled: {gone.status_code}; Questarr's game now: {left}; qBittorrent's torrents: {grabbed[:80]}")
 checks["cancelling it in Parlor cancels it in Questarr, and nothing was downloaded"] = gone.ok and "wanted" not in left and grabbed == "[]" and not s.get(G, timeout=30).json()["items"]
 s.put(f"{G}/auto", json={"on": True}, timeout=30)
+# books (Request → Books): Parlor fetches them itself. Nothing is asked for here, since asking would start a real download with no
+# VPN in front of it; each step is run on its own inside Parlor's container instead: the search and the choice, the link (fetched,
+# never added), qBittorrent's part with a made-up torrent that is added stopped, and the library's part with a made-up file.
+B = f"{BASE}/api/books/requests"
+shelves = s.get(f"{B}/discover", timeout=90).json()
+austen = next((b for b in s.get(f"{B}/search", params={"q": "pride and prejudice austen"}, timeout=90).json().get("items") or [] if b["title"].lower() == "pride and prejudice"), {})
+print("  Parlor's book rows:", {k: len(v) for k, v in shelves.items()}, "· its search for Pride and Prejudice:", austen.get("id"), austen.get("author"))
+PROBE = '''
+import json, os, secrets, sys, time
+from pathlib import Path
+sys.path.insert(0, "/app")
+import arr, bookreq, jf, qbit
+out = {"looked": []}
+for n in range(15):  # the checks above have just searched every indexer many times over, and Prowlarr rests one that said "too many": wait it out
+    title, author = (("Pride and Prejudice", "Jane Austen"), ("Frankenstein", "Mary Shelley"), ("Dracula", "Bram Stoker"))[n % 3]
+    try:
+        hits = arr.call("prowlarr", "GET", "/search", timeout=120, params={"query": f"{title} {author.split()[-1]}", "categories": [7000, 7020], "type": "search", "limit": 100})
+    except arr.ArrError as exc:
+        hits = str(exc)[:120]
+    best = bookreq.best(hits, title, author)
+    out["looked"].append([title, hits if isinstance(hits, str) else len(hits)])
+    if best:
+        out["search"] = {"book": title, "results": len(hits), "release": best["title"], "seeders": best["seeders"], "size": best["size"], "indexer": best.get("indexer")}
+        got = bookreq.fetch(bookreq.link(best))  # the magnet or the .torrent, fetched and thrown away: nothing is added
+        out["link"] = "magnet" if got["data"].get("urls", "").startswith("magnet:?xt=urn:bt") else "torrent" if got.get("files") else "neither"
+        break
+    time.sleep(60)
+try:
+    out["resting"] = [[i.get("indexerId"), i.get("disabledTill")] for i in arr.call("prowlarr", "GET", "/indexerstatus")]
+except arr.ArrError as exc:
+    out["resting"] = str(exc)[:120]
+r, form = {"id": 0, "title": "Live Check: a book", "author": "Parlor Probe"}, {"category": "books", "savepath": str(bookreq.DOWNLOADS), "tags": "parlor-book-0"}
+said = qbit.ok(qbit.api("POST", "/torrents/add", data={"urls": "magnet:?xt=urn:btih:" + secrets.token_hex(20), "stopped": "true", "paused": "true", **form})).text.strip()
+t = bookreq.torrent(r) or {}
+out["qbit"] = {"refused": qbit.refused(said), "category": t.get("category"), "save_path": t.get("save_path"), "state": t.get("state"), "tags": t.get("tags")}
+bookreq.drop(r)
+out["qbit"]["left"] = len(qbit.api("GET", "/torrents/info").json())
+done = bookreq.DOWNLOADS / "Live check"
+done.mkdir(parents=True, exist_ok=True)
+(done / "a book.epub").write_bytes(b"EPUB")
+(done / "run me.exe").write_bytes(b"MZ")
+n = bookreq.bring(r, {"content_path": str(done)})
+where = bookreq.BOOKS / "Parlor Probe"
+out["library"] = {"brought": n, "files": sorted(str(f.relative_to(bookreq.BOOKS)) for f in where.rglob("*") if f.is_file()),
+                  "links": [f.stat().st_nlink for f in where.rglob("*.epub")], "owner": [f.stat().st_uid for f in where.rglob("*")]}
+out["jellyfin"] = jf.fetch("POST", "/Library/Refresh").status_code
+print("PROBE " + json.dumps(out))
+'''
+ran = subprocess.run(["docker", "exec", "-i", f"{RUN.name}-parlor-1", "python", "-"], input=PROBE, capture_output=True, text=True, timeout=1800)
+probe = json.loads(next((line[6:] for line in ran.stdout.splitlines() if line.startswith("PROBE ")), "{}"))
+print("  the books probe:", json.dumps(probe)[:1500], ran.stderr[-600:] if not probe else "")
+found_, qb_books, lib = probe.get("search") if isinstance(probe.get("search"), dict) else {}, probe.get("qbit") or {}, probe.get("library") or {}
+checks["Request → Books shows books to ask for with no key of anyone's (what Prowlarr is then searched for)"] = bool(shelves.get("trending")) and bool(austen.get("id")) and austen.get("author") == "Jane Austen"
+checks["a book's release is found on Prowlarr's indexers, and its link is a magnet or a .torrent Parlor can fetch"] = bool(found_.get("release")) and probe.get("link") in ("magnet", "torrent")
+checks["qBittorrent takes a download the way Parlor hands a Prowlarr release over (its folder, category and tag), and drops it again"] = (
+    qb_books.get("refused") is False and qb_books.get("category") == "books" and str(qb_books.get("save_path")).rstrip("/") == "/data/downloads/books"
+    and qb_books.get("tags") == "parlor-book-0" and qb_books.get("left") == 0)
+checks["a finished Prowlarr download's book, and only it, is hardlinked into /data/books as the apps' user, and Jellyfin takes the rescan"] = (
+    lib.get("brought") == 1 and lib.get("files") == ["Parlor Probe/Live Check a book/Live Check a book.epub"] and lib.get("links") == [2]
+    and set(lib.get("owner") or [0]) == {1000} and probe.get("jellyfin") == 204)
 if "--only" in sys.argv:  # judge one app's part
     only = sys.argv[sys.argv.index("--only") + 1]
     bad, changed = [x for x in bad if x["app"] == only], [x for x in changed if x["app"] == only]

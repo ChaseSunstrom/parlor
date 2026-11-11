@@ -91,7 +91,29 @@ If more than one Spotify album could be it, or none, you pick, and Lidarr keeps 
 
 ### Books
 
-Readarr, for books, is retired upstream, so the stack has none; the Books library in Jellyfin reads whatever you put in `/data/books`.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/book-requests-desktop-dark.png">
+  <img alt="Request → Books: rows of book covers to ask for, each with its title and author (read a lot this week, science fiction), one marked Downloading and one In library, under a search box for a book or an author." src="assets/screens/book-requests-desktop-light.png">
+</picture>
+
+The stack has no app for books (Readarr is retired upstream), so Parlor fetches them itself:
+
+1. Open **Request → Books**. The rows (read a lot this week, science fiction, mystery) and the search box at the top find books in [Open Library](https://openlibrary.org)'s catalogue. It needs no key.
+2. Open a book and press **Request**. The search starts at once, for members too.
+3. Parlor searches your indexers (through Prowlarr) for the title and the author, and hands the release that fits to qBittorrent, behind the VPN like every other download. The request reads **Downloading** and names the release.
+4. When the download is done, Parlor links the book into `/data/books/<Author>/<Title>/` and asks Jellyfin to scan. The request reads **In your library**, and the book is in **Library → Books**.
+
+What to know:
+
+- **Which release is taken**: a torrent with people seeding it, 300 MB at most, not an audiobook, whose name has the book's title standing on its own (not inside a longer title), the author's surname, and at most three words besides. An EPUB comes first, since Parlor's reader opens it.
+- **Nothing fits**: Parlor looks again every 6 hours, and the request says so.
+- **The wrong book, or a download that isn't moving**: **Try another** drops that download and takes the next release. A download that hasn't finished in 12 hours, or turns out to be bigger than 300 MB, is swapped the same way by itself.
+- **Only the book reaches the library**: of what was downloaded, only book files (EPUB, PDF, MOBI, AZW3, CBZ or CBR, and one format of them) are brought in, under names Parlor makes. A file that is already there is never replaced. A download with no book in it is removed from qBittorrent and the request reads **Stuck**.
+- **Who may ask**: anyone with the Library section. Nobody approves a book (it is read, not run); a member can have 10 requests open at once and ask for 20 books an hour.
+- **Seeding**: the download stays in qBittorrent, in the category `books`, and keeps seeding. Remove it in [Torrents](#torrents), or with **Remove** on the request; the copy in your library stays either way.
+- **A name is all Parlor goes by**, so now and then it is another edition or a translation: use **Try another**. A title that isn't in Latin letters can't be matched yet.
+- **What leaves your server**: your searches go to Open Library from the server, and the covers come to your browser straight from it.
+- **Your own files**: the Books library still reads whatever you put in `/data/books` yourself.
 
 ## The VPN
 

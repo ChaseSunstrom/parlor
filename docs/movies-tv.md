@@ -6,12 +6,13 @@
 
 ## Your requests
 
-**Request → Your requests** is one list of everything you asked for: films and shows from Seerr, albums and artists from Lidarr, and games from Questarr, each with where it's at.
+**Request → Your requests** is one list of everything you asked for: films and shows from Seerr, albums and artists from Lidarr, games from Questarr, and the books Parlor fetches itself, each with where it's at.
 
-- **One kind**: the row under the title narrows it to films and shows (with Seerr's filters: waiting, approved, available…) to music, or to games.
+- **One kind**: the row under the title narrows it to films and shows (with Seerr's filters: waiting, approved, available…) to music, to games, or to books.
 - **Admins** see everyone's film and show requests there too, and approve or decline them.
 - **Music**: how a music request is followed is in [The apps around Parlor](stack.md#request-music).
 - **Games**: admins approve a member's request there and pick the release when Parlor isn't sure of one: [Games you ask for](games.md#ask-for-a-game-in-parlor).
+- **Books**: nobody approves them; **Try another** swaps a wrong or stuck download for the next release: [Books](stack.md#books).
 
 ## Whole collections
 

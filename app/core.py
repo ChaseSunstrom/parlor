@@ -142,6 +142,13 @@ CREATE TABLE IF NOT EXISTS game_requests (
   state TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', ext TEXT, game TEXT, picks TEXT, release TEXT,  -- ext, game: its request and its game in Questarr
   created REAL NOT NULL, updated REAL NOT NULL, next_at REAL NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0
 );
+-- books asked for (bookreq.py): one per Open Library work; tried: releases not to take again; gone: checks qBittorrent didn't list it
+CREATE TABLE IF NOT EXISTS book_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  work TEXT NOT NULL UNIQUE, title TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', image TEXT, year INTEGER,
+  state TEXT NOT NULL, why TEXT NOT NULL DEFAULT '', release TEXT, tried TEXT, gone INTEGER NOT NULL DEFAULT 0,
+  created REAL NOT NULL, updated REAL NOT NULL, next_at REAL NOT NULL DEFAULT 0, tries INTEGER NOT NULL DEFAULT 0
+);
 -- private items (private.py): each person's key pair, the private half sealed by their password and by a recovery code
 CREATE TABLE IF NOT EXISTS person_keys (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

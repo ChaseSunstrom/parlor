@@ -145,7 +145,7 @@ function setPref(key, value) { try { localStorage.setItem("parlor:" + key, JSON.
 
 /* ---------- building blocks ---------- */
 
-const img = (src, cls = "") => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy">` : `<div class="blank ${cls}"></div>`);
+const img = (src, cls = "") => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="blank ${cls}"></div>`);
 const section = (title, body) => (body ? `<h2>${esc(title)}</h2>${body}` : "");
 const grid = (html, cls = "grid") => (html ? `<div class="${cls}">${html}</div>` : "");
 const shelf = (title, body, more) => (body ? `<div class="shelf-head"><h2>${esc(title)}</h2>${more ? `<a class="more" href="${more}">See all</a>` : ""}</div>${body}` : "");
@@ -204,8 +204,9 @@ const SECTIONS = {
   games: "Search videos, movies, shows and music",
   musicreq: "An artist or an album to ask for",
   gamereq: "A game to ask for",
+  bookreq: "A book or an author to ask for",
 };
-const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/lidarr/", gamereq: "#/gamereq/search/" };
+const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/lidarr/", gamereq: "#/gamereq/search/", bookreq: "#/bookreq/search/" };
 let ticket = 0, current = "home";
 const paint = (t, html) => { if (t === ticket) main.innerHTML = html; };
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }

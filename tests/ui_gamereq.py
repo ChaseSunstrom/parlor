@@ -86,20 +86,20 @@ with sync_playwright() as p:
     checks["Request → Games shows Steam's rows: popular, new, coming soon"] = all(w in text for w in ("Popular now", "New and popular", "Coming soon", "Doom", "Fresh Quest", "Soon Quest"))
     checks["adult-only games and things that aren't games stay out"] = "After Dark" not in text and "Console of Steam" not in text and "Add-on" not in text
     checks["Games is a page of Request"] = gamer.get_attribute("#side a[href='#/gamereq']", "aria-current") == "page" and [
-        t.strip() for t in gamer.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Your requests"]
+        t.strip() for t in gamer.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Books", "Your requests"]
     checks["a member isn't offered the admin's switch"] = gamer.locator("#gameAuto").count() == 0
     shot(gamer, "browse-desk")
     gamer.fill("#q", "doom")
     gamer.press("#q", "Enter")
     gamer.wait_for_selector(".pgrid .pcard[data-game]", timeout=30000)
     checks["the search box finds games by title"] = "#/gamereq/search/doom" in gamer.url and sorted(gamer.locator(".pgrid .pcard .t").all_inner_texts()) == ["Doom", "Doom Eternal"]
-    text = opened(gamer, "#/gamereq/game/10", ".hero [data-ask-game]")
+    text = opened(gamer, "#/gamereq/game/10", ".hero [data-ask=game]")
     checks["a game's page: what it is, who made it, its pictures, a link to Steam"] = all(w in text for w in ("Doom", "About Doom.", "By Makers", "Screenshots", "On Steam")) and gamer.locator(".gshots img").count() == 1
     shot(gamer, "game-desk")
-    gamer.click(".hero [data-ask-game]")
+    gamer.click(".hero [data-ask=game]")
     gamer.wait_for_selector(".greqs li", timeout=30000)
     text = gamer.inner_text("main")
-    checks["a member's request waits for an admin, and says so"] = "Waiting for an admin" in text and not q.ledger and gamer.locator("[data-ask-game]").count() == 0
+    checks["a member's request waits for an admin, and says so"] = "Waiting for an admin" in text and not q.ledger and gamer.locator("[data-ask=game]").count() == 0
     text = opened(gamer, "#/requests", "#gameReqs .greqs li")
     checks["Your requests lists the game under Games; a member can cancel, not approve"] = ("Games" in gamer.inner_text("#gameReqs h2") and "Doom" in text
                                                                                             and gamer.locator("[data-greq=approve]").count() == 0 and gamer.locator("[data-greq=cancel]").count() == 1)
@@ -126,7 +126,7 @@ with sync_playwright() as p:
         r["status"] = "available"
     gamereq.tick(time.time() + 120)
     text = opened(host, "#/gamereq/game/10", ".greqs li")
-    checks["and when Questarr has it, the game's page says Downloaded"] = "Downloaded" in text and host.locator(".hero [data-ask-game]").count() == 0
+    checks["and when Questarr has it, the game's page says Downloaded"] = "Downloaded" in text and host.locator(".hero [data-ask=game]").count() == 0
     opened(host, "#/gamereq", "#gameAuto")
     was = host.is_checked("#gameAuto")
     host.click("#gameAuto")
@@ -138,12 +138,12 @@ with sync_playwright() as p:
     text = opened(host, "#/gamereq", ".pcard[data-game]")
     checks["no Questarr login: the page says what to do, and still shows the games"] = "Questarr isn't set up yet" in text and "Set up again" in text and "Fresh Quest" in text
     text = opened(host, "#/gamereq/game/20", ".hero")
-    checks["and a game's page offers no Request button"] = host.locator("[data-ask-game]").count() == 0 and "once Questarr is set up" in text
+    checks["and a game's page offers no Request button"] = host.locator("[data-ask=game]").count() == 0 and "once Questarr is set up" in text
     own["password"] = q.password
 
     for label, width, height, mobile in (("tablet", 820, 1180, False), ("phone", 390, 844, True)):
         pg = someone(b, "gamer", width, height, is_mobile=mobile)
-        for name, where, sel in (("browse", "#/gamereq", ".pcard[data-game]"), ("game", "#/gamereq/game/20", ".hero [data-ask-game]"), ("requests", "#/requests", "#gameReqs .greqs li")):
+        for name, where, sel in (("browse", "#/gamereq", ".pcard[data-game]"), ("game", "#/gamereq/game/20", ".hero [data-ask=game]"), ("requests", "#/requests", "#gameReqs .greqs li")):
             opened(pg, where, sel)
             shot(pg, f"{name}-{label}")
             checks[f"{label}: {name} has no sideways scroll"] = pg.evaluate("document.documentElement.scrollWidth <= innerWidth + 1")

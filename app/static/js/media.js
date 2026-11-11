@@ -220,13 +220,13 @@ async function showPerson(t, [id]) {
 }
 
 const REQ_FILTERS = [["all", "All"], ["pending", "Waiting for approval"], ["approved", "Approved"], ["processing", "Processing"], ["available", "Available"], ["failed", "Failed"]];
-// Your requests: every kind in one list (#/requests), or one kind: #/requests/mine and /all are films & shows (yours, everyone's), /music is music, /games is games
-const REQ_KINDS = [["", "Everything", () => true], ["mine", "Films & shows", () => !closedTo("media")], ["music", "Music", () => !closedTo("music")], ["games", "Games", () => !closedTo("games")]];
+// Your requests: every kind in one list (#/requests), or one kind: #/requests/mine and /all are films & shows (yours, everyone's), /music is music, /games is games, /books is books
+const REQ_KINDS = [["", "Everything", () => true], ["mine", "Films & shows", () => !closedTo("media")], ["music", "Music", () => !closedTo("music")], ["games", "Games", () => !closedTo("games")], ["books", "Books", () => !closedTo("library")]];
 async function showRequests(t, [a = "", filter = "all"]) {
-  const kind = a === "music" || a === "games" ? a : a ? "mine" : "", scope = a === "all" ? "all" : "mine";
+  const kind = ["music", "games", "books"].includes(a) ? a : a ? "mine" : "", scope = a === "all" ? "all" : "mine";
   const one = (k, section) => (!kind || kind === k) && !closedTo(section);
-  const films = one("mine", "media"), music = one("music", "music"), games = one("games", "games");
-  if (kind && !(films || music || games)) return go("#/requests");  // a kind that's closed to you: the list of what isn't
+  const films = one("mine", "media"), music = one("music", "music"), games = one("games", "games"), books = one("books", "library");
+  if (kind && !(films || music || games || books)) return go("#/requests");  // a kind that's closed to you: the list of what isn't
   let r = null, why = "";
   if (films) {
     const s = await checkSeerr();
@@ -260,9 +260,10 @@ async function showRequests(t, [a = "", filter = "all"]) {
     <div class="wrap">${kind || !list ? list : shelf("Films & shows", list, "#/requests/mine")}</div>
     ${music ? `<div class="wrap" id="musicReqs"></div>` : ""}
     ${games ? `<div class="wrap" id="gameReqs"></div>` : ""}
-    <div class="wrap" id="noReqs" hidden><div class="empty-state"><strong>Nothing requested yet</strong>Ask for a film or a show in <a href="#/media">Films &amp; shows</a>, an album in <a href="#/lidarr">Music</a>, or a game in <a href="#/gamereq">Games</a>.</div></div>`);
-  const [had, got] = await Promise.all([music ? drawRequests(t, kind ? "" : "Music") : 0, games ? drawGameRequests(t, "Games") : 0]);
-  if (t === ticket && kind !== "music" && !had && !got && !list) $("#noReqs").hidden = false;  // music alone says how to ask by itself
+    ${books ? `<div class="wrap" id="bookReqs"></div>` : ""}
+    <div class="wrap" id="noReqs" hidden><div class="empty-state"><strong>Nothing requested yet</strong>Ask for a film or a show in <a href="#/media">Films &amp; shows</a>, an album in <a href="#/lidarr">Music</a>, a game in <a href="#/gamereq">Games</a>, or a book in <a href="#/bookreq">Books</a>.</div></div>`);
+  const [had, got, read] = await Promise.all([music ? drawRequests(t, kind ? "" : "Music") : 0, games ? drawAsked("game", t, "Games") : 0, books ? drawAsked("book", t, "Books") : 0]);
+  if (t === ticket && kind !== "music" && !had && !got && !read && !list) $("#noReqs").hidden = false;  // music alone says how to ask by itself
 }
 document.addEventListener("click", (e) => {
   const d = e.target.closest("[data-decide]");

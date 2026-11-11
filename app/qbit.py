@@ -153,6 +153,12 @@ def limits(body: Limits, _=Depends(admin)):
     return {"ok": True}
 
 
+def refused(said: str) -> bool:
+    """Did qBittorrent say no to a torrent it was given? 4 says so with a 200 "Fails."; 5.3 answers
+    {"success_count": 0, "failure_count": 1, …} (seen live)."""
+    return said == "Fails." or bool(re.search(r'"success_count":\s*0\b', said) and re.search(r'"failure_count":\s*[1-9]', said))
+
+
 class Add(BaseModel):
     magnet: str
     category: Optional[str] = None
@@ -166,10 +172,7 @@ def add(body: Add, _=Depends(admin)):
     form = {"urls": link}
     if body.category:
         form["category"] = body.category[:100]
-    said = ok(api("POST", "/torrents/add", data=form)).text.strip()
-    # qBittorrent 4 says no with a 200 "Fails."; 5.3 answers {"success_count": 0, "failure_count": 1, …} (seen live)
-    refused = said == "Fails." or bool(re.search(r'"success_count":\s*0\b', said) and re.search(r'"failure_count":\s*[1-9]', said))
-    if refused:
+    if refused(ok(api("POST", "/torrents/add", data=form)).text.strip()):
         raise HTTPException(409, "qBittorrent didn't take that link: it's already there, or it isn't a torrent")
     return {"ok": True}
 

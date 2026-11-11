@@ -45,7 +45,7 @@ More: [Install, folders and moving in](docs/install.md).
 | **Watch** | YouTube without ads, in up to 4K: search, channels, your subscriptions feed, recommendations, SponsorBlock, and fast downloads. | [Watching YouTube](docs/youtube.md) |
 | Watch → **Live** | YouTube lives and the Twitch channels you follow, in Parlor's player. | [Live](docs/youtube.md#live) |
 | **Music** | All of [music-fndr](https://github.com/ChaseSunstrom/music-fndr): browse Spotify and download songs, albums and playlists. | [Music](docs/music.md) |
-| **Request** | Ask for what you don't have: films and shows through [Seerr](https://github.com/seerr-team/seerr), one title or a whole collection, albums and artists through Lidarr, and games through [Questarr](https://github.com/Doezer/Questarr). **Your requests** lists all of it, with where each one's at. | [Films & shows](docs/movies-tv.md), [music](docs/stack.md#request-music), [games](docs/games.md#ask-for-a-game-in-parlor) |
+| **Request** | Ask for what you don't have: films and shows through [Seerr](https://github.com/seerr-team/seerr), one title or a whole collection, albums and artists through Lidarr, games through [Questarr](https://github.com/Doezer/Questarr), and books, which Parlor finds and fetches itself. **Your requests** lists all of it, with where each one's at. | [Films & shows](docs/movies-tv.md), [music](docs/stack.md#request-music), [games](docs/games.md#ask-for-a-game-in-parlor), [books](docs/stack.md#books) |
 
 ## The apps around it
 
