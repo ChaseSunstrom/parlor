@@ -159,8 +159,8 @@ class Case(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.admin = signed_in("admin")
-        cls.member = signed_in("pat")
-        cls.pat = core.one("SELECT id FROM users WHERE name = 'pat'")["id"]
+        cls.member = signed_in("hwpat")  # a name no other test file uses: they share one database in a full run
+        cls.pat = core.one("SELECT id FROM users WHERE name = 'hwpat'")["id"]
 
     def setUp(self):
         tv._tries.clear()
