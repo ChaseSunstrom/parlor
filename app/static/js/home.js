@@ -58,14 +58,21 @@ async function drawServices(t) {
   const row = (a) => {
     const mine = steps(a.app), worst = ["failed", "skipped", "done", "ok"].find((st) => mine.some((r) => r.status === st));
     return `<li class="svc"><span class="state ${a.up ? "up" : "down"}" title="${a.up ? "Answering" : "Not answering"}"></span>
-      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}${a.app === "qbittorrent" ? ` · <a href="#/torrents">manage torrents</a>` : ""}</small>
-        ${mine.length ? `<ul class="svc-steps">${mine.map((r) => `<li class="${r.status}"><b>${esc(r.step)}</b> ${esc(r.detail)}</li>`).join("")}</ul>` : ""}</div>
+      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}${a.app === "qbittorrent" ? ` · <a href="#/torrents">manage torrents</a>` : ""}${a.needs ? ` · needs ${esc(a.needs)}` : ""}</small>
+        ${mine.length ? `<ul class="svc-steps">${mine.map((r) => `<li class="${r.status}"><b>${esc(r.step)}</b> ${esc(r.detail)}</li>`).join("")}</ul>` : ""}
+        ${a.app === "questarr" && a.needs ? `<form id="igdbForm" class="svc-ask"><p class="dim">Questarr looks games up by title in IGDB, which wants keys of your own (free): at
+          <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noopener noreferrer">dev.twitch.tv/console/apps</a> register an application
+          (any name, redirect URL http://localhost, category Application Integration), then copy its Client ID and a new Client Secret here. They go straight to Questarr; Parlor keeps no copy.</p>
+          <div class="actions"><label class="field grow"><span>Client ID</span><input id="igdbId" required autocomplete="off" spellcheck="false"></label>
+          <label class="field grow"><span>Client Secret</span><input id="igdbSecret" type="password" required autocomplete="off"></label>
+          <label class="field grow"><span>Your password</span><input id="igdbPw" type="password" required autocomplete="current-password"></label>
+          <button class="primary small">Give Questarr the keys</button></div></form>` : ""}</div>
       ${worst ? pill(...SETUP_STEP[worst]) : ""}</li>`;
   };
   const when = s.run.running ? "Setting up now…" : s.run.finished ? `Last set up ${since(s.run.finished)}.` : "Not set up yet.";
   box.innerHTML = `<section class="panel"><div class="head"><div><h3>Services</h3>
       <p>The apps that run beside Parlor. Setup reads their API keys, turns off logins on your home network, and connects
-        qBittorrent, Prowlarr's indexers, Jellyfin, Seerr, Bazarr and Cleanuparr. It only ever adds what's missing. ${when}</p></div>
+        qBittorrent, Prowlarr's indexers, Jellyfin, Seerr, Bazarr, Cleanuparr and Questarr. It only ever adds what's missing. ${when}</p></div>
       ${s.run.running ? `<span class="spin-sm" aria-label="Running"></span>` : ""}</div>
     <ul class="svc-list">${s.apps.map(row).join("")}</ul>
     ${s.indexers ? `<p class="dim">Indexers refreshed ${since(s.indexers.at)}${s.indexers.note ? `: ${esc(s.indexers.note)}` : ""}${[["added", s.indexers.added], ["switched off", s.indexers.off], ["back on", s.indexers.on]]
@@ -80,11 +87,18 @@ async function drawServices(t) {
   </section>`;
   $("#stackQuality").addEventListener("change", (e) => put("/api/stack/quality", { best: e.target.value === "best" })
     .then((r) => toast(r.detail.charAt(0).toUpperCase() + r.detail.slice(1)), (err) => toast(err.message)));
+  $("#igdbForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    post("/api/stack/questarr/igdb", { client_id: $("#igdbId").value, client_secret: $("#igdbSecret").value, password: $("#igdbPw").value })
+      .then(() => { toast("Questarr has its IGDB keys"); drawServices(t); }, (err) => toast(err.message));
+  });
   $("#stackForm").addEventListener("submit", (e) => {
     e.preventDefault();
     post("/api/stack/setup", { password: $("#stackPw").value || null }).then(() => { toast("Setting up your apps…"); drawServices(t); }, (err) => toast(err.message));
   });
-  if (s.run.running) setTimeout(() => t === ticket && drawServices(t), 2500);
+  const typing = () => ["igdbId", "igdbSecret", "igdbPw"].some((id) => $("#" + id)?.value);  // don't redraw over keys being typed
+  const again = () => t === ticket && (typing() ? setTimeout(again, 2500) : drawServices(t));
+  if (s.run.running) setTimeout(again, 2500);
 }
 
 /* Settings → Services → VPN: qBittorrent's tunnel, set any time after the stack is running */

@@ -2,8 +2,11 @@
 Parlor's front door switched to "VPN off", since there's no VPN here; no published ports), Parlor built
 from this repo. Create the admin account over HTTP, wait for the automatic setup, check every app, then
 run setup again: it must change nothing. Exit 0 when all of that holds. The stack is removed at the end
-(--keep leaves it running for a look). Needs Docker and internet: python tests/live_stack.py [--keep]"""
+(--keep leaves it running for a look). Needs Docker and internet: python tests/live_stack.py [--keep]
+--only questarr judges only Questarr's part (the whole stack still runs: it needs Prowlarr and qBittorrent). With
+PARLOR_TEST_IGDB_ID and PARLOR_TEST_IGDB_SECRET in the environment, a game search by title is checked too."""
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -32,7 +35,7 @@ services:
     build: !reset null
   gluetun:            # the real one; its front door is told "VPN off" below, as there's no VPN file here
     ports: !reset []
-""".replace("{PORT}", str(PORT)) + "".join(f"  {s}:\n    ports: !reset []\n" for s in ("prowlarr", "flaresolverr", "sonarr", "radarr", "lidarr", "bazarr", "jellyfin", "seerr", "cleanuparr"))
+""".replace("{PORT}", str(PORT)) + "".join(f"  {s}:\n    ports: !reset []\n" for s in ("prowlarr", "flaresolverr", "sonarr", "radarr", "lidarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "questarr"))
 
 
 def sh(*cmd, check=True):
@@ -123,6 +126,58 @@ checks["Sonarr's page needs no login at home"] = '"apiKey"' in ui.stdout
 ln = sh("docker", "exec", "-u", "abc", f"{RUN.name}-radarr-1", "sh", "-c", "mkdir -p /data/downloads /data/movies && touch /data/downloads/.ln "
         "&& ln /data/downloads/.ln /data/movies/.ln && rm /data/downloads/.ln /data/movies/.ln", check=False)
 checks["Radarr can hardlink a download into the library (one /data mount)"] = ln.returncode == 0
+
+
+def quest(method, path, body=None, token=None):
+    """Questarr's own API, asked from the container next door (its port isn't published here)"""
+    cmd = ["docker", "exec", f"{RUN.name}-sonarr-1", "curl", "-s", "-m", "90", "-X", method, "-H", "Content-Type: application/json"]
+    cmd += ["-H", f"Authorization: Bearer {token}"] if token else []
+    cmd += ["-d", json.dumps(body)] if body is not None else []
+    out = sh(*cmd, f"http://questarr:5000{path}", check=False).stdout
+    try:
+        return json.loads(out)
+    except ValueError:
+        return {"error": out[:200]}
+
+
+image = json.loads(dc("config", "--format", "json").stdout)["services"]["questarr"]["image"]
+checks["Questarr's image is the official one, pinned by digest"] = image.startswith("ghcr.io/doezer/questarr:") and "@sha256:" in image
+token = quest("POST", "/api/auth/login", {"username": NAME, "password": PASSWORD}).get("token")
+checks["Questarr takes your name and password"] = bool(token)
+clients = quest("GET", "/api/downloaders", token=token) if token else []
+qb_ = next((d for d in clients if isinstance(d, dict) and d.get("type") == "qbittorrent"), None)
+checks["Questarr has qBittorrent (behind the VPN's container) as its download client"] = bool(qb_) and qb_["url"] == "http://gluetun" and qb_["category"] == "games"
+tested = quest("POST", f"/api/downloaders/{qb_['id']}/test", token=token) if qb_ else {}
+print("  Questarr's test of qBittorrent:", json.dumps(tested)[:200])
+checks["Questarr's own test of qBittorrent passes"] = tested.get("success") is True
+feeds = quest("GET", "/api/indexers", token=token) if token else []
+print("  Questarr's indexers:", ", ".join(f"{i.get('name')} ({i.get('url')})" for i in feeds if isinstance(i, dict))[:400])
+checks["Questarr has Prowlarr's indexers as Torznab feeds"] = bool(feeds) and all("prowlarr:9696" in (i.get("url") or "") for i in feeds)
+checks["Questarr's games go to /data/games"] = (quest("GET", "/api/imports/config", token=token) or {}).get("libraryRoot") == "/data/games"
+found = {}
+for word in ("doom", "linux", "2024"):  # a raw search of the indexers: no IGDB in it. Public sites come and go, so a few words
+    found = quest("GET", f"/api/search?query={word}", token=token) if token else {}
+    print(f"  Questarr's search for {word!r}: {len(found.get('items') or [])} results, errors: {str(found.get('errors'))[:200]}")
+    if found.get("items"):
+        break
+checks["a search through Questarr returns results from the indexers (no IGDB)"] = bool(found.get("items"))
+row = next(a for a in second["apps"] if a["app"] == "questarr")
+igdb = os.environ.get("PARLOR_TEST_IGDB_ID"), os.environ.get("PARLOR_TEST_IGDB_SECRET")
+if all(igdb):
+    r = s.post(f"{BASE}/api/stack/questarr/igdb", json={"client_id": igdb[0], "client_secret": igdb[1], "password": PASSWORD}, timeout=60)
+    games = quest("GET", "/api/igdb/search?q=doom&limit=5", token=token)
+    checks["with IGDB keys, Questarr finds a game by title"] = r.status_code == 200 and bool(games) and "error" not in games
+else:
+    print("  skipped: a game search by title (no PARLOR_TEST_IGDB_ID / PARLOR_TEST_IGDB_SECRET here)")
+    checks["without IGDB keys, Services says Questarr needs them"] = row["needs"] == "IGDB keys"
+if "--only" in sys.argv:  # judge one app's part
+    only = sys.argv[sys.argv.index("--only") + 1]
+    bad, changed = [x for x in bad if x["app"] == only], [x for x in changed if x["app"] == only]
+    down = [d for d in down if d.lower() == only]
+    checks = {k: v for k, v in checks.items() if only in k.lower()}
+    assert checks, f"no checks for {only}"
+    lists = [x for x in first["run"]["results"] if x["app"] == only and x["step"] == "indexers"]
+    indexers = lists[0] if lists else indexers
 for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 ok = not bad and not changed and not down and indexers["status"] in ("done", "ok") and all(checks.values())

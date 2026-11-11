@@ -229,6 +229,19 @@ services:
     volumes:
       - ./cleanuparr/config:/config
 
+  questarr:                    # games: Prowlarr's indexers, qBittorrent behind the VPN, the GAMES folder (README → Games you ask for)
+    <<: *app
+    image: ghcr.io/doezer/questarr:v1.6.0@sha256:495a1648f1ad8dddd4c7f96b4bf817d9d061bfd5608ef520522f0d891415e972   # pinned: a young project; read its notes before moving on
+    depends_on:
+      setup:
+        condition: service_completed_successfully   # its folder must be the apps' user's before it starts
+    ports: ["5000:5000"]
+    volumes:
+      - ./questarr/config:/app/data
+      - ${DATA:-/data}:/data
+      - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
+      - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
+
   moonlight-web:               # Games → Play from your PC, optional: COMPOSE_PROFILES=games-stream in .env (README → Games)
     image: mrcreativ3001/moonlight-web-stream:v3.0.1   # pinned: it trusts the X-Parlor-User header; check its notes before moving on
     profiles: [games-stream]

@@ -50,6 +50,7 @@ class FakeStack:
         self.jf = {"wizard": False, "user": None, "keys": [], "libs": []}
         self.seerr = {"initialized": False, "key": "SEERRKEY", "libs": [{"id": "m1", "name": "Movies", "enabled": False}], "radarr": [], "sonarr": []}
         self.bazarr = {"use_sonarr": False, "use_radarr": False, "sonarr_key": "", "radarr_key": ""}
+        self.quest = {"user": None, "igdb": None, "downloaders": [], "root": "/data", "indexers": [], "keys": []}
         self.cleanup = {"setup": False, "instances": {"sonarr": [], "radarr": [], "lidarr": []}, "clients": [], "local": False,
                         # Cleanuparr's jobs as a fresh one has them (shapes copied from Cleanuparr 2.x)
                         "queue_cleaner": {"enabled": False, "cronExpression": "0 0/5 * * * ?", "failedImport": {"maxStrikes": 0, "ignorePrivate": False,
@@ -61,7 +62,7 @@ class FakeStack:
                         "stall": [], "slow": [], "seeding": {}}
 
     def writes(self):
-        return [c for c in self.calls if c[0] in ("POST", "PUT", "DELETE")]
+        return [c for c in self.calls if c[0] in ("POST", "PUT", "DELETE") and c[1:] != ("questarr", "/api/auth/login")]  # signing in changes nothing
 
     def __call__(self, method, url, headers=None, params=None, json=None, data=None, files=None, timeout=None, **kw):
         u = urlsplit(url)
@@ -348,6 +349,53 @@ class FakeStack:
             return Resp(200, {"clients": self.cleanup["clients"]})
         return Resp(404, text="")
 
+    # --- Questarr (shapes read from a real v1.6.0)
+    def on_questarr(self, method, path, q, body, headers, form):
+        k = self.quest
+        if path == "/api/health":
+            return Resp(200, {"status": "ok"})
+        if path == "/api/auth/status":
+            return Resp(200, {"hasUsers": bool(k["user"])})
+        if path == "/api/auth/setup":
+            if k["user"]:
+                return Resp(403, {"error": "Setup already completed"})
+            k["user"] = (body["username"], body["password"])
+            return Resp(200, {"token": "QT", "user": {"username": body["username"]}})
+        if path == "/api/auth/login":
+            return Resp(200, {"token": "QT"}) if k["user"] == (body["username"], body["password"]) else Resp(401, {"error": "Invalid credentials"})
+        jwt, key = headers.get("Authorization") == "Bearer QT", bool(k["keys"]) and headers.get("X-Api-Key") in k["keys"]
+        if path in ("/api/api-keys", "/api/settings/igdb", "/api/config"):  # these take a signed-in person only, never a key
+            if not jwt:
+                return Resp(401, {"error": "Authentication required"})
+            if path == "/api/api-keys":
+                k["keys"].append(f"qsr_{len(k['keys'])}")
+                return Resp(201, {"name": body["name"], "scope": body["scope"], "key": k["keys"][-1]})
+            if path == "/api/config":
+                return Resp(200, {"igdb": {"configured": bool(k["igdb"])}})
+            if len(body["clientId"]) < 20:
+                return Resp(400, {"error": "Client ID doesn't look valid — check for extra spaces or a partial copy."})
+            k["igdb"] = (body["clientId"], body["clientSecret"])
+            return Resp(200, {"success": True})
+        if not (jwt or key):
+            return Resp(401, {"error": "Authentication required"})
+        if path == "/api/downloaders":
+            if method == "POST":
+                k["downloaders"].append({"id": str(len(k["downloaders"])), **body})
+                return Resp(201, k["downloaders"][-1])
+            return Resp(200, k["downloaders"])
+        if path == "/api/imports/config":
+            if method == "PATCH":
+                k["root"] = body["libraryRoot"]
+            return Resp(200, {"libraryRoot": k["root"], "transferMode": "hardlink"})
+        if path == "/api/indexers":
+            return Resp(200, k["indexers"])
+        if path == "/api/indexers/prowlarr/sync":  # one Torznab feed per indexer Prowlarr has, under Prowlarr's key; ones gone from Prowlarr go
+            if body["apiKey"] != KEYS["prowlarr"]:
+                return Resp(500, {"error": "Internal Server Error"})
+            k["indexers"] = [{"id": str(i["id"]), "name": i["name"], "url": f"{body['url']}/{i['id']}/api", "protocol": "torznab"} for i in self.indexers]
+            return Resp(200, {"success": True, "message": "synced", "results": {}})
+        return Resp(404, {"error": "no such route"})
+
     def on_flaresolverr(self, *a):
         return Resp(200, {"msg": "FlareSolverr is ready!"})
 
@@ -366,7 +414,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "questarr_key", "questarr_igdb", "questarr_url", "questarr_user", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),

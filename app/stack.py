@@ -29,7 +29,7 @@ from urllib.parse import urlsplit
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import arr
 import core
@@ -63,17 +63,18 @@ seerr_url = lambda: where("seerr", "http://seerr:5055")  # noqa: E731
 bazarr_url = lambda: where("bazarr", "http://bazarr:6767")  # noqa: E731
 cleanuparr_url = lambda: where("cleanuparr", "http://cleanuparr:11011")  # noqa: E731
 flaresolverr_url = lambda: where("flaresolverr", "http://flaresolverr:8191")  # noqa: E731
+questarr_url = lambda: where("questarr", "http://questarr:5000")  # noqa: E731
 
 # the compose's service names: setup changes an app only when Parlor's address for it is one of these,
 # never a server of yours elsewhere that Settings points at
 SERVICES = {"sonarr": {"sonarr"}, "radarr": {"radarr"}, "lidarr": {"lidarr"}, "prowlarr": {"prowlarr"}, "qbittorrent": {"gluetun", "qbittorrent"},
-            "jellyfin": {"jellyfin"}, "seerr": {"seerr"}, "bazarr": {"bazarr"}, "cleanuparr": {"cleanuparr"}}
-LABELS = {"qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "seerr": "Seerr", "bazarr": "Bazarr", "cleanuparr": "Cleanuparr"}
+            "jellyfin": {"jellyfin"}, "seerr": {"seerr"}, "bazarr": {"bazarr"}, "cleanuparr": {"cleanuparr"}, "questarr": {"questarr"}}
+LABELS = {"qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "seerr": "Seerr", "bazarr": "Bazarr", "cleanuparr": "Cleanuparr", "questarr": "Questarr"}
 
 
 def address(app) -> str:
     return arr.url(app) if app in arr.APPS else {"qbittorrent": qbit, "jellyfin": jellyfin_url, "seerr": seerr_url,
-                                                 "bazarr": bazarr_url, "cleanuparr": cleanuparr_url}[app]()
+                                                 "bazarr": bazarr_url, "cleanuparr": cleanuparr_url, "questarr": questarr_url}[app]()
 
 
 def ours(app) -> bool:
@@ -386,7 +387,7 @@ def _ensure(lines, section, pairs):
 
 
 KINDS = ["movies", "shows", "music", "books", "games", "youtube", "downloads"]  # each is /data/<kind>, and .env can put it anywhere
-CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent",
+CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent", "questarr",
                "moonlight-web"]  # the games-stream profile's bridge
 
 
@@ -825,6 +826,75 @@ def cleanuparr_jobs():
     return "ok", "cleans failed, stalled and slow downloads, blocks malware, clears seeded torrents"
 
 
+# --- Questarr: games, found through Prowlarr's indexers and fetched by qBittorrent ---------------
+
+def _questarr_token(name, password) -> str:
+    """Signed in to Questarr as its one account, which Parlor makes from your name and password the first time."""
+    base = questarr_url()
+    if not need(http("GET", f"{base}/api/auth/status"), "Questarr").json().get("hasUsers"):
+        return need(http("POST", f"{base}/api/auth/setup", json={"username": name, "password": password}), "Questarr").json()["token"]
+    r = http("POST", f"{base}/api/auth/login", json={"username": name, "password": password})
+    if r.status_code == 401:
+        raise Fail(f"Questarr has its own login and doesn't take {name} with your Parlor password")
+    return need(r, "Questarr").json()["token"]
+
+
+def _questarr(method, path, **kw):
+    """Questarr with Parlor's key (it lets a key set download clients, indexers and folders, nothing else)."""
+    key = setting("questarr_key")
+    if not key:
+        raise Wait("needs your password once: it becomes Questarr's login")
+    r = http(method, questarr_url() + path, headers={"X-Api-Key": key}, **kw)
+    if r.status_code == 401:  # its data was started over, or the key was deleted there
+        core.db().execute("DELETE FROM settings WHERE key = 'questarr_key'")
+        raise Fail("Questarr no longer takes Parlor's key: set up again with your password")
+    return need(r, "Questarr").json()
+
+
+def questarr(name, password):
+    fresh = not setting("questarr_key")
+    if fresh and not password:
+        raise Wait("needs your password once: it becomes Questarr's login")
+    if password and (fresh or name == setting("questarr_user")):  # Questarr has one login: whoever set it up first
+        signed = {"Authorization": f"Bearer {_questarr_token(name, password)}"}
+        if fresh:
+            key = need(http("POST", f"{questarr_url()}/api/api-keys", headers=signed, json={"name": "Parlor", "scope": "admin"}), "Questarr").json()["key"]
+            core.set_setting("questarr_key", key)
+            core.set_setting("questarr_user", name)
+        # whether it has its IGDB keys, which only a signed-in person may ask: read whenever there's a password to ask with
+        igdb = need(http("GET", f"{questarr_url()}/api/config", headers=signed), "Questarr").json().get("igdb") or {}
+        core.set_setting("questarr_igdb", "1" if igdb.get("configured") else "")
+    changed = []
+    if not any(d.get("type") == "qbittorrent" for d in _questarr("GET", "/api/downloaders")):
+        where_ = urlsplit(qbit())
+        _questarr("POST", "/api/downloaders", json={
+            "name": "qBittorrent", "type": "qbittorrent", "url": f"{where_.scheme}://{where_.hostname}", "port": where_.port or (443 if where_.scheme == "https" else 8080),
+            "useSsl": where_.scheme == "https", "category": "games", "downloadPath": "/data/downloads/games", "enabled": True, "priority": 1,
+            "allowInsecureLan": True})  # a container beside it, on a private address
+        changed.append("qBittorrent, category games")
+    if _questarr("GET", "/api/imports/config").get("libraryRoot") == "/data":  # as a new Questarr has it; any other folder is your choice
+        make_dir("/data/games")
+        _questarr("PATCH", "/api/imports/config", json={"libraryRoot": "/data/games"})
+        changed.append("games go to /data/games")
+    return ("done", ", ".join(changed)) if changed else ("ok", "qBittorrent and the games folder")
+
+
+def questarr_indexers():
+    """Prowlarr can't push to Questarr (it has no such app), so Questarr reads Prowlarr's list: one Torznab feed per
+    indexer, under Prowlarr's key. Asked again whenever the two lists differ, so they don't drift."""
+    if not arr.key("prowlarr"):
+        raise Wait("Prowlarr hasn't started yet (no API key)")
+    want = {str(i["id"]) for i in arr.call("prowlarr", "GET", "/indexer") if i.get("enable", True)}
+    if not want:
+        raise Wait("Prowlarr has no indexers yet")
+    feed = re.compile(r"/(\d+)/api/?$")
+    have = lambda: {m[1] for i in _questarr("GET", "/api/indexers") if (m := feed.search(i.get("url") or ""))}  # noqa: E731
+    if want <= have():  # a feed of your own beside them is no reason to ask again
+        return "ok", f"{len(want)} from Prowlarr"
+    _questarr("POST", "/api/indexers/prowlarr/sync", json={"url": arr.url("prowlarr"), "apiKey": arr.key("prowlarr"), "allowInsecureLan": True}, timeout=120)
+    return "done", f"{len(have())} from Prowlarr"
+
+
 # --- running it ----------------------------------------------------------------------------------
 
 def steps(name, password):
@@ -846,7 +916,9 @@ def steps(name, password):
     yield "bazarr", "sonarr and radarr", bazarr
     yield "cleanuparr", "connections", lambda: cleanuparr(name, password)
     yield "cleanuparr", "cleanup jobs", cleanuparr_jobs
-    yield "prowlarr", "indexers", prowlarr_indexers  # last: trying each site can take a minute
+    yield "questarr", "connections", lambda: questarr(name, password)
+    yield "prowlarr", "indexers", prowlarr_indexers  # last of the *arrs: trying each site can take a minute
+    yield "questarr", "indexers", questarr_indexers  # after Prowlarr has them
 
 
 def run(name=None, password=None, into=None) -> list:
@@ -892,6 +964,11 @@ def read_keys_from_disk():
 
 
 # failures that mean "not ready yet" (an app still starting, or one it talks to), worth another go
+def worth_retrying(results) -> bool:
+    """an app that wasn't ready yet (not Prowlarr's own indexers step: public sites come and go)"""
+    return any(r["status"] == "failed" and (r["app"], r["step"]) != ("prowlarr", "indexers") and TRANSIENT.search(r["detail"]) for r in results)
+
+
 TRANSIENT = re.compile(r"didn.t answer|unable to connect|cannot connect|connection refused|said 5\d\d|timed out|starting|loading", re.I)
 state = {"running": False, "results": [], "started": None, "finished": None}
 _lock = threading.Lock()
@@ -915,7 +992,7 @@ def start(name=None, password=None, retries=0) -> bool:
             for attempt in range(retries + 1):
                 state["results"] = []
                 run(name, password, state["results"])
-                if not any(r["status"] == "failed" and r["step"] != "indexers" and TRANSIENT.search(r["detail"]) for r in state["results"]) or attempt == retries:
+                if not worth_retrying(state["results"]) or attempt == retries:
                     break
                 if _next:  # a run with your password is waiting: it does everything this one would
                     break
@@ -1134,12 +1211,16 @@ def reachable(url, **kw) -> bool:
 
 
 def status():
-    keys = {"jellyfin": setting("jellyfin_key"), "seerr": setting("seerr_key"), "bazarr": bazarr_key(), "cleanuparr": setting("cleanuparr_key")}
+    keys = {"jellyfin": setting("jellyfin_key"), "seerr": setting("seerr_key"), "bazarr": bazarr_key(), "cleanuparr": setting("cleanuparr_key"),
+            "questarr": setting("questarr_key")}
     apps = [{"app": app, "label": arr.APPS[app]["label"], "url": arr.url(app), "key": bool(arr.key(app)), "probe": "/ping"} for app in arr.APPS]
     for app, label, url, probe in (("qbittorrent", "qBittorrent", qbit(), "/api/v2/app/version"), ("flaresolverr", "FlareSolverr", flaresolverr_url(), "/"),
                                    ("jellyfin", "Jellyfin", jellyfin_url(), "/System/Info/Public"), ("seerr", "Seerr", seerr_url(), "/api/v1/settings/public"),
-                                   ("bazarr", "Bazarr", bazarr_url(), "/"), ("cleanuparr", "Cleanuparr", cleanuparr_url(), "/health")):
+                                   ("bazarr", "Bazarr", bazarr_url(), "/"), ("cleanuparr", "Cleanuparr", cleanuparr_url(), "/health"),
+                                   ("questarr", "Questarr", questarr_url(), "/api/health")):
         apps.append({"app": app, "label": label, "url": url, "key": bool(keys[app]) if app in keys else None, "probe": probe})
+    # Questarr finds games by title through IGDB, with keys only you can get: until it has them it's wired but can't look anything up
+    next(a for a in apps if a["app"] == "questarr")["needs"] = "IGDB keys" if keys["questarr"] and not setting("questarr_igdb") else None
     with ThreadPoolExecutor(len(apps)) as pool:  # all at once: a page shouldn't wait 4 s per app that's down
         for a, up in zip(apps, pool.map(lambda a: reachable(a["url"] + a.pop("probe")), apps)):
             a["up"] = up
@@ -1170,20 +1251,60 @@ class Setup(BaseModel):
     password: Optional[str] = None
 
 
-@router.post("/setup")
-def setup(body: Setup, user=Depends(admin)):
+def _is_theirs(user, password):
+    """403 unless `password` is this admin's (a few wrong tries and it waits)."""
     import auth  # auth imports this module
 
+    keys = (f"stack:{user['id']}",)
+    if auth._throttled(*keys):
+        raise HTTPException(429, "Too many wrong passwords. Wait a few minutes and try again.")
+    stored = one("SELECT pw FROM users WHERE id = ?", user["id"])["pw"]
+    # a Jellyfin account has no password here: Jellyfin checks it
+    if not (core.check_password(password, stored) if stored else auth.jellyfin_login(user["name"], password) == user["id"]):
+        auth._failed(*keys)
+        raise HTTPException(403, "That isn't your password")
+
+
+@router.post("/setup")
+def setup(body: Setup, user=Depends(admin)):
     if body.password:
-        keys = (f"stack:{user['id']}",)
-        if auth._throttled(*keys):
-            raise HTTPException(429, "Too many wrong passwords. Wait a few minutes and try again.")
-        stored = one("SELECT pw FROM users WHERE id = ?", user["id"])["pw"]
-        # a Jellyfin account has no password here: Jellyfin checks it
-        if not (core.check_password(body.password, stored) if stored else auth.jellyfin_login(user["name"], body.password) == user["id"]):
-            auth._failed(*keys)
-            raise HTTPException(403, "That isn't your password")
+        _is_theirs(user, body.password)
     return {"started": start(user["name"], body.password or None)}
+
+
+class Igdb(BaseModel):
+    client_id: str = Field(min_length=1, max_length=200)
+    client_secret: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/questarr/igdb")
+def questarr_igdb(body: Igdb, user=Depends(admin)):
+    """The IGDB keys go straight to Questarr, which keeps them; Parlor keeps no copy. Questarr takes them only from a
+    signed-in person, so this needs your password again."""
+    _is_theirs(user, body.password)
+    if not ours("questarr"):
+        raise HTTPException(409, "That Questarr is your own: give it the keys in its own Settings")
+    if not setting("questarr_key"):
+        raise HTTPException(409, "Set up the services first (with your password), then give the keys")
+    whose = setting("questarr_user") or user["name"]
+    if whose != user["name"]:
+        raise HTTPException(409, f"Questarr's login is {whose}'s: {whose} can give the keys here, or anyone signed in to Questarr in its own Settings")
+    try:
+        signed = {"Authorization": f"Bearer {_questarr_token(user['name'], body.password)}"}
+        r = http("POST", f"{questarr_url()}/api/settings/igdb", headers=signed, json={"clientId": body.client_id.strip(), "clientSecret": body.client_secret.strip()})
+    except Fail as exc:
+        raise HTTPException(409, str(exc)) from None
+    except requests.RequestException:
+        raise HTTPException(502, "Questarr didn't answer") from None
+    if r.status_code != 200:
+        try:
+            said = r.json().get("error")
+        except (ValueError, AttributeError):
+            said = ""
+        raise HTTPException(400 if r.status_code < 500 else 502, str(said or f"Questarr said {r.status_code}")[:300])
+    core.set_setting("questarr_igdb", "1")
+    return {"ok": True}
 
 
 if __name__ == "__main__" and sys.argv[1:] == ["init"]:
