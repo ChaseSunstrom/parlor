@@ -64,17 +64,18 @@ bazarr_url = lambda: where("bazarr", "http://bazarr:6767")  # noqa: E731
 cleanuparr_url = lambda: where("cleanuparr", "http://cleanuparr:11011")  # noqa: E731
 flaresolverr_url = lambda: where("flaresolverr", "http://flaresolverr:8191")  # noqa: E731
 questarr_url = lambda: where("questarr", "http://questarr:5000")  # noqa: E731
+checkrr_url = lambda: where("checkrr", "http://checkrr:8585")  # noqa: E731
 
 # the compose's service names: setup changes an app only when Parlor's address for it is one of these,
 # never a server of yours elsewhere that Settings points at
 SERVICES = {"sonarr": {"sonarr"}, "radarr": {"radarr"}, "lidarr": {"lidarr"}, "prowlarr": {"prowlarr"}, "qbittorrent": {"gluetun", "qbittorrent"},
-            "jellyfin": {"jellyfin"}, "seerr": {"seerr"}, "bazarr": {"bazarr"}, "cleanuparr": {"cleanuparr"}, "questarr": {"questarr"}}
-LABELS = {"qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "seerr": "Seerr", "bazarr": "Bazarr", "cleanuparr": "Cleanuparr", "questarr": "Questarr"}
+            "jellyfin": {"jellyfin"}, "seerr": {"seerr"}, "bazarr": {"bazarr"}, "cleanuparr": {"cleanuparr"}, "questarr": {"questarr"}, "checkrr": {"checkrr"}}
+LABELS = {"qbittorrent": "qBittorrent", "jellyfin": "Jellyfin", "seerr": "Seerr", "bazarr": "Bazarr", "cleanuparr": "Cleanuparr", "questarr": "Questarr", "checkrr": "Checkrr"}
 
 
 def address(app) -> str:
     return arr.url(app) if app in arr.APPS else {"qbittorrent": qbit, "jellyfin": jellyfin_url, "seerr": seerr_url,
-                                                 "bazarr": bazarr_url, "cleanuparr": cleanuparr_url, "questarr": questarr_url}[app]()
+                                                 "bazarr": bazarr_url, "cleanuparr": cleanuparr_url, "questarr": questarr_url, "checkrr": checkrr_url}[app]()
 
 
 def ours(app) -> bool:
@@ -387,7 +388,7 @@ def _ensure(lines, section, pairs):
 
 
 KINDS = ["movies", "shows", "music", "books", "games", "youtube", "downloads"]  # each is /data/<kind>, and .env can put it anywhere
-CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent", "questarr",
+CONFIG_DIRS = ["parlor", "sonarr", "radarr", "lidarr", "prowlarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "qbittorrent", "questarr", "checkrr",
                "moonlight-web"]  # the games-stream profile's bridge
 
 
@@ -396,6 +397,19 @@ def _own(*paths):
     if uid and gid and hasattr(os, "geteuid") and os.geteuid() == 0:
         for p in paths:
             os.chown(p, int(uid), int(gid), follow_symlinks=False)
+
+
+def _write_private(path: Path, text: str):
+    """Whole, then swapped in, readable by the apps' user only (it may hold API keys)."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")  # 0600, its own name, never through a link
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        _own(tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def init_files(root: Optional[Path] = None) -> list:
@@ -418,6 +432,10 @@ def init_files(root: Optional[Path] = None) -> list:
             folder.mkdir(parents=True)
             _own(folder.parent, folder)
             done.append(f"{app}: made its config folder")
+    made = root / "checkrr" / "config" / "checkrr.yaml"  # Checkrr exits without one; setup adds the *arrs once they have keys
+    if not made.exists():
+        _write_private(made, checkrr_config([], True))
+        done.append("checkrr: a config to start on")
     for kind in KINDS:  # Docker makes a missing media folder root's when it mounts it
         if hand_over(DATA / kind):
             done.append(f"{kind}: folder handed to the apps' user")
@@ -429,10 +447,8 @@ def init_files(root: Optional[Path] = None) -> list:
     changed = _ensure(lines, "WebUI", keys) or changed  # qBittorrent 5
     if changed or not conf.is_file():
         conf.parent.mkdir(parents=True, exist_ok=True)
-        tmp = conf.with_suffix(".tmp")  # whole or not at all: qBittorrent won't start on half a file
-        tmp.write_text("\n".join(lines) + "\n")
-        _own(conf.parent, tmp)
-        os.replace(tmp, conf)
+        _own(conf.parent)
+        _write_private(conf, "\n".join(lines) + "\n")  # whole or not at all: qBittorrent won't start on half a file
         done.append("qBittorrent: no login on the home network")
     if install_vpn_script(root):
         done.append("gluetun: front door in place")
@@ -895,6 +911,69 @@ def questarr_indexers():
     return "done", f"{len(have())} from Prowlarr"
 
 
+# --- Checkrr -------------------------------------------------------------------------------------
+# Checkrr reads one file and has no API to change it, so Parlor writes the file and Checkrr's container
+# restarts itself when the file changes (the compose's entrypoint watches it).
+
+CHECKRR_MADE = "# Made by Parlor. Delete this line to keep your own edits: Parlor then leaves this file alone."
+CHECKRR_APPS = ("sonarr", "radarr", "lidarr")
+# beside the films and songs: files Checkrr might not know and would call broken
+CHECKRR_SKIP = [".nfo", ".srt", ".ass", ".ssa", ".sub", ".idx", ".sup", ".vtt", ".smi", ".lrc", ".cue", ".m3u", ".m3u8", ".log", ".txt", ".jpg", ".jpeg",
+                ".png", ".webp", ".gif", ".tbn", ".bif", ".xml", ".json", ".pdf", ".part", ".tmp", ".!qB"]
+
+
+def checkrr_file() -> Path:
+    return STACK / "checkrr" / "checkrr.yaml"
+
+
+def checkrr_config(apps: list, replace: bool) -> str:
+    """`apps`: (name, host, port, key, root) for each *arr Checkrr asks for a new copy."""
+    paths = "".join(f"    - {arr.APPS[a]['root']}/\n" for a in CHECKRR_APPS)
+    arrs = "".join(f"  {name}:\n    process: {'true' if replace else 'false'}\n    service: {name}\n    address: {host}\n    apikey: {json.dumps(key)}\n"
+                   f"    baseurl: /\n    port: {port}\n    ssl: false\n    mappings:\n      {root}/: {root}/\n" for name, host, port, key, root in apps)
+    return (f"{CHECKRR_MADE}\n"
+            "# It checks the films, shows and music every night at 04:00 (cron, below). A file it can't read as video or\n"
+            "# audio is deleted through the app that owns it and searched for again when that app's process is true;\n"
+            "# with process: false it is only listed, at http://<this server>:8585. Files no app owns are only ever listed.\n"
+            f"checkrr:\n  checkpath:\n{paths}  database: /config/checkrr.db\n  debug: false\n  cron: \"0 4 * * *\"\n  ignorehidden: true\n"
+            "  requireaudio: false\n  ffprobe: true\n  ffmpeg-full: false\n  ffmpeg-quick: false\n"
+            f"  ignoreexts: {json.dumps(CHECKRR_SKIP)}\n"
+            "logs:\n  stdout:\n    out: stdout\n    formatter: default\n"
+            + (f"arr:\n{arrs}" if arrs else "arr: {}\n")
+            + "webserver:\n  port: 8585\n  tls: false\n  baseurl: /\n")
+
+
+def checkrr_replaces() -> bool:
+    return setting("checkrr_report_only") != "1"
+
+
+def checkrr_yours() -> bool:
+    """Someone took the config over (removed Parlor's first line)."""
+    try:
+        return not checkrr_file().read_text().startswith(CHECKRR_MADE)
+    except OSError:
+        return False
+
+
+def checkrr():
+    path = checkrr_file()
+    if not path.parent.is_dir():
+        raise Wait("Checkrr's folder isn't there yet: start the stack again (docker compose up -d)")
+    now = path.read_text() if path.is_file() else ""
+    if now and not now.startswith(CHECKRR_MADE):
+        return "ok", "your own config: Parlor leaves it alone"
+    mine = [a for a in CHECKRR_APPS if ours(a)]
+    if any(not arr.key(a) for a in mine):
+        raise Wait("Sonarr, Radarr and Lidarr haven't all started yet (no API key)")
+    want = checkrr_config([(a, urlsplit(arr.url(a)).hostname, urlsplit(arr.url(a)).port, arr.key(a), arr.APPS[a]["root"]) for a in mine], checkrr_replaces())
+    names = ", ".join(arr.APPS[a]["label"] for a in mine) or "no app of the stack's"
+    what = f"checks films, shows and music every night; {'replaces' if checkrr_replaces() else 'only lists'} broken files ({names})"
+    if want == now:
+        return "ok", what
+    _write_private(path, want)  # Checkrr restarts on the new file within seconds
+    return "done", what
+
+
 # --- running it ----------------------------------------------------------------------------------
 
 def steps(name, password):
@@ -917,6 +996,7 @@ def steps(name, password):
     yield "cleanuparr", "connections", lambda: cleanuparr(name, password)
     yield "cleanuparr", "cleanup jobs", cleanuparr_jobs
     yield "questarr", "connections", lambda: questarr(name, password)
+    yield "checkrr", "config", checkrr
     yield "prowlarr", "indexers", prowlarr_indexers  # last of the *arrs: trying each site can take a minute
     yield "questarr", "indexers", questarr_indexers  # after Prowlarr has them
 
@@ -1217,14 +1297,31 @@ def status():
     for app, label, url, probe in (("qbittorrent", "qBittorrent", qbit(), "/api/v2/app/version"), ("flaresolverr", "FlareSolverr", flaresolverr_url(), "/"),
                                    ("jellyfin", "Jellyfin", jellyfin_url(), "/System/Info/Public"), ("seerr", "Seerr", seerr_url(), "/api/v1/settings/public"),
                                    ("bazarr", "Bazarr", bazarr_url(), "/"), ("cleanuparr", "Cleanuparr", cleanuparr_url(), "/health"),
-                                   ("questarr", "Questarr", questarr_url(), "/api/health")):
+                                   ("questarr", "Questarr", questarr_url(), "/api/health"), ("checkrr", "Checkrr", checkrr_url(), "/api/stats/current")):
         apps.append({"app": app, "label": label, "url": url, "key": bool(keys[app]) if app in keys else None, "probe": probe})
     # Questarr finds games by title through IGDB, with keys only you can get: until it has them it's wired but can't look anything up
     next(a for a in apps if a["app"] == "questarr")["needs"] = "IGDB keys" if keys["questarr"] and not setting("questarr_igdb") else None
     with ThreadPoolExecutor(len(apps)) as pool:  # all at once: a page shouldn't wait 4 s per app that's down
         for a, up in zip(apps, pool.map(lambda a: reachable(a["url"] + a.pop("probe")), apps)):
             a["up"] = up
+    ck = next(a for a in apps if a["app"] == "checkrr")
+    ck.update(scan=checkrr_last_scan() if ck["up"] else None, replaces=checkrr_replaces(), yours=checkrr_yours())
     return apps
+
+
+def checkrr_last_scan() -> Optional[dict]:
+    """The newest finished scan Checkrr remembers (it keeps thirty), or None."""
+    try:
+        past = [x for x in http("GET", checkrr_url() + "/api/stats/historical", timeout=4).json() if re.match(r"\d{4}-", str(x.get("Timestamp")))]
+    except (requests.RequestException, ValueError, AttributeError, TypeError):
+        return None
+    if not past:
+        return None
+    last = max(past, key=lambda x: x["Timestamp"])
+    d = last.get("Data") or {}
+    replaced = sum(int(d.get(f"{a}Submissions") or 0) for a in CHECKRR_APPS)
+    # a file handed to an *arr is counted among the unknown ones too (seen on a real 3.6.1)
+    return {"when": last["Timestamp"], "checked": int(d.get("filesChecked") or 0), "broken": max(int(d.get("unknownFileCount") or 0), replaced), "replaced": replaced}
 
 
 @router.get("")
@@ -1307,7 +1404,27 @@ def questarr_igdb(body: Igdb, user=Depends(admin)):
     return {"ok": True}
 
 
+class Replace(BaseModel):
+    replace: bool
+
+
+@router.post("/checkrr")
+def checkrr_switch(body: Replace, _=Depends(admin)):
+    """Replace what Checkrr finds broken (it has the *arrs delete and search again), or only list it."""
+    if not ours("checkrr") or checkrr_yours():
+        raise HTTPException(409, "Checkrr's config is your own: set process there")
+    was = setting("checkrr_report_only")
+    core.set_setting("checkrr_report_only", "" if body.replace else "1")
+    try:
+        checkrr()
+    except Wait as exc:  # nothing was written: the switch stays where the config is
+        core.set_setting("checkrr_report_only", was or "")
+        raise HTTPException(409, str(exc)) from None
+    return {"replaces": checkrr_replaces()}
+
+
 if __name__ == "__main__" and sys.argv[1:] == ["init"]:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     for line in init_files() or ["nothing to change"]:
         log.info("Parlor setup: %s", line)
+

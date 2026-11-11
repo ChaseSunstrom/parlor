@@ -6,6 +6,7 @@ import re
 import threading
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 from urllib.parse import parse_qs, urlsplit
 
@@ -37,6 +38,7 @@ class FakeStack:
 
     def __init__(self, broken_indexers=(), needs_flaresolverr=(), qbit_open=True, roots=None, indexers=()):
         self.calls = []
+        self.scans = []  # Checkrr's past scans; None: it's down
         self.host = {a: {"id": 1, "authenticationMethod": "none", "authenticationRequired": "enabled", "username": "", "allowedHosts": ""}
                      for a in KEYS}
         self.roots = {a: list((roots or {}).get(a, [])) for a in ("sonarr", "radarr", "lidarr")}
@@ -349,6 +351,16 @@ class FakeStack:
             return Resp(200, {"clients": self.cleanup["clients"]})
         return Resp(404, text="")
 
+    # --- Checkrr (shapes read from a real 3.6.1)
+    def on_checkrr(self, method, path, q, body, headers, form):
+        if self.scans is None:
+            return Resp(502, text="down")
+        if path == "/api/stats/current":
+            return Resp(200, {"running": False, "filesChecked": 0})
+        if path == "/api/stats/historical":
+            return Resp(200, self.scans + [{"Timestamp": "current-stats", "Data": {"filesChecked": 0}}])
+        return Resp(404)
+
     # --- Questarr (shapes read from a real v1.6.0)
     def on_questarr(self, method, path, q, body, headers, form):
         k = self.quest
@@ -406,6 +418,7 @@ def stack_dir():
     for app, k in KEYS.items():
         (root / app).mkdir(parents=True, exist_ok=True)
         (root / app / "config.xml").write_text(f"<Config>\n  <Port>1</Port>\n  <ApiKey>{k}</ApiKey>\n</Config>\n")
+    (root / "checkrr").mkdir(exist_ok=True)  # mounted writable: Parlor writes Checkrr's config
     (root / "bazarr" / "config").mkdir(parents=True, exist_ok=True)
     (root / "bazarr" / "config" / "config.yaml").write_text("analytics:\n  enabled: false\nauth:\n  apikey: " + "B" * 32 + "\n  type: null\n")
     return root
@@ -414,7 +427,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "questarr_key", "questarr_igdb", "questarr_url", "questarr_user", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "checkrr_report_only", "checkrr_url", "questarr_key", "questarr_igdb", "questarr_url", "questarr_user", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),
@@ -793,6 +806,158 @@ class InitFiles(unittest.TestCase):
         text = (root / "qbittorrent" / "config" / "qBittorrent" / "qBittorrent.conf").read_text()
         self.assertIn("AuthSubnetWhitelistEnabled=true", text)
         self.assertIn("Session\\DefaultSavePath=/data/downloads", text)
+
+
+class Checkrr(Base):
+    """Checkrr reads one file, which Parlor writes: the library folders and the stack's own *arrs with their keys."""
+
+    def setUp(self):
+        super().setUp()
+        self.file = stack.checkrr_file()
+        self.file.unlink(missing_ok=True)
+
+    def step(self):
+        return stack.checkrr()
+
+    def test_setup_writes_every_own_arr_with_its_key_and_a_second_run_changes_nothing(self):
+        self.assertEqual(self.step()[0], "done")
+        text = self.file.read_text()
+        self.assertTrue(text.startswith(stack.CHECKRR_MADE + "\n"))
+        for app, port, root in (("sonarr", 8989, "/data/shows"), ("radarr", 7878, "/data/movies"), ("lidarr", 8686, "/data/music")):
+            block = re.search(rf"^  {app}:\n((?:    .*\n|      .*\n)+)", text, re.M)[1]
+            self.assertIn(f'    apikey: "{KEYS[app]}"\n', block)
+            self.assertIn(f"    service: {app}\n    address: {app}\n", block)
+            self.assertIn(f"    port: {port}\n", block)
+            self.assertIn("    process: true\n", block, "a broken file is replaced, as asked")
+            self.assertIn(f"      {root}/: {root}/\n", block, "every container sees the library at the same path")
+            self.assertIn(f"    - {root}/\n", text)
+        self.assertNotIn("prowlarr", text)
+        self.assertNotIn("/data/downloads", text, "never the downloads: half-fetched files would read as broken")
+        self.assertIn("  ffprobe: true\n  ffmpeg-full: false\n  ffmpeg-quick: false\n", text)
+        self.assertIn("  database: /config/checkrr.db\n", text)
+        self.assertEqual(self.file.stat().st_mode & 0o077, 0, "it holds API keys: the apps' user only")
+        stamp = self.file.stat().st_mtime_ns
+        self.assertEqual(self.step()[0], "ok")
+        self.assertEqual(self.file.stat().st_mtime_ns, stamp, "an unchanged file isn't written again: Checkrr restarts on a change")
+
+    def test_only_the_stacks_own_arrs(self):
+        core.set_setting("radarr_url", "http://nas.example.test:7878")
+        self.addCleanup(lambda: core.db().execute("DELETE FROM settings WHERE key = 'radarr_url'"))
+        self.step()
+        text = self.file.read_text()
+        self.assertNotIn("  radarr:", text, "a Radarr of yours elsewhere may see other paths: Checkrr isn't pointed at it")
+        self.assertIn("  sonarr:", text)
+
+    def test_a_config_you_wrote_is_left_alone(self):
+        self.file.write_text("checkrr:\n  cron: '@weekly'\n")
+        self.assertEqual(self.step(), ("ok", "your own config: Parlor leaves it alone"))
+        self.assertEqual(self.file.read_text(), "checkrr:\n  cron: '@weekly'\n")
+
+    def test_a_changed_key_is_written_again(self):
+        self.step()
+        with mock.patch.object(stack.arr, "key", lambda app: "f" * 32):
+            self.assertEqual(self.step()[0], "done")
+        self.assertIn('apikey: "' + "f" * 32, self.file.read_text())
+
+    def test_a_key_with_quotes_or_a_new_line_stays_one_value(self):
+        odd = 'k"\n  radarr:\n    process: true # \\'
+        with mock.patch.object(stack.arr, "key", lambda app: odd):
+            self.step()
+        text = self.file.read_text()
+        self.assertEqual(text.count("    apikey: " + json.dumps(odd) + "\n"), 3)
+        self.assertEqual(len(re.findall(r"^  \w+:$", text, re.M)), 5, "checkpath, stdout and the three *arrs: no block of the key's making")
+
+    def test_it_waits_for_the_arrs_keys_and_for_its_folder(self):
+        with mock.patch.object(stack.arr, "key", lambda app: ""):
+            with self.assertRaises(stack.Wait):
+                self.step()
+        self.assertFalse(self.file.exists())
+        with mock.patch.object(stack, "STACK", TMP / "no-such-stack"):
+            with self.assertRaises(stack.Wait):
+                self.step()
+
+    def test_report_only_turns_replacing_off_everywhere(self):
+        core.set_setting("checkrr_report_only", "1")
+        self.step()
+        text = self.file.read_text()
+        self.assertEqual((text.count("\n    process: false"), text.count("\n    process: true")), (3, 0))
+
+    def test_it_is_a_step_of_setup_after_the_arrs(self):
+        got = self.run_all()
+        self.assertEqual(got[("checkrr", "config")]["status"], "done", got[("checkrr", "config")])
+
+    def test_the_first_start_gets_a_config_checkrr_can_start_on(self):
+        root = TMP / "init-checkrr"
+        stack.init_files(root)
+        made = root / "checkrr" / "config" / "checkrr.yaml"
+        text = made.read_text()
+        self.assertTrue(text.startswith(stack.CHECKRR_MADE))
+        self.assertIn("arr: {}\n", text, "no *arr yet: their keys come with setup")
+        made.write_text("mine")
+        stack.init_files(root)
+        self.assertEqual(made.read_text(), "mine", "never written over")
+
+
+class CheckrrService(Base):
+    """Settings → Services: Checkrr's row says when it last scanned and whether it replaces what it finds."""
+
+    def setUp(self):
+        super().setUp()
+        stack.checkrr_file().unlink(missing_ok=True)
+        with mock.patch.object(stack, "start"):  # a first sign-in would start a real setup in the background
+            self.me = signed_in("admin")
+
+    def row(self):
+        return next(a for a in stack.status() if a["app"] == "checkrr")
+
+    def test_the_row_has_the_last_scan(self):
+        stack.checkrr()
+        self.fake.scans = [{"Timestamp": "2026-11-10T04:00:07Z", "Data": {"filesChecked": 1200, "radarrSubmissions": 1, "sonarrSubmissions": 2, "lidarrSubmissions": 0, "unknownFileCount": 4}},
+                           {"Timestamp": "2026-11-11T04:00:09Z", "Data": {"filesChecked": 1210, "radarrSubmissions": 1, "sonarrSubmissions": 0, "lidarrSubmissions": 0, "unknownFileCount": 2}}]
+        r = self.row()
+        self.assertEqual((r["label"], r["up"], r["key"]), ("Checkrr", True, None))
+        self.assertEqual(r["scan"], {"when": "2026-11-11T04:00:09Z", "checked": 1210, "broken": 2, "replaced": 1})
+        self.assertEqual((r["replaces"], r["yours"]), (True, False))
+
+    def test_no_scan_yet_and_unreachable(self):
+        self.assertIsNone(self.row()["scan"])
+        self.fake.scans = None
+        r = self.row()
+        self.assertEqual((r["up"], r["scan"]), (False, None))
+
+    def test_the_switch_is_for_admins_and_rewrites_the_config(self):
+        stack.checkrr()
+        member = signed_in("member-checkrr")
+        self.assertEqual(member.post("/api/stack/checkrr", json={"replace": False}, headers=H).status_code, 403)
+        r = self.me.post("/api/stack/checkrr", json={"replace": False}, headers=H)
+        self.assertEqual((r.status_code, r.json()["replaces"]), (200, False))
+        self.assertIn("\n    process: false", stack.checkrr_file().read_text())
+        self.assertFalse(self.row()["replaces"])
+        self.assertTrue(self.me.post("/api/stack/checkrr", json={"replace": True}, headers=H).json()["replaces"])
+        self.assertNotIn("\n    process: false", stack.checkrr_file().read_text())
+
+    def test_a_switch_that_cant_be_written_stays_where_it_was(self):
+        stack.checkrr()
+        with mock.patch.object(stack.arr, "key", lambda app: ""):
+            self.assertEqual(self.me.post("/api/stack/checkrr", json={"replace": False}, headers=H).status_code, 409)
+        self.assertTrue(self.row()["replaces"], "the config still replaces, and the row says so")
+
+    def test_the_switch_says_so_when_the_config_is_yours(self):
+        stack.checkrr_file().write_text("checkrr: {}\n")
+        r = self.me.post("/api/stack/checkrr", json={"replace": False}, headers=H)
+        self.assertEqual(r.status_code, 409)
+        self.assertTrue(self.row()["yours"])
+
+    def test_the_compose_runs_it_pinned_and_restarting_on_a_changed_config(self):
+        compose = (Path(__file__).resolve().parent.parent / "docker-compose.yml").read_text()
+        block = re.search(r"^  checkrr:.*\n((?:    .*\n|\n)+)", compose, re.M)[0]
+        self.assertRegex(block, r"image: aetaric/checkrr:3\.6\.1@sha256:[0-9a-f]{64}")
+        self.assertIn('user: "${PUID:-1000}:${PGID:-1000}"', block)
+        self.assertIn("md5sum /config/checkrr.yaml", block)
+        self.assertIn("./checkrr/config:/config", block)
+        self.assertIn("./checkrr/config:/stack/checkrr", compose, "Parlor writes the config there")
+        for kind in ("MOVIES", "SHOWS", "MUSIC"):
+            self.assertIn("${%s:-${DATA:-/data}}" % kind, block)
 
 
 class Api(Base):

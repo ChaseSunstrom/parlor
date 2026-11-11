@@ -14,7 +14,7 @@ YouTube, movies and TV, and your music library, in one self-hosted app with acco
 - **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. **Collections** opens a whole franchise, a studio's films, a network's shows or a theme, and requests everything you're missing in one go. Trailers play in the ad-free player.
 - **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying. New downloads keep YouTube's source audio as it is, with no re-encoding (AAC `.m4a` on a new install; Opus, MP3 320 or MP3 128 in Settings → Music downloads, for an admin). Songs you already have count as there in any format, so changing it fetches nothing again and converts nothing. A video saved as music from YouTube follows the same choice.
 
-One `docker compose` file runs Parlor and the whole stack around it: Sonarr, Radarr, Lidarr, Prowlarr, FlareSolverr, qBittorrent behind a Gluetun VPN, Bazarr, Jellyfin, Seerr, Cleanuparr and Questarr. **Parlor sets them all up itself**: you don't sign in to each app, copy API keys or add indexers.
+One `docker compose` file runs Parlor and the whole stack around it: Sonarr, Radarr, Lidarr, Prowlarr, FlareSolverr, qBittorrent behind a Gluetun VPN, Bazarr, Jellyfin, Seerr, Cleanuparr, Questarr and Checkrr. **Parlor sets them all up itself**: you don't sign in to each app, copy API keys or add indexers.
 
 ## Run it
 
@@ -35,6 +35,7 @@ Open `http://<server>:8800`, create your account, and upload your VPN's WireGuar
 - sets up Seerr through that Jellyfin account, with its libraries, Radarr and Sonarr;
 - connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent;
 - gives Questarr (games) your Parlor name and password as its login, qBittorrent as its download client, Prowlarr's indexers and the games folder (see [Games you ask for](#games-you-ask-for-questarr));
+- gives Checkrr your library folders and the keys of Sonarr, Radarr and Lidarr, so a film, episode or song that no longer plays is fetched again (see [Broken files](#broken-files-checkrr));
 - gives Sonarr, Radarr and Lidarr a **Best available** quality profile (every quality except disc images, raw captures, cinema recordings and WAV; upgrades on, up to 4K remux or lossless), which Seerr's requests and Parlor's music requests use, and has each app search for **better copies once a week** (their RSS sync grabs new ones as they appear). Settings → Services → Download quality switches back to each app's own profile; a profile you pick yourself in Seerr or Lidarr afterwards is left alone. Best available can mean 4K files of 40 GB or more;
 - turns on Cleanuparr's cleaners: downloads that fail to import, stall, crawl (an hour under 20 KB/s) or never get their metadata are removed, blocklisted and **searched for again**; junk and malware files in torrents are blocked (Cleanuparr's own list), and a torrent goes only if all of it is junk; finished torrents are cleared after seeding to ratio 2 or for two weeks (your library keeps its copy). Each is set up once: change or delete it in Cleanuparr and it stays that way.
 
@@ -114,7 +115,7 @@ Parlor is the one app you open. It keeps the sign-in and the accounts, and talks
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/architecture-dark.svg">
-  <img alt="Your browser, phone or TV talks to Parlor, one container with the Library, Requests, Watch and Live, and Games. Parlor plays from Jellyfin, asks Seerr for requests, fetches YouTube, Twitch and Steam itself, and reaches your gaming PC through moonlight-web (optional). Seerr hands requests to Sonarr, Radarr and Lidarr, which look through Prowlarr and FlareSolverr, get subtitles from Bazarr, and download with qBittorrent, whose only way out is the Gluetun VPN; Cleanuparr clears stuck downloads, Questarr does the same finding and downloading for games, and setup makes the config folders once. Downloads are saved to your media folders." src="docs/assets/diagrams/architecture-light.svg">
+  <img alt="Your browser, phone or TV talks to Parlor, one container with the Library, Requests, Watch and Live, and Games. Parlor plays from Jellyfin, asks Seerr for requests, fetches YouTube, Twitch and Steam itself, and reaches your gaming PC through moonlight-web (optional). Seerr hands requests to Sonarr, Radarr and Lidarr, which look through Prowlarr and FlareSolverr, get subtitles from Bazarr, and download with qBittorrent, whose only way out is the Gluetun VPN; Cleanuparr clears stuck downloads, Questarr does the same finding and downloading for games, Checkrr finds files that no longer play and has their app fetch them again, and setup makes the config folders once. Downloads are saved to your media folders." src="docs/assets/diagrams/architecture-light.svg">
 </picture>
 
 Asking for a film shows the whole path. You never leave Parlor, and the film turns up in your Library when it has downloaded:
@@ -342,6 +343,17 @@ An admin adds the set in **Settings → TVs → TV sets**: its type, a name and 
 Questarr has one login, the admin's who ran setup first; another admin gives the keys in Questarr's own Settings. Like the other apps' pages, port 5000 is for your home network only: until setup has run, whoever reaches it first can make its login (setup then says Questarr has its own login), so don't forward it to the internet.
 
 A Questarr of your own elsewhere is left alone. The image is pinned to a version by its digest in `docker-compose.yml`, as the project is young: read its release notes before moving the pin.
+
+### Broken files (Checkrr)
+
+Disks go bad and downloads arrive damaged. [Checkrr](https://github.com/aetaric/checkrr) reads every film, episode and song in `MOVIES`, `SHOWS` and `MUSIC` **every night at 04:00** (your `TZ`) and checks each is still a video or audio file a player can open. A file that isn't is **deleted by the app that owns it (Sonarr, Radarr or Lidarr) and searched for again**, so a fresh copy arrives the usual way. Files it already checked and that haven't changed are skipped, so later nights are quick.
+
+- It looks only at the three library folders, never at downloads in progress, and it can only read them: the deleting is done by the *arr, and only for a file that *arr knows. Anything else it can't read is just listed.
+- Subtitles, pictures, lyrics and other files beside your media are ignored.
+- **Settings → Services** shows the last scan (how many files, how many broken, how many replaced) and links to Checkrr's own page at port 8585, which lists the broken files. That page has no login: like the other apps' pages, keep its port on your home network.
+- **To make it report only**, untick **Replace broken files** there: Checkrr then lists what it finds and deletes nothing. Do this first if your library has unusual formats, and look at what a scan lists before ticking it again. Once it is ticked again, the next scan replaces what was listed.
+
+Parlor writes Checkrr's config (`./checkrr/config/checkrr.yaml`) with the stack's own Sonarr, Radarr and Lidarr; an *arr of yours elsewhere isn't added, as it may see other paths. To change the schedule or anything else, edit that file and delete its first line (`# Made by Parlor…`): Parlor then leaves the file alone, and Checkrr restarts by itself whenever the file changes. A truncated file that still opens is not caught: Checkrr's deeper pass (`ffmpeg-full` in that file) decodes every file end to end and finds those, at the cost of hours of CPU.
 
 ## Music apps (Subsonic)
 

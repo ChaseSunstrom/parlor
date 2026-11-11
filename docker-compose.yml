@@ -63,6 +63,7 @@ services:
       - ./bazarr/config:/stack/bazarr:ro
       - ./seerr/config:/stack/seerr:ro
       - ./gluetun:/stack/gluetun       # the VPN file you upload goes here
+      - ./checkrr/config:/stack/checkrr   # Parlor writes Checkrr's config (the library folders and the *arrs' keys)
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/api/health', timeout=5)"]
       interval: 30s
@@ -241,6 +242,30 @@ services:
       - ${DATA:-/data}:/data
       - ${GAMES:-${DATA:-/data}}:/data${GAMES:+/games}
       - ${DOWNLOADS:-${DATA:-/data}}:/data${DOWNLOADS:+/downloads}
+
+  checkrr:                     # finds films, episodes and songs that won't play; their *arr fetches new copies (README → Broken files)
+    image: aetaric/checkrr:3.6.1@sha256:c817e081e9397c240e5b13b09363fe26c9f94248489d3b4f0279e67495b1f12e
+    user: "${PUID:-1000}:${PGID:-1000}"
+    depends_on:
+      setup:
+        condition: service_completed_successfully   # setup writes the config it starts on
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+    # Checkrr reads its config only at start: this stops it when Parlor (or you) change the file, and Docker starts it
+    # again; docker compose stop reaches Checkrr at once (the trap)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'was=$$(md5sum /config/checkrr.yaml); /checkrr -c /config/checkrr.yaml & pid=$$!; (while [ "$$was" = "$$(md5sum /config/checkrr.yaml)" ]; do sleep 10; done; kill $$pid) & trap "kill $$pid" TERM INT; wait $$pid; wait $$pid'
+    ports: ["8585:8585"]
+    volumes:
+      - ./checkrr/config:/config
+      # read-only: Checkrr only looks; a broken file is deleted by the *arr that owns it
+      - ${DATA:-/data}:/data:ro
+      - ${MOVIES:-${DATA:-/data}}:/data${MOVIES:+/movies}:ro
+      - ${SHOWS:-${DATA:-/data}}:/data${SHOWS:+/shows}:ro
+      - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}:ro
+    restart: unless-stopped
 
   moonlight-web:               # Games → Play from your PC, optional: COMPOSE_PROFILES=games-stream in .env (README → Games)
     image: mrcreativ3001/moonlight-web-stream:v3.0.1   # pinned: it trusts the X-Parlor-User header; check its notes before moving on

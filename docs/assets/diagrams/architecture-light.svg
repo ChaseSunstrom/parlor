@@ -1,142 +1,147 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1605 1162" width="1605" height="1162" role="img" aria-labelledby="t d" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace">
-<title id="t">Parlor and the apps behind it</title><desc id="d">Browser or phone → app.py (HTTPS); TV → app.py (/tv); app.py → Library; app.py → Requests; app.py → Watch and Live; app.py → Games; Library → Jellyfin (plays); Requests → Seerr (asks); Seerr → Sonarr, Radarr, Lidarr; Sonarr, Radarr, Lidarr → Prowlarr + FlareSolverr; Sonarr, Radarr, Lidarr → qBittorrent; Sonarr, Radarr, Lidarr → Bazarr; Cleanuparr → qBittorrent; Questarr → Prowlarr + FlareSolverr; Questarr → qBittorrent; qBittorrent → Gluetun; qBittorrent → Media folders (saves); Games → moonlight-web; app.py → YouTube, Twitch, Steam (fetches)</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1787.8 1162" width="1787.8" height="1162" role="img" aria-labelledby="t d" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace">
+<title id="t">Parlor and the apps behind it</title><desc id="d">Browser or phone → app.py (HTTPS); TV → app.py (/tv); app.py → Library; app.py → Requests; app.py → Watch and Live; app.py → Games; Library → Jellyfin (plays); Requests → Seerr (asks); Seerr → Sonarr, Radarr, Lidarr; Sonarr, Radarr, Lidarr → Prowlarr + FlareSolverr; Sonarr, Radarr, Lidarr → qBittorrent; Sonarr, Radarr, Lidarr → Bazarr; Cleanuparr → qBittorrent; Questarr → Prowlarr + FlareSolverr; Questarr → qBittorrent; qBittorrent → Gluetun; qBittorrent → Media folders (saves); Games → moonlight-web; app.py → YouTube, Twitch, Steam (fetches); Checkrr → Sonarr, Radarr, Lidarr (fetch again)</desc>
 <style>.f{animation:f 1.7s linear infinite}@keyframes f{to{stroke-dashoffset:-17}}@media (prefers-reduced-motion:reduce){.f{animation:none}}</style>
-<rect width="1605" height="1162" rx="10" fill="#F5F4F8"/>
+<rect width="1787.8" height="1162" rx="10" fill="#F5F4F8"/>
 <text x="28" y="42" font-size="16" font-weight="700" fill="#1C1A24">Parlor and the apps behind it</text>
-<rect x="608.1" y="66.5" width="388.7" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
-<rect x="621.6" y="75" width="23.6" height="16" rx="2" fill="#A87D43"/>
-<text x="626.6" y="87" font-size="11" font-weight="700" fill="#1C1A24">01</text>
-<text x="655.3" y="87" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">YOUR DEVICES</text>
-<path d="M607.6 96L997.4 96" fill="none" stroke="#CECDD2" stroke-width="1"/>
-<path d="M604.6 73V63H614.6M990.4 63H1000.4V73M1000.4 158V168H990.4M614.6 168H604.6V158" fill="none" stroke="#A47739" stroke-width="1.5"/>
-<rect x="529.9" y="257.5" width="545.3" height="197" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
-<rect x="543.4" y="266" width="23.6" height="16" rx="2" fill="#1D7444"/>
-<text x="548.4" y="278" font-size="11" font-weight="700" fill="#F5F4F8">02</text>
-<text x="577" y="278" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">PARLOR (ONE CONTAINER)</text>
-<path d="M529.4 287L1075.7 287" fill="none" stroke="#CECDD2" stroke-width="1"/>
-<path d="M526.4 264V254H536.4M1068.7 254H1078.7V264M1078.7 448V458H1068.7M536.4 458H526.4V448" fill="none" stroke="#1D7444" stroke-width="1.5"/>
-<rect x="28.5" y="547.5" width="1266.7" height="395" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
+<rect x="699.5" y="66.5" width="388.7" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
+<rect x="713" y="75" width="23.6" height="16" rx="2" fill="#A87D43"/>
+<text x="718" y="87" font-size="11" font-weight="700" fill="#1C1A24">01</text>
+<text x="746.7" y="87" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">YOUR DEVICES</text>
+<path d="M699 96L1088.8 96" fill="none" stroke="#CECDD2" stroke-width="1"/>
+<path d="M696 73V63H706M1081.8 63H1091.8V73M1091.8 158V168H1081.8M706 168H696V158" fill="none" stroke="#A47739" stroke-width="1.5"/>
+<rect x="621.2" y="257.5" width="545.3" height="197" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
+<rect x="634.7" y="266" width="23.6" height="16" rx="2" fill="#1D7444"/>
+<text x="639.7" y="278" font-size="11" font-weight="700" fill="#F5F4F8">02</text>
+<text x="668.4" y="278" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">PARLOR (ONE CONTAINER)</text>
+<path d="M620.7 287L1167 287" fill="none" stroke="#CECDD2" stroke-width="1"/>
+<path d="M617.7 264V254H627.7M1160 254H1170V264M1170 448V458H1160M627.7 458H617.7V448" fill="none" stroke="#1D7444" stroke-width="1.5"/>
+<rect x="28.5" y="547.5" width="1449.5" height="395" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
 <rect x="42" y="556" width="23.6" height="16" rx="2" fill="#A87D43"/>
 <text x="47" y="568" font-size="11" font-weight="700" fill="#1C1A24">03</text>
 <text x="75.6" y="568" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">THE MEDIA APPS</text>
-<path d="M28 577L1295.7 577" fill="none" stroke="#CECDD2" stroke-width="1"/>
-<path d="M25 554V544H35M1288.7 544H1298.7V554M1298.7 936V946H1288.7M35 946H25V936" fill="none" stroke="#A47739" stroke-width="1.5"/>
-<rect x="1322.2" y="696" width="254.3" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
-<rect x="1335.7" y="704.5" width="23.6" height="16" rx="2" fill="#1D7444"/>
-<text x="1340.7" y="716.5" font-size="11" font-weight="700" fill="#F5F4F8">04</text>
-<text x="1369.3" y="716.5" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">THE INTERNET</text>
-<path d="M1321.7 725.5L1577 725.5" fill="none" stroke="#CECDD2" stroke-width="1"/>
-<path d="M1318.7 702.5V692.5H1328.7M1570 692.5H1580V702.5M1580 787.5V797.5H1570M1328.7 797.5H1318.7V787.5" fill="none" stroke="#1D7444" stroke-width="1.5"/>
-<rect x="661.7" y="1035.5" width="281.6" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
-<rect x="675.2" y="1044" width="23.6" height="16" rx="2" fill="#A87D43"/>
-<text x="680.2" y="1056" font-size="11" font-weight="700" fill="#1C1A24">05</text>
-<text x="708.9" y="1056" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">YOUR DISK</text>
-<path d="M661.2 1065L943.8 1065" fill="none" stroke="#CECDD2" stroke-width="1"/>
-<path d="M658.2 1042V1032H668.2M936.8 1032H946.8V1042M946.8 1127V1137H936.8M668.2 1137H658.2V1127" fill="none" stroke="#A47739" stroke-width="1.5"/>
-<path d="M711.1 149C711.1 221 802.5 221 802.5 293" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M711.1 149C711.1 221 802.5 221 802.5 293" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M802.5 293 L798.5 285 L806.5 285Z" fill="#A47739"/>
-<rect x="736.3" y="212" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="756.8" y="224" font-size="10" text-anchor="middle" fill="#1C1A24">HTTPS</text>
-<path d="M897 149C897 221 802.5 221 802.5 293" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M897 149C897 221 802.5 221 802.5 293" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M802.5 293 L798.5 285 L806.5 285Z" fill="#A47739"/>
-<rect x="835.5" y="212" width="28.6" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="849.8" y="224" font-size="10" text-anchor="middle" fill="#1C1A24">/tv</text>
-<path d="M802.5 340C802.5 366 711.1 366 711.1 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M802.5 340C802.5 366 711.1 366 711.1 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M711.1 392 L707.1 384 L715.1 384Z" fill="#1D7444"/>
-<path d="M802.5 340C802.5 366 831.6 366 831.6 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M802.5 340C802.5 366 831.6 366 831.6 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M831.6 392 L827.6 384 L835.6 384Z" fill="#1D7444"/>
-<path d="M802.5 340C802.5 366 980.2 366 980.2 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M802.5 340C802.5 366 980.2 366 980.2 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M980.2 392 L976.2 384 L984.2 384Z" fill="#1D7444"/>
-<path d="M802.5 340C802.5 366 595.6 366 595.6 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M802.5 340C802.5 366 595.6 366 595.6 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M595.6 392 L591.6 384 L599.6 384Z" fill="#1D7444"/>
-<path d="M711.1 439C711.1 511 650.8 511 650.8 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M711.1 439C711.1 511 650.8 511 650.8 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M28 577L1478.5 577" fill="none" stroke="#CECDD2" stroke-width="1"/>
+<path d="M25 554V544H35M1471.5 544H1481.5V554M1481.5 936V946H1471.5M35 946H25V936" fill="none" stroke="#A47739" stroke-width="1.5"/>
+<rect x="1505" y="696" width="254.3" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
+<rect x="1518.5" y="704.5" width="23.6" height="16" rx="2" fill="#1D7444"/>
+<text x="1523.5" y="716.5" font-size="11" font-weight="700" fill="#F5F4F8">04</text>
+<text x="1552.1" y="716.5" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">THE INTERNET</text>
+<path d="M1504.5 725.5L1759.8 725.5" fill="none" stroke="#CECDD2" stroke-width="1"/>
+<path d="M1501.5 702.5V692.5H1511.5M1752.8 692.5H1762.8V702.5M1762.8 787.5V797.5H1752.8M1511.5 797.5H1501.5V787.5" fill="none" stroke="#1D7444" stroke-width="1.5"/>
+<rect x="753.1" y="1035.5" width="281.6" height="98" rx="6" fill="#ECEBF0" stroke="#CECDD2"/>
+<rect x="766.6" y="1044" width="23.6" height="16" rx="2" fill="#A87D43"/>
+<text x="771.6" y="1056" font-size="11" font-weight="700" fill="#1C1A24">05</text>
+<text x="800.2" y="1056" font-size="11" font-weight="700" letter-spacing=".9" fill="#1C1A24">YOUR DISK</text>
+<path d="M752.6 1065L1035.2 1065" fill="none" stroke="#CECDD2" stroke-width="1"/>
+<path d="M749.6 1042V1032H759.6M1028.2 1032H1038.2V1042M1038.2 1127V1137H1028.2M759.6 1137H749.6V1127" fill="none" stroke="#A47739" stroke-width="1.5"/>
+<path d="M802.5 149C802.5 221 893.9 221 893.9 293" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M802.5 149C802.5 221 893.9 221 893.9 293" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M893.9 293 L889.9 285 L897.9 285Z" fill="#A47739"/>
+<rect x="827.7" y="212" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="848.2" y="224" font-size="10" text-anchor="middle" fill="#1C1A24">HTTPS</text>
+<path d="M988.4 149C988.4 221 893.9 221 893.9 293" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M988.4 149C988.4 221 893.9 221 893.9 293" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M893.9 293 L889.9 285 L897.9 285Z" fill="#A47739"/>
+<rect x="926.8" y="212" width="28.6" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="941.1" y="224" font-size="10" text-anchor="middle" fill="#1C1A24">/tv</text>
+<path d="M893.9 340C893.9 366 802.5 366 802.5 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M893.9 340C893.9 366 802.5 366 802.5 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M802.5 392 L798.5 384 L806.5 384Z" fill="#1D7444"/>
+<path d="M893.9 340C893.9 366 923 366 923 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M893.9 340C893.9 366 923 366 923 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M923 392 L919 384 L927 384Z" fill="#1D7444"/>
+<path d="M893.9 340C893.9 366 1071.6 366 1071.6 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M893.9 340C893.9 366 1071.6 366 1071.6 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M1071.6 392 L1067.6 384 L1075.6 384Z" fill="#1D7444"/>
+<path d="M893.9 340C893.9 366 687 366 687 392" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M893.9 340C893.9 366 687 366 687 392" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M687 392 L683 384 L691 384Z" fill="#1D7444"/>
+<path d="M802.5 439C802.5 511 650.8 511 650.8 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M802.5 439C802.5 511 650.8 511 650.8 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
 <path d="M650.8 583 L646.8 575 L654.8 575Z" fill="#1D7444"/>
-<rect x="660.4" y="502" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="680.9" y="514" font-size="10" text-anchor="middle" fill="#1C1A24">plays</text>
-<path d="M831.6 439C831.6 511 860.8 511 860.8 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M831.6 439C831.6 511 860.8 511 860.8 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<rect x="706.1" y="502" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="726.6" y="514" font-size="10" text-anchor="middle" fill="#1C1A24">plays</text>
+<path d="M923 439C923 511 860.8 511 860.8 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M923 439C923 511 860.8 511 860.8 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
 <path d="M860.8 583 L856.8 575 L864.8 575Z" fill="#1D7444"/>
-<rect x="828.8" y="502" width="34.8" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="846.2" y="514" font-size="10" text-anchor="middle" fill="#1C1A24">asks</text>
-<path d="M860.8 630C860.8 656 661.9 656 661.9 682" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M860.8 630C860.8 656 661.9 656 661.9 682" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M661.9 682 L657.9 674 L665.9 674Z" fill="#A47739"/>
-<path d="M661.9 729C661.9 755 648.2 755 648.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M661.9 729C661.9 755 648.2 755 648.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M648.2 781 L644.2 773 L652.2 773Z" fill="#A47739"/>
-<path d="M661.9 729C661.9 755 845.2 755 845.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M661.9 729C661.9 755 845.2 755 845.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M845.2 781 L841.2 773 L849.2 773Z" fill="#A47739"/>
-<path d="M661.9 729C661.9 755 464.8 755 464.8 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M661.9 729C661.9 755 464.8 755 464.8 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M464.8 781 L460.8 773 L468.8 773Z" fill="#A47739"/>
-<path d="M1057.2 630C1057.2 705.5 845.2 705.5 845.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M1057.2 630C1057.2 705.5 845.2 705.5 845.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M845.2 781 L841.2 773 L849.2 773Z" fill="#A47739"/>
-<path d="M1224.5 630C1224.5 705.5 648.2 705.5 648.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M1224.5 630C1224.5 705.5 648.2 705.5 648.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M648.2 781 L644.2 773 L652.2 773Z" fill="#A47739"/>
-<path d="M1224.5 630C1224.5 705.5 845.2 705.5 845.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M1224.5 630C1224.5 705.5 845.2 705.5 845.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M845.2 781 L841.2 773 L849.2 773Z" fill="#A47739"/>
-<path d="M845.2 828C845.2 854 661.9 854 661.9 880" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M845.2 828C845.2 854 661.9 854 661.9 880" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M661.9 880 L657.9 872 L665.9 872Z" fill="#A47739"/>
-<path d="M845.2 828C845.2 949.5 802.5 949.5 802.5 1071" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M845.2 828C845.2 949.5 802.5 949.5 802.5 1071" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M802.5 1071 L798.5 1063 L806.5 1063Z" fill="#A47739"/>
-<rect x="803.4" y="940.5" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="823.9" y="952.5" font-size="10" text-anchor="middle" fill="#1C1A24">saves</text>
-<path d="M595.6 439C595.6 511 169.3 511 169.3 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M595.6 439C595.6 511 169.3 511 169.3 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<rect x="874.5" y="502" width="34.8" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="891.9" y="514" font-size="10" text-anchor="middle" fill="#1C1A24">asks</text>
+<path d="M860.8 630C860.8 656 753.2 656 753.2 682" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M860.8 630C860.8 656 753.2 656 753.2 682" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M753.2 682 L749.2 674 L757.2 674Z" fill="#A47739"/>
+<path d="M753.2 729C753.2 755 739.6 755 739.6 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M753.2 729C753.2 755 739.6 755 739.6 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M739.6 781 L735.6 773 L743.6 773Z" fill="#A47739"/>
+<path d="M753.2 729C753.2 755 936.6 755 936.6 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M753.2 729C753.2 755 936.6 755 936.6 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M936.6 781 L932.6 773 L940.6 773Z" fill="#A47739"/>
+<path d="M753.2 729C753.2 755 556.2 755 556.2 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M753.2 729C753.2 755 556.2 755 556.2 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M556.2 781 L552.2 773 L560.2 773Z" fill="#A47739"/>
+<path d="M1057.2 630C1057.2 705.5 936.6 705.5 936.6 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M1057.2 630C1057.2 705.5 936.6 705.5 936.6 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M936.6 781 L932.6 773 L940.6 773Z" fill="#A47739"/>
+<path d="M1224.5 630C1224.5 705.5 739.6 705.5 739.6 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M1224.5 630C1224.5 705.5 739.6 705.5 739.6 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M739.6 781 L735.6 773 L743.6 773Z" fill="#A47739"/>
+<path d="M1224.5 630C1224.5 705.5 936.6 705.5 936.6 781" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M1224.5 630C1224.5 705.5 936.6 705.5 936.6 781" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M936.6 781 L932.6 773 L940.6 773Z" fill="#A47739"/>
+<path d="M936.6 828C936.6 854 753.2 854 753.2 880" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M936.6 828C936.6 854 753.2 854 753.2 880" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M753.2 880 L749.2 872 L757.2 872Z" fill="#A47739"/>
+<path d="M936.6 828C936.6 949.5 893.9 949.5 893.9 1071" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M936.6 828C936.6 949.5 893.9 949.5 893.9 1071" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M893.9 1071 L889.9 1063 L897.9 1063Z" fill="#A47739"/>
+<rect x="894.8" y="940.5" width="41" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="915.2" y="952.5" font-size="10" text-anchor="middle" fill="#1C1A24">saves</text>
+<path d="M687 439C687 511 169.3 511 169.3 583" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M687 439C687 511 169.3 511 169.3 583" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
 <path d="M169.3 583 L165.3 575 L173.3 575Z" fill="#1D7444"/>
-<path d="M802.5 340C802.5 535.8 1449.4 535.8 1449.4 731.5" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
-<path class="f" d="M802.5 340C802.5 535.8 1449.4 535.8 1449.4 731.5" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
-<path d="M1449.4 731.5 L1445.4 723.5 L1453.4 723.5Z" fill="#1D7444"/>
-<rect x="1099.2" y="526.8" width="53.4" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
-<text x="1125.9" y="538.8" font-size="10" text-anchor="middle" fill="#1C1A24">fetches</text>
-<rect x="623.6" y="102" width="175" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="639.6" cy="118.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="639.6" cy="118.5" r="3.5" fill="#A47739"/>
-<text x="657.6" y="122" font-size="13" font-weight="600" fill="#1C1A24">Browser or phone</text>
-<text x="657.6" y="137" font-size="11" fill="#696870">installable app</text>
-<rect x="812.6" y="102" width="168.8" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="828.6" cy="118.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="828.6" cy="118.5" r="3.5" fill="#A47739"/>
-<text x="846.6" y="122" font-size="13" font-weight="600" fill="#1C1A24">TV</text>
-<text x="846.6" y="137" font-size="11" fill="#696870">paired with a code</text>
-<rect x="697.7" y="293" width="209.7" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="713.7" cy="309.5" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="713.7" cy="309.5" r="3.5" fill="#1D7444"/>
-<text x="731.7" y="313" font-size="13" font-weight="600" fill="#1C1A24">app.py</text>
-<text x="731.7" y="328" font-size="11" fill="#696870">sign-in, access, one API</text>
-<rect x="545.4" y="392" width="100.6" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="561.4" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="561.4" cy="408.5" r="3.5" fill="#1D7444"/>
-<text x="579.4" y="412" font-size="13" font-weight="600" fill="#1C1A24">Games</text>
-<text x="579.4" y="427" font-size="11" fill="#696870">games.py</text>
-<rect x="659.9" y="392" width="102.4" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="675.9" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="675.9" cy="408.5" r="3.5" fill="#1D7444"/>
-<text x="693.9" y="412" font-size="13" font-weight="600" fill="#1C1A24">Library</text>
-<text x="693.9" y="427" font-size="11" fill="#696870">jf.py</text>
-<rect x="776.3" y="392" width="110.5" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="792.3" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="792.3" cy="408.5" r="3.5" fill="#1D7444"/>
-<text x="810.3" y="412" font-size="13" font-weight="600" fill="#1C1A24">Requests</text>
-<text x="810.3" y="427" font-size="11" fill="#696870">seerr.py</text>
-<rect x="900.8" y="392" width="158.8" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="916.8" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="916.8" cy="408.5" r="3.5" fill="#1D7444"/>
-<text x="934.8" y="412" font-size="13" font-weight="600" fill="#1C1A24">Watch and Live</text>
-<text x="934.8" y="427" font-size="11" fill="#696870">yt.py, live.py</text>
+<path d="M893.9 340C893.9 535.8 1632.1 535.8 1632.1 731.5" fill="none" stroke="#1D7444" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M893.9 340C893.9 535.8 1632.1 535.8 1632.1 731.5" fill="none" stroke="#1D7444" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M1632.1 731.5 L1628.1 723.5 L1636.1 723.5Z" fill="#1D7444"/>
+<rect x="1236.3" y="526.8" width="53.4" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="1263" y="538.8" font-size="10" text-anchor="middle" fill="#1C1A24">fetches</text>
+<path d="M1378.1 630C1378.1 656 753.2 656 753.2 682" fill="none" stroke="#A47739" stroke-opacity=".5" stroke-width="1.5"/>
+<path class="f" d="M1378.1 630C1378.1 656 753.2 656 753.2 682" fill="none" stroke="#A47739" stroke-width="1.5" stroke-dasharray="3 14"/>
+<path d="M753.2 682 L749.2 674 L757.2 674Z" fill="#A47739"/>
+<rect x="1026.6" y="647" width="78.2" height="16" rx="3" fill="#F5F4F8" stroke="#CECDD2"/>
+<text x="1065.7" y="659" font-size="10" text-anchor="middle" fill="#1C1A24">fetch again</text>
+<rect x="715" y="102" width="175" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="731" cy="118.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="731" cy="118.5" r="3.5" fill="#A47739"/>
+<text x="749" y="122" font-size="13" font-weight="600" fill="#1C1A24">Browser or phone</text>
+<text x="749" y="137" font-size="11" fill="#696870">installable app</text>
+<rect x="904" y="102" width="168.8" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="920" cy="118.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="920" cy="118.5" r="3.5" fill="#A47739"/>
+<text x="938" y="122" font-size="13" font-weight="600" fill="#1C1A24">TV</text>
+<text x="938" y="137" font-size="11" fill="#696870">paired with a code</text>
+<rect x="789" y="293" width="209.7" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="805" cy="309.5" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="805" cy="309.5" r="3.5" fill="#1D7444"/>
+<text x="823" y="313" font-size="13" font-weight="600" fill="#1C1A24">app.py</text>
+<text x="823" y="328" font-size="11" fill="#696870">sign-in, access, one API</text>
+<rect x="636.7" y="392" width="100.6" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="652.7" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="652.7" cy="408.5" r="3.5" fill="#1D7444"/>
+<text x="670.7" y="412" font-size="13" font-weight="600" fill="#1C1A24">Games</text>
+<text x="670.7" y="427" font-size="11" fill="#696870">games.py</text>
+<rect x="751.3" y="392" width="102.4" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="767.3" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="767.3" cy="408.5" r="3.5" fill="#1D7444"/>
+<text x="785.3" y="412" font-size="13" font-weight="600" fill="#1C1A24">Library</text>
+<text x="785.3" y="427" font-size="11" fill="#696870">jf.py</text>
+<rect x="867.7" y="392" width="110.5" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="883.7" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="883.7" cy="408.5" r="3.5" fill="#1D7444"/>
+<text x="901.7" y="412" font-size="13" font-weight="600" fill="#1C1A24">Requests</text>
+<text x="901.7" y="427" font-size="11" fill="#696870">seerr.py</text>
+<rect x="992.2" y="392" width="158.8" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="1008.2" cy="408.5" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="1008.2" cy="408.5" r="3.5" fill="#1D7444"/>
+<text x="1026.2" y="412" font-size="13" font-weight="600" fill="#1C1A24">Watch and Live</text>
+<text x="1026.2" y="427" font-size="11" fill="#696870">yt.py, live.py</text>
 <rect x="44" y="583" width="250.6" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
 <circle cx="60" cy="599.5" r="7" fill="#A47739" opacity=".18"/>
 <circle cx="60" cy="599.5" r="3.5" fill="#A47739"/>
@@ -157,31 +162,31 @@
 <circle cx="792.4" cy="599.5" r="3.5" fill="#A47739"/>
 <text x="810.4" y="603" font-size="13" font-weight="600" fill="#1C1A24">Seerr</text>
 <text x="810.4" y="618" font-size="11" fill="#696870">who asked for what</text>
-<rect x="411.1" y="781" width="107.4" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="427.1" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="427.1" cy="797.5" r="3.5" fill="#A47739"/>
-<text x="445.1" y="801" font-size="13" font-weight="600" fill="#1C1A24">Bazarr</text>
-<text x="445.1" y="816" font-size="11" fill="#696870">subtitles</text>
-<rect x="550.2" y="682" width="223.3" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="566.2" cy="698.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="566.2" cy="698.5" r="3.5" fill="#A47739"/>
-<text x="584.2" y="702" font-size="13" font-weight="600" fill="#1C1A24">Sonarr, Radarr, Lidarr</text>
-<text x="584.2" y="717" font-size="11" fill="#696870">find and file</text>
-<rect x="532.5" y="781" width="231.4" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="548.5" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="548.5" cy="797.5" r="3.5" fill="#A47739"/>
-<text x="566.5" y="801" font-size="13" font-weight="600" fill="#1C1A24">Prowlarr + FlareSolverr</text>
-<text x="566.5" y="816" font-size="11" fill="#696870">where to look</text>
-<rect x="777.9" y="781" width="134.7" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="793.9" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="793.9" cy="797.5" r="3.5" fill="#A47739"/>
-<text x="811.9" y="801" font-size="13" font-weight="600" fill="#1C1A24">qBittorrent</text>
-<text x="811.9" y="816" font-size="11" fill="#696870">downloads</text>
-<rect x="553.6" y="880" width="216.5" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="569.6" cy="896.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="569.6" cy="896.5" r="3.5" fill="#A47739"/>
-<text x="587.6" y="900" font-size="13" font-weight="600" fill="#1C1A24">Gluetun</text>
-<text x="587.6" y="915" font-size="11" fill="#696870">the VPN, its only way out</text>
+<rect x="502.5" y="781" width="107.4" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="518.5" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="518.5" cy="797.5" r="3.5" fill="#A47739"/>
+<text x="536.5" y="801" font-size="13" font-weight="600" fill="#1C1A24">Bazarr</text>
+<text x="536.5" y="816" font-size="11" fill="#696870">subtitles</text>
+<rect x="641.6" y="682" width="223.3" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="657.6" cy="698.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="657.6" cy="698.5" r="3.5" fill="#A47739"/>
+<text x="675.6" y="702" font-size="13" font-weight="600" fill="#1C1A24">Sonarr, Radarr, Lidarr</text>
+<text x="675.6" y="717" font-size="11" fill="#696870">find and file</text>
+<rect x="623.9" y="781" width="231.4" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="639.9" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="639.9" cy="797.5" r="3.5" fill="#A47739"/>
+<text x="657.9" y="801" font-size="13" font-weight="600" fill="#1C1A24">Prowlarr + FlareSolverr</text>
+<text x="657.9" y="816" font-size="11" fill="#696870">where to look</text>
+<rect x="869.3" y="781" width="134.7" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="885.3" cy="797.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="885.3" cy="797.5" r="3.5" fill="#A47739"/>
+<text x="903.3" y="801" font-size="13" font-weight="600" fill="#1C1A24">qBittorrent</text>
+<text x="903.3" y="816" font-size="11" fill="#696870">downloads</text>
+<rect x="645" y="880" width="216.5" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="661" cy="896.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="661" cy="896.5" r="3.5" fill="#A47739"/>
+<text x="679" y="900" font-size="13" font-weight="600" fill="#1C1A24">Gluetun</text>
+<text x="679" y="915" font-size="11" fill="#696870">the VPN, its only way out</text>
 <rect x="959.2" y="583" width="196" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
 <circle cx="975.2" cy="599.5" r="7" fill="#A47739" opacity=".18"/>
 <circle cx="975.2" cy="599.5" r="3.5" fill="#A47739"/>
@@ -192,14 +197,19 @@
 <circle cx="1185.2" cy="599.5" r="3.5" fill="#A47739"/>
 <text x="1203.2" y="603" font-size="13" font-weight="600" fill="#1C1A24">Questarr</text>
 <text x="1203.2" y="618" font-size="11" fill="#696870">games</text>
-<rect x="1337.7" y="731.5" width="223.3" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
-<circle cx="1353.7" cy="748" r="7" fill="#1D7444" opacity=".18"/>
-<circle cx="1353.7" cy="748" r="3.5" fill="#1D7444"/>
-<text x="1371.7" y="751.5" font-size="13" font-weight="600" fill="#1C1A24">YouTube, Twitch, Steam</text>
-<text x="1371.7" y="766.5" font-size="11" fill="#696870">fetched through Parlor</text>
-<rect x="677.2" y="1071" width="250.6" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
-<circle cx="693.2" cy="1087.5" r="7" fill="#A47739" opacity=".18"/>
-<circle cx="693.2" cy="1087.5" r="3.5" fill="#A47739"/>
-<text x="711.2" y="1091" font-size="13" font-weight="600" fill="#1C1A24">Media folders</text>
-<text x="711.2" y="1106" font-size="11" fill="#696870">saved here, played by Jellyfin</text>
+<rect x="1293.7" y="583" width="168.8" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="1309.7" cy="599.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="1309.7" cy="599.5" r="3.5" fill="#A47739"/>
+<text x="1327.7" y="603" font-size="13" font-weight="600" fill="#1C1A24">Checkrr</text>
+<text x="1327.7" y="618" font-size="11" fill="#696870">finds broken files</text>
+<rect x="1520.5" y="731.5" width="223.3" height="47" rx="4" fill="#F5F4F8" stroke="#1D7444" stroke-width="1.25"/>
+<circle cx="1536.5" cy="748" r="7" fill="#1D7444" opacity=".18"/>
+<circle cx="1536.5" cy="748" r="3.5" fill="#1D7444"/>
+<text x="1554.5" y="751.5" font-size="13" font-weight="600" fill="#1C1A24">YouTube, Twitch, Steam</text>
+<text x="1554.5" y="766.5" font-size="11" fill="#696870">fetched through Parlor</text>
+<rect x="768.6" y="1071" width="250.6" height="47" rx="4" fill="#F5F4F8" stroke="#A47739" stroke-width="1.25"/>
+<circle cx="784.6" cy="1087.5" r="7" fill="#A47739" opacity=".18"/>
+<circle cx="784.6" cy="1087.5" r="3.5" fill="#A47739"/>
+<text x="802.6" y="1091" font-size="13" font-weight="600" fill="#1C1A24">Media folders</text>
+<text x="802.6" y="1106" font-size="11" fill="#696870">saved here, played by Jellyfin</text>
 </svg>

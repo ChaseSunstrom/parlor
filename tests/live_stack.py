@@ -35,7 +35,7 @@ services:
     build: !reset null
   gluetun:            # the real one; its front door is told "VPN off" below, as there's no VPN file here
     ports: !reset []
-""".replace("{PORT}", str(PORT)) + "".join(f"  {s}:\n    ports: !reset []\n" for s in ("prowlarr", "flaresolverr", "sonarr", "radarr", "lidarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "questarr"))
+""".replace("{PORT}", str(PORT)) + "".join(f"  {s}:\n    ports: !reset []\n" for s in ("prowlarr", "flaresolverr", "sonarr", "radarr", "lidarr", "bazarr", "jellyfin", "seerr", "cleanuparr", "questarr", "checkrr"))
 
 
 def sh(*cmd, check=True):
