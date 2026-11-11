@@ -521,6 +521,47 @@ class AndroidAdb(Case):
             self.assertEqual(self.press(sid, "volup").status_code, 502)
         self.assertLess(time.time() - began, 5)
 
+    def test_leftovers_removing_an_adb_set_disconnects_its_address(self):
+        sid = self.start()
+        self.assertEqual(self.press(sid, "volup").status_code, 200)
+        self.assertEqual(self.admin.delete(f"/api/tv/sets/{sid}", headers=H).status_code, 200)
+        self.assertEqual(self.ran()[-1]["argv"], ["disconnect", "127.0.0.1:5599"])
+
+    def test_leftovers_a_failing_disconnect_never_fails_the_remove(self):
+        for body in ("if sys.argv[1] == 'disconnect':\n    sys.exit(1)\nprint('connected to x')", "import time\ntime.sleep(30)"):
+            sid = self.start(body)
+            with mock.patch.object(tvhw, "TIMEOUT", 0.3):
+                self.assertEqual(self.admin.delete(f"/api/tv/sets/{sid}", headers=H).status_code, 200)
+            self.assertIsNone(core.one("SELECT id FROM tv_sets WHERE id = ?", sid))
+        sid = self.start()
+        with mock.patch.object(tvhw, "ADB", str(TMP / "no-such-adb")):  # adb gone, and the Remove still works
+            self.assertEqual(self.admin.delete(f"/api/tv/sets/{sid}", headers=H).status_code, 200)
+
+
+class Leftovers(Case):
+    """small review leftovers: adb disconnect on Remove, a time limit on the name lookup, a logged failed press"""
+
+    def test_leftovers_a_name_lookup_that_hangs_is_refused_in_seconds(self):
+        stuck = threading.Event()
+        self.addCleanup(stuck.set)
+        with mock.patch("socket.getaddrinfo", lambda *a, **k: stuck.wait(30)), mock.patch.object(tvhw, "RESOLVE_WAIT", 0.3):
+            began = time.time()
+            with self.assertRaises(tvhw.Refused) as e:
+                tvhw.checked_ip("slow.lan")
+        self.assertLess(time.time() - began, 3)
+        self.assertIn("too long", e.exception.detail)
+
+    def test_leftovers_a_failed_press_is_logged_with_the_set_and_never_its_secret(self):
+        sid = self.add("tizen")
+        core.db().execute("UPDATE tv_sets SET secret = 'TOKEN-1234' WHERE id = ?", (sid,))
+        boom = ValueError("wss://127.0.0.1:8002/?token=TOKEN-1234")
+        with mock.patch.dict(tvhw.DRIVERS, {"tizen": mock.Mock(side_effect=boom)}), self.assertLogs("parlor.tvhw", "WARNING") as got:
+            self.assertEqual(self.press(sid, "volup").status_code, 502)
+        text = "\n".join(got.output)
+        self.assertIn(f"TV set {sid} (tizen)", text)
+        self.assertIn("ValueError", text)
+        self.assertNotIn("TOKEN-1234", text)
+
 
 class HdmiCec(Case):
     def start(self, power="on"):

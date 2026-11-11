@@ -46,6 +46,7 @@ PORTS = {"roku": 8060, "webos": 3001, "tizen": 8002, "adb": 5555}  # each protoc
 TLS = True  # LG and Samsung take wss only; the tests' fakes speak plain ws
 TIMEOUT = 5  # seconds a TV has to answer a button
 PAIR_WAIT = 30  # seconds someone has to press Accept on the TV
+RESOLVE_WAIT = 3  # seconds a name has to resolve
 WOL_PORT = 9
 ADB, CEC = "adb", "cec-client"
 MAX_SETS = 50
@@ -71,6 +72,7 @@ Key = Literal["power", "volup", "voldown", "mute", "input", "hdmi1", "hdmi2", "h
 _busy: dict = defaultdict(threading.Lock)  # one press at a time on a set
 _http = requests.Session()
 _http.trust_env = False  # no proxy from the environment between Parlor and a TV
+log = logging.getLogger("parlor.tvhw")
 _quiet = logging.getLogger("parlor.tvhw.ws")
 _quiet.disabled = True  # websockets logs each address it opens at DEBUG, and a Samsung's carries its token
 
@@ -118,6 +120,26 @@ def _dockers():
         return None
 
 
+def _lookup(host: str):
+    """getaddrinfo with a deadline: a resolver that hangs holds a spare thread, not the request"""
+    out: list = []
+
+    def go():
+        try:
+            out.append(socket.getaddrinfo(host, None, type=socket.SOCK_STREAM))
+        except BaseException as e:
+            out.append(e)
+
+    t = threading.Thread(target=go, daemon=True)  # ponytail: a hung lookup's thread lives until the resolver gives up; the press throttle bounds how many
+    t.start()
+    t.join(RESOLVE_WAIT)
+    if not out:
+        raise Refused("Looking up that name took too long: type the TV's number instead (like 192.168.1.40)")
+    if isinstance(out[0], BaseException):
+        raise out[0]
+    return out[0]
+
+
 def checked_ip(host: str) -> str:
     """The one address to connect to for `host`, or Refused. The name is resolved here, once; every address it has
     must be on the LAN's private ranges (so never loopback, link-local, the cloud's metadata address, multicast or
@@ -125,7 +147,7 @@ def checked_ip(host: str) -> str:
     if not HOST.match(host or ""):
         raise Refused("Type the TV's address as a name or a number like 192.168.1.40: no http://, no port")
     try:
-        found = {info[4][0].split("%")[0] for info in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)}
+        found = {info[4][0].split("%")[0] for info in _lookup(host)}
         ips = sorted((ipaddress.ip_address(ip) for ip in found), key=lambda ip: (ip.version, int(ip)))  # IPv4 first
     except (OSError, UnicodeError, ValueError):
         raise Refused("Can't find a TV at that address") from None
@@ -388,8 +410,13 @@ def _run(s, key, call, wait):
     except Off:
         if key == "power" and s["mac"]:
             return _wake(ip, s["mac"])
+        log.warning("TV set %s (%s) didn't answer", s["id"], s["kind"])
         raise Failed() from None
-    except (OSError, WebSocketException, requests.RequestException, subprocess.SubprocessError, ValueError, LookupError, TypeError, AttributeError):
+    except HTTPException as e:  # Failed, Unpaired: already in plain words
+        log.warning("TV set %s (%s) failed: %s", s["id"], s["kind"], e.detail)
+        raise
+    except (OSError, WebSocketException, requests.RequestException, subprocess.SubprocessError, ValueError, LookupError, TypeError, AttributeError) as e:
+        log.warning("TV set %s (%s) failed: %s", s["id"], s["kind"], type(e).__name__)  # the class only: its text can hold a token
         raise Failed() from None
     finally:
         lock.release()
@@ -449,8 +476,14 @@ def add_set(body: NewSet, _=Depends(admin)):
 
 @router.delete("/sets/{sid}")
 def remove_set(sid: int, _=Depends(admin)):
+    s = one("SELECT kind, host FROM tv_sets WHERE id = ?", sid)
     db().execute("DELETE FROM tv_sets WHERE id = ?", (sid,))  # its key or token and who could use it go with it
     _busy.pop(sid, None)
+    if s and s["kind"] == "adb":  # best effort: adb keeps the connection to a TV that's no longer Parlor's
+        try:
+            _tool([ADB, "disconnect", _at(checked_ip(s["host"]), "adb")], NO_ADB, home=_adb_folder())
+        except Exception:
+            log.info("adb disconnect for removed set %s didn't run", sid)
     return {"ok": True}
 
 
