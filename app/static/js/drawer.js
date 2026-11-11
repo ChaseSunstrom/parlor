@@ -192,7 +192,8 @@ function renderJobs() {
 /** the badge counts everything running; Parlor's own downloads also make the page poll quickly */
 function drawCount() {
   const own = jobs.filter((j) => RUNNING.includes(j.status)).length + videoJobs.filter((j) => V_RUNNING.includes(j.status)).length;
-  const all = own + arrJobs.filter((x) => ["downloading", "importing"].includes(x.state)).length;
+  const all = own + arrJobs.filter((x) => ["downloading", "importing"].includes(x.state)).length
+    + (typeof setJobs === "undefined" ? 0 : setJobs.filter((j) => SET_ACTIVE.includes(j.status)).length);
   $("#count").hidden = !all;
   $("#count").textContent = all;
   document.body.classList.toggle("busy", own > 0);

@@ -209,6 +209,11 @@ def title(kind, tmdb_id, user):
             "certification": _cert(d),
             "network": ", ".join(n["name"] for n in (d.get("networks") or [])[:2]) or None,
             "studio": ", ".join(c["name"] for c in (d.get("productionCompanies") or [])[:2]) or None,
+            # whole sets this title belongs to (bulk.py): its film collection, studios, networks and keywords
+            "collection": {"id": d["collection"]["id"], "name": d["collection"].get("name")} if (d.get("collection") or {}).get("id") else None,
+            "studios": [{"id": c["id"], "name": c.get("name")} for c in (d.get("productionCompanies") or [])[:3] if c.get("id")],
+            "networks": [{"id": n["id"], "name": n.get("name")} for n in (d.get("networks") or [])[:3] if n.get("id")],
+            "keywords": [{"id": k["id"], "name": k.get("name")} for k in (d.get("keywords") or [])[:12] if k.get("id")],
             "seasons_count": d.get("numberOfSeasons"),
             "show_status": d.get("status"),
             "cast": cast,
@@ -327,22 +332,28 @@ class MediaRequest(BaseModel):
 
 @router.post("/request")
 def make_request(body: MediaRequest, user=Depends(me)):
-    if body.type not in ("movie", "tv"):
+    return {"ok": True, "status": ask(user, body.type, body.id, body.seasons, body.is4k)}
+
+
+def ask(user, kind, tmdb_id, seasons=None, is4k=False) -> str:
+    """Request one title as this person's Seerr user; what Seerr made of it (pending, approved…). Whole sets come
+    through here too (bulk.py), one title at a time, so the rules are the same."""
+    if kind not in ("movie", "tv"):
         raise HTTPException(422, "type is movie or tv")
-    payload = {"mediaType": body.type, "mediaId": body.id, "is4k": body.is4k}
-    if body.type == "tv":
-        if body.seasons in (None, "all"):
-            d = details("tv", body.id)
+    payload = {"mediaType": kind, "mediaId": tmdb_id, "is4k": is4k}
+    if kind == "tv":
+        if seasons in (None, "all"):
+            d = details("tv", tmdb_id)
             payload["seasons"] = [s["seasonNumber"] for s in d.get("seasons") or [] if s.get("seasonNumber")]
         else:
-            payload["seasons"] = sorted({int(s) for s in body.seasons if int(s) > 0})
+            payload["seasons"] = sorted({int(s) for s in seasons if int(s) > 0})
         if not payload["seasons"]:
             raise HTTPException(422, "Pick at least one season")
     as_user = requester(user)
     r = call("POST", "request", as_user=as_user, json=payload)
-    _details.drop((body.type, body.id))
+    _details.drop((kind, tmdb_id))
     _discover.drop("all")
-    return {"ok": True, "status": REQUEST.get((r or {}).get("status"), "pending")}
+    return REQUEST.get((r or {}).get("status"), "pending")
 
 
 @router.get("/requests")

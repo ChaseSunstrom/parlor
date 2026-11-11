@@ -11,7 +11,7 @@ YouTube, movies and TV, and your music library, in one self-hosted app with acco
 
 - **Library**: play what's in Jellyfin right here: films and shows with resume, next up and watched marks kept in your Jellyfin account, music in a player that keeps going while you look around, audiobooks, and books in a reader.
 - **Watch**: YouTube without ads, in up to 4K. Search, channels, playlists, your subscriptions feed, recommendations, continue watching, watch later and history. Fast downloads with chapters, subtitles and the thumbnail built in, or just the audio, straight into your music library.
-- **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. Trailers play in the ad-free player.
+- **Movies & TV**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. **Collections** opens a whole franchise, a studio's films, a network's shows or a theme, and requests everything you're missing in one go. Trailers play in the ad-free player.
 - **Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying.
 
 One `docker compose` file runs Parlor and the whole stack around it: Sonarr, Radarr, Lidarr, Prowlarr, FlareSolverr, qBittorrent behind a Gluetun VPN, Bazarr, Jellyfin, Seerr and Cleanuparr. **Parlor sets them all up itself**: you don't sign in to each app, copy API keys or add indexers.
@@ -141,6 +141,18 @@ The first account is the admin, created on first visit (nobody can sign in, not 
 Each account has its own subscriptions, history, resume points, watch later and YouTube cookies. Downloads and the music library are shared.
 
 **Seerr users.** Requests go to Seerr as the person's own Seerr user, so Seerr's quotas, permissions and approvals apply. People who sign in with Jellyfin are linked to the Seerr user with the same Jellyfin account by themselves. Everyone else is linked by an admin in Settings → People, which points out a Seerr user with the same name (names alone aren't trusted: with open sign-up anyone could pick one). Members who aren't linked can browse but can't request; an admin who isn't linked requests as the API key's owner.
+
+**Whole collections.** Movies & TV → **Collections** starts from the franchises of the films you already have, then well-known franchises, studios and networks; its search finds any other studio or theme (TMDB's keywords: heist, time travel, a shared universe). A film's page links its collection ("Part of …"), studios and keywords, and a show's its networks. A set's page shows what you have and what's requested, and narrows by year, rating and whether it's out yet. **Request all missing** counts first: it lists exactly what would be requested and what's left out (already in the library, already requested, partly there), and nothing is sent until you confirm. Then Parlor requests the titles one at a time as you, so Seerr's approvals and limits apply to each, and looks at each title again just before asking. One go is at most 250 titles; narrow a bigger set or come back for the rest. The job shows in the **Downloads** drawer and carries on with the tab closed and across a restart. It stops by itself when Seerr's request limit for you is reached, when Seerr stops answering, or when an admin closes Movies & TV to you; **Carry on** picks up where it stopped, and a title that was declined before is left for an admin.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/collections-desktop-dark.png">
+  <img alt="The Collections page: a search for a studio or a theme, a Franchises shelf of posters with the one you own two films of first, then rows of studio and network logos." src="docs/assets/screens/collections-desktop-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screens/request-all-desktop-dark.png">
+  <img alt="Request all missing on a film collection: a dialog asks to request 1 film, lists it, and says 2 are already in your library and 1 is already requested, with Request and Cancel buttons." src="docs/assets/screens/request-all-desktop-light.png">
+</picture>
 
 ### Who can use what
 
@@ -326,6 +338,18 @@ curl -H "X-Api-Key: $KEY" -H "content-type: application/json" -d '{"kind": "lida
 curl -H "X-Api-Key: $KEY" http://your-server:8800/api/v1/jobs/request:12
 ```
 
+Whole sets work with a key too (a key with the search scope can look; requesting needs the full scope):
+
+```sh
+# the Avengers films: what's there, then everything missing, counted first and confirmed with the plan's id
+curl -H "X-Api-Key: $KEY" "http://your-server:8800/api/seerr/sets/collection/86311"
+curl -H "X-Api-Key: $KEY" -H "content-type: application/json" -d '{"kind": "collection", "id": 86311}' http://your-server:8800/api/seerr/sets/plan
+curl -H "X-Api-Key: $KEY" -H "content-type: application/json" -d '{"plan": "the-plan-id-from-above"}' http://your-server:8800/api/seerr/sets/request
+curl -H "X-Api-Key: $KEY" http://your-server:8800/api/seerr/sets/jobs
+```
+
+`kind` there is `collection`, `studio`, `network` or `keyword` (TMDB ids; `/api/seerr/sets/search?q=` finds studios and keywords), and a plan takes `year_from`, `year_to`, `rating`, `released` and, for a keyword, `media` (`movie` or `tv`).
+
 `kind` is one of `youtube_video`, `youtube_audio`, `track`, `album`, `artist`, `playlist` (music-fndr, Spotify ids), `lidarr_album`, `lidarr_artist` (MusicBrainz ids), `movie` and `show` (TMDB ids; `seasons` picks seasons). Sources you can't use are left out of a search, and one that's down is named in `errors` while the rest answer.
 
 ## Settings
@@ -401,7 +425,7 @@ cd app && ../.venv/bin/python -m unittest discover -s ../tests   # unit tests, n
 python3 tests/smoke.py http://127.0.0.1:8800                     # live check against a running Parlor
 ```
 
-- `app/app.py` puts it together. `auth.py` is accounts and settings, `yt.py` is YouTube, `seerr.py` is Seerr, and `core.py` is the database and sessions.
+- `app/app.py` puts it together. `auth.py` is accounts and settings, `yt.py` is YouTube, `seerr.py` is Seerr, `bulk.py` is whole collections through it, and `core.py` is the database and sessions.
 - `app/music.py` is music-fndr's backend, copied by `scripts/vendor-music.sh ../music-fndr`. Change it in music-fndr, then copy it again.
 - `app/static/` is the whole UI, with no build step. `js/music.js` is music-fndr's page code.
 - [DESIGN.md](DESIGN.md) describes the look.

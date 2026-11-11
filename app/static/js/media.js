@@ -84,6 +84,7 @@ async function showMedia(t, [what = "", ...rest]) {
   paint(t, `<div id="spotlight">${spot.length ? spotlight(spot[0]) : ""}</div>
     <div class="wrap">${mediaChips("")}
       <div id="arrShelves"></div>
+      <div id="setShelf"></div>
       ${shelf("Trending this week", pstrip(d.trending), "#/media/more/trending")}
       ${shelf("Popular films", pstrip(d.movies), "#/media/more/movies")}
       ${shelf("Popular shows", pstrip(d.tv), "#/media/more/tv")}
@@ -91,6 +92,7 @@ async function showMedia(t, [what = "", ...rest]) {
       ${shelf("New and upcoming shows", pstrip(d.upcoming_tv), "#/media/more/upcoming_tv")}
     </div>`);
   arrShelves(t);
+  api("/api/seerr/sets").then((s) => { const box = $("#setShelf"); if (box && t === ticket) box.innerHTML = shelf("Franchises", s.franchises.length ? `<div class="pstrip">${s.franchises.slice(0, 18).map(setCard).join("")}</div>` : "", "#/sets"); }, () => {});
   // the spotlight cycles through what's trending
   let i = 0;
   const timer = setInterval(() => {
@@ -161,6 +163,7 @@ async function showTitle(t, kind, [id]) {
   const reqs = x.requests.length ? `<h2>Requests</h2><ul class="lists">${x.requests.map((r) => `<li><div class="blank" style="display:grid;place-items:center">${ICON.film}</div><div>
       <span class="name">${esc(r.by || "Someone")}</span><span class="sub">${esc([r.seasons.length ? `Seasons ${r.seasons.join(", ")}` : "", r.created && since(Date.parse(r.created) / 1000), r.is4k ? "4K" : ""].filter(Boolean).join(" · "))}</span></div>
       <div class="acts">${pill(r.status)}</div></li>`).join("")}</ul>` : "";
+  const sets = [...(x.studios || []).map((a) => ({ ...a, kind: "studio" })), ...(x.networks || []).map((a) => ({ ...a, kind: "network" })), ...(x.keywords || []).map((a) => ({ ...a, kind: "keyword" }))];
   const facts = [x.year, runtime(x.runtime), x.certification, x.seasons_count && plural(x.seasons_count, "season"), x.network || x.studio].filter(Boolean);
   paint(t, hero({
     kind: kind === "tv" ? `TV series${x.show_status ? ` · ${x.show_status}` : ""}` : "Film", title: x.title, backdrop: x.backdrop, image: x.poster, poster: true, tagline: x.tagline,
@@ -168,9 +171,11 @@ async function showTitle(t, kind, [id]) {
     blurb: x.overview, action: actions,
   }) + `<div class="wrap">
       ${x.watch.length ? `<div class="shelf-head"><h2>Streaming on</h2></div><div class="providers">${x.watch.map((p) => `<img src="${esc(p.logo)}" alt="${esc(p.name)}" title="${esc(p.name)}">`).join("")}</div>` : ""}
+      ${x.collection ? `<a class="partof" href="${setHref("collection", x.collection.id)}">${ICON.film}<span>Part of <strong>${esc(x.collection.name)}</strong><small>See every film in it and request the ones you're missing</small></span></a>` : ""}
       ${seasons}${reqs}
       ${x.cast.length ? `<h2>Cast</h2><div class="people">${people(x.cast)}</div>${crew}` : crew}
       ${shelf("If you like this", pstrip(x.recommended))}
+      ${sets.length ? `<div class="shelf-head"><h2>More from</h2></div><nav class="chips wrapped">${setChips(sets)}</nav>` : ""}
     </div>`);
   const boxes = $$("#seasons input:not([disabled])");
   const askBtn = $("#askSeasons");

@@ -37,6 +37,7 @@
 
 <main id="main"></main>
 
+<dialog class="sheet" id="setAsk" aria-label="Request a whole set"></dialog>
 <aside class="queue" id="queue" aria-label="Downloads" inert>
   <div class="queue-head">
     <h2>Downloads</h2>
@@ -49,6 +50,7 @@
   <div class="jobs-scroll">
     <a class="ghost torrents-link" id="torrentsLink" href="#/torrents" hidden>Torrents in qBittorrent</a>
     <h3 id="arrHead" hidden>Films, shows and albums</h3><ul class="jobs" id="arrJobs" hidden></ul>
+    <h3 id="setHead" hidden>Whole sets requested</h3><ul class="jobs" id="setJobs" hidden></ul>
     <h3>Videos</h3><ul class="jobs" id="videoJobs"></ul>
     <h3>Music</h3><ul class="jobs" id="jobs"></ul>
   </div>
@@ -66,6 +68,7 @@
 <script src="js/media.js"></script>
 <script src="js/library.js"></script>
 <script src="js/drawer.js"></script>
+<script src="js/sets.js"></script>
 <script src="js/torrents.js"></script>
 <script src="js/pwa.js"></script>
 <script src="js/offline.js"></script>

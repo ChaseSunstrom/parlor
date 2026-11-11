@@ -5,7 +5,7 @@ const NAV = [
   { key: "home", label: "Home", icon: "home", href: "#/" },
   { key: "library", label: "Library", icon: "shelf", pages: [["Home", "#/jf"], ["Films", "#/jf/movies"], ["Shows", "#/jf/shows"], ["Music", "#/jf/music"], ["Books", "#/jf/books"]] },
   { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Live", "#/live"], ["Recommended", "#/yt/rec"]] },
-  { key: "media", label: "Movies & TV", icon: "film", pages: [["Discover", "#/media"], ["Requests", "#/requests"]] },
+  { key: "media", label: "Movies & TV", icon: "film", pages: [["Discover", "#/media"], ["Collections", "#/sets"], ["Requests", "#/requests"]] },
   { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"], ["Request music", "#/lidarr"]] },
   { key: "games", label: "Games", icon: "pad", pages: [["Home", "#/games"], ["Steam", "#/games/steam"], ["Retro", "#/games/retro"], ["From your PC", "#/games/pc"]] },
   { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],

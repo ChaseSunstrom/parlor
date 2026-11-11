@@ -1,5 +1,5 @@
 """The README's screenshots, made from the running app with made-up demo data and nothing else: Parlor runs here against
-the test stand-ins (a Jellyfin with posters, a Steam, retro games, a TV paired to a phone) and each page is shot at
+the test stand-ins (a Jellyfin with posters, a Steam, retro games, a TV paired to a phone, a Seerr with franchises) and each page is shot at
 desktop (1280 wide) and phone (390 wide) width, dark and light, into docs/assets/screens/NAME-VIEW-SCHEME.png, each
 file kept under the README check's 400 KB budget. No real library, name, address or key is used or shown.
 
@@ -13,19 +13,23 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
 
 import auth
+import bulk
 import core
 import games
 import jf_standin as jfs
 import live_standin  # noqa: F401  (YouTube and Twitch, standing in, for Watch → Live)
+import seerr
 import uvicorn
 from jf_standin import T
 from PIL import Image, ImageDraw, ImageFont
 from playwright.sync_api import sync_playwright
+from seerr_standin import Seerr as SeerrStandin
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "docs" / "assets" / "screens"
@@ -238,6 +242,61 @@ def stock_live():
     live_standin.make_segments("live", ["-loop", "1", "-i", str(picture)])
 
 
+# ---------------------------------------------------------------- Seerr, standing in, for Movies & TV → Collections
+
+LANTERN = ["The Lantern Keeper", "Lantern Light", "The Paper Lantern", "Last Lantern Home", "Lantern: Embers"]
+SETS = {101: "Night Train Collection", 102: "The Salt Road Trilogy", 103: "Glass Meridian Collection", 104: "Copper Bay Collection"}
+STUDIOS = {7: "Harbour", 11: "Tin Lantern", 12: "Kestrel & Co", 13: "Northlight", 14: "Paper Moon"}
+NETWORKS = {9: "Tin Channel", 21: "Gull TV", 22: "Meridian+", 23: "Orchard", 24: "Ferry One"}
+SET_ART: dict = {}  # a picture's path on the image host -> the title drawn on it
+
+
+def stock_sets():
+    """a franchise half in the library with one film requested, more franchises, studios and networks, each with a picture"""
+    fake, real = SeerrStandin(), seerr.requests.request
+    for film, title in zip(fake.collection, LANTERN):
+        film.update(title=title, posterPath=f"/poster-{film['id']}.png")
+        SET_ART[film["posterPath"]] = title
+    fake.status.update({("movie", 1001): 5, ("movie", 1002): 5, ("movie", 1003): 2})
+    SET_ART.update({"/set-100.png": "The Lantern Saga", "/wide-100.png": "The Lantern Saga", **{f"/set-{i}.png": n for i, n in SETS.items()}})
+
+    def answer(method, url, **kw):
+        if "seerr.test" not in url:
+            return real(method, url, **kw)
+        kind, _, sid = url.split("/api/v1/", 1)[1].partition("/")
+        if kind == "collection" and sid.isdigit() and int(sid) in SETS:
+            body = {"id": int(sid), "name": SETS[int(sid)], "posterPath": f"/set-{sid}.png", "parts": []}
+        elif kind in ("studio", "network") and sid.isdigit() and int(sid) in (STUDIOS if kind == "studio" else NETWORKS):
+            body = {"id": int(sid), "name": (STUDIOS if kind == "studio" else NETWORKS)[int(sid)], "logoPath": f"/logo-{kind}-{sid}.png"}
+        else:
+            r = SeerrStandin.__call__(fake, method, url, **kw)
+            if (kind, sid) == ("collection", "100"):
+                r.json().update(posterPath="/set-100.png", backdropPath="/wide-100.png", overview="Five films about a lighthouse keeper and the harbour town that forgot her.")
+            return r
+        return mock.Mock(ok=True, status_code=200, content=b"x", text="", json=lambda: body)
+
+    mock.patch.object(seerr.requests, "request", answer).start()
+    bulk.FRANCHISES, bulk.STUDIOS, bulk.NETWORKS = tuple(SETS), tuple(STUDIOS), tuple(NETWORKS)
+    core.set_setting("seerr_url", "http://seerr.test")
+    core.set_setting("seerr_key", "made-up")
+    core.db().execute("UPDATE users SET seerr_id = 7 WHERE name = 'maya'")
+
+
+def set_picture(route):
+    """what the image host would send: a poster with the title on it, or a studio's wordmark in the theme's ink"""
+    url = route.request.url
+    path = "/" + url.rsplit("/", 1)[1]
+    if path.startswith("/logo-"):
+        kind, sid = path[6:-4].split("-")
+        ink = "#1c1a24" if "1c1a24" in url else "#ffffff"
+        return route.fulfill(content_type="image/svg+xml", body=f"<svg xmlns='http://www.w3.org/2000/svg' width='260' height='60' viewBox='0 0 260 60'><text x='130' y='41' text-anchor='middle' "
+                             f"font-family='Georgia, serif' font-weight='700' font-size='30' letter-spacing='1' fill='{ink}'>{(STUDIOS if kind == 'studio' else NETWORKS)[int(sid)].replace('&', '&amp;')}</text></svg>")
+    wide = path.startswith("/wide-")
+    out = io.BytesIO()
+    art(SET_ART.get(path, ""), 960 if wide else 342, 540 if wide else 513, sum(map(ord, path))).save(out, "PNG")
+    route.fulfill(content_type="image/png", body=out.getvalue())
+
+
 def save_png(data: bytes, dest: Path):
     """the PNG, as small as it goes: lossless first, then fewer colours only if it still won't fit the budget"""
     im = Image.open(io.BytesIO(data)).convert("RGB")
@@ -366,6 +425,12 @@ def main():
             shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
                 "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
                 q.wait_for_timeout(600)))  # the toast fades out in 0.18 s: don't shoot it half gone
+            # Movies & TV → Collections, with Seerr standing in from here on
+            stock_sets()
+            desk.context.route("https://image.tmdb.org/**", set_picture)
+            shoot(desk, "collections", "desktop", "#/sets", ".logogrid + .shelf-head + .logogrid img", tall=1200)
+            shoot(desk, "request-all", "desktop", "#/set/collection/100", "#setGrid .pcard", lambda q: (
+                q.locator("#setAsk[open]").count() or q.click("#askAll"), q.wait_for_selector("#setAsk[open]"), q.wait_for_timeout(600)), tall=900)
             b.close()
     finally:
         server.should_exit = True

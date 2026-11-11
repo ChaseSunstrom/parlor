@@ -158,6 +158,13 @@ CREATE TABLE IF NOT EXISTS twitch_follows (  -- Twitch channels each person foll
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, login TEXT NOT NULL, added REAL NOT NULL,
   PRIMARY KEY (user_id, login)
 );
+CREATE TABLE IF NOT EXISTS bulk_jobs (  -- whole sets requested through Seerr (bulk.py): each title's outcome, written as it goes
+  id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL, set_id INTEGER NOT NULL, name TEXT NOT NULL, created REAL NOT NULL,
+  status TEXT NOT NULL,  -- queued, running, done or stopped
+  note TEXT NOT NULL DEFAULT '',  -- why it stopped
+  titles TEXT NOT NULL  -- JSON list: type, id, title, year, poster, state (waiting, requested, skipped, failed, left), why
+);
 CREATE TABLE IF NOT EXISTS private_shares (
   item_id TEXT NOT NULL REFERENCES private_items(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

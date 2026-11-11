@@ -16,6 +16,7 @@ from pathlib import Path
 import acl
 import api
 import auth
+import bulk
 import core
 import jf
 import library
@@ -100,6 +101,7 @@ app.include_router(acl.router)
 app.include_router(api.router)
 app.include_router(private.router)
 app.include_router(yt.router)
+app.include_router(bulk.router)  # /api/seerr/sets: whole collections, studios, networks and keywords (before seerr's own routes)
 app.include_router(seerr.router)
 app.include_router(stack.router)
 app.include_router(activity.router)
@@ -139,6 +141,7 @@ def start():
     music.start_worker()  # a mounted app's own startup hook doesn't run
     yt.start()
     library.start()  # keeps the music index (for /rest) current
+    bulk.start()  # carries on with whole-set requests a restart interrupted
     musicreq.start()  # follows music requests through Lidarr, YouTube as the fallback
     if stack.on():
         stack.read_keys_from_disk()
