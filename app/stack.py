@@ -29,7 +29,7 @@ from typing import Optional
 from urllib.parse import urlsplit
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 import arr
@@ -856,33 +856,49 @@ def cleanuparr_jobs():
 
 # --- Questarr: games, found through Prowlarr's indexers and fetched by qBittorrent ---------------
 
+QUESTARR_USER = "parlor"
+
+
 def _questarr_token(name, password) -> str:
-    """Signed in to Questarr as its one account, which Parlor makes from your name and password the first time."""
+    """Signed in to Questarr as its one account. Parlor makes that account itself, under a name and a random password of
+    its own, so nobody has to type anything; one that an earlier Parlor made from an admin's name and password still
+    takes theirs."""
     base = questarr_url()
+    own = setting("questarr_password")
     if not need(http("GET", f"{base}/api/auth/status"), "Questarr").json().get("hasUsers"):
-        return need(http("POST", f"{base}/api/auth/setup", json={"username": name, "password": password}), "Questarr").json()["token"]
-    r = http("POST", f"{base}/api/auth/login", json={"username": name, "password": password})
-    if r.status_code == 401:
-        raise Fail(f"Questarr has its own login and doesn't take {name} with your Parlor password")
-    return need(r, "Questarr").json()["token"]
+        if not own:  # saved before Questarr hears it: a setup that breaks off half-way mustn't leave a login nobody knows
+            own = "Pq7" + secrets.token_urlsafe(24)  # (Questarr wants a letter and a digit in it)
+            core.set_setting("questarr_password", own)
+        return need(http("POST", f"{base}/api/auth/setup", json={"username": QUESTARR_USER, "password": own}), "Questarr").json()["token"]
+    for who, pw in ((QUESTARR_USER, own), (name, password)):
+        if who and pw:
+            r = http("POST", f"{base}/api/auth/login", json={"username": who, "password": pw})
+            if r.status_code != 401:
+                return need(r, "Questarr").json()["token"]
+    if not password:
+        raise Wait("Questarr has a login Parlor didn't make: if it's your Parlor name and password, type your password once (Set up again)")
+    raise Fail(f"Questarr has its own login and doesn't take {name} with your Parlor password")
+
+
+def _questarr_own() -> str:
+    """The password of the login Parlor made in Questarr, once Questarr has taken it (a key means it signed in), else ''."""
+    return (ours("questarr") and setting("questarr_key") and setting("questarr_password")) or ""
 
 
 def _questarr(method, path, **kw):
     """Questarr with Parlor's key (it lets a key set download clients, indexers and folders, nothing else)."""
     key = setting("questarr_key")
     if not key:
-        raise Wait("needs your password once: it becomes Questarr's login")
+        raise Wait("needs Questarr connected first")
     r = http(method, questarr_url() + path, headers={"X-Api-Key": key}, **kw)
     if r.status_code == 401:  # its data was started over, or the key was deleted there
         core.db().execute("DELETE FROM settings WHERE key = 'questarr_key'")
-        raise Fail("Questarr no longer takes Parlor's key: set up again with your password")
+        raise Fail("Questarr no longer takes Parlor's key: the next setup run makes a new one")
     return need(r, "Questarr").json()
 
 
 def questarr(name, password):
     if not setting("questarr_key"):
-        if not password:
-            raise Wait("needs your password once: it becomes Questarr's login")
         signed = {"Authorization": f"Bearer {_questarr_token(name, password)}"}
         core.set_setting("questarr_key", need(http("POST", f"{questarr_url()}/api/api-keys", headers=signed, json={"name": "Parlor", "scope": "admin"}), "Questarr").json()["key"])
     changed = []
@@ -1304,6 +1320,7 @@ def status():
                                    ("bazarr", "Bazarr", bazarr_url(), "/"), ("cleanuparr", "Cleanuparr", cleanuparr_url(), "/health"),
                                    ("questarr", "Questarr", questarr_url(), "/api/health"), ("checkrr", "Checkrr", checkrr_url(), "/api/stats/current")):
         apps.append({"app": app, "label": label, "url": url, "key": bool(keys[app]) if app in keys else None, "probe": probe})
+    next(a for a in apps if a["app"] == "questarr")["login"] = bool(_questarr_own())
     with ThreadPoolExecutor(len(apps)) as pool:  # all at once: a page shouldn't wait 4 s per app that's down
         for a, up in zip(apps, pool.map(lambda a: reachable(a["url"] + a.pop("probe")), apps)):
             a["up"] = up
@@ -1370,6 +1387,15 @@ def setup(body: Setup, user=Depends(admin)):
     if body.password:
         _is_theirs(user, body.password)
     return {"started": start(user["name"], body.password or None)}
+
+
+@router.get("/questarr/login")
+def questarr_login(response: Response, _=Depends(admin)):
+    """The login Parlor made in Questarr, for Questarr's own page (an admin can already do there whatever setup can)."""
+    if not _questarr_own():
+        raise HTTPException(404, "Parlor made no login in Questarr")
+    response.headers["Cache-Control"] = "no-store"
+    return {"name": QUESTARR_USER, "password": _questarr_own()}
 
 
 class Replace(BaseModel):

@@ -20,7 +20,7 @@ Once you have an account, Parlor, in the background:
 - finishes Jellyfin's first-run setup with **your name and password** as its admin and adds libraries for movies, shows, music, YouTube downloads and books;
 - sets up Seerr through that Jellyfin account, with its libraries, Radarr and Sonarr;
 - connects Bazarr (subtitles) to Sonarr and Radarr, and Cleanuparr to the *arrs and qBittorrent;
-- gives Questarr (games) your Parlor name and password as its login, qBittorrent as its download client, Prowlarr's indexers and the games folder (see [Games you ask for](games.md#games-you-ask-for-questarr));
+- makes Questarr's (games) login itself, with nothing typed, and gives it qBittorrent as its download client, Prowlarr's indexers and the games folder (see [Games you ask for](games.md#games-you-ask-for-questarr));
 - gives Checkrr your library folders and the keys of Sonarr, Radarr and Lidarr, so a film, episode or song that no longer plays is fetched again (see [Broken files](#broken-files-checkrr));
 - gives Sonarr, Radarr and Lidarr a **Best available** quality profile:
   - it takes every quality except disc images, raw captures, cinema recordings and WAV;

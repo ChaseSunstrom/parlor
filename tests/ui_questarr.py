@@ -62,6 +62,12 @@ with sync_playwright() as pw:
     checks["it asks for no keys: no IGDB, no form"] = "IGDB" not in page.content() and "needs" not in said and page.locator("#igdbForm").count() == 0 and row.locator("input").count() == 0
     checks["the old route for the keys is gone"] = page.evaluate(
         """() => fetch("/api/stack/questarr/igdb", {method: "POST", headers: {"X-Requested-With": "parlor", "Content-Type": "application/json"}, body: "{}"}).then((r) => r.status)""") in (404, 405)
+    checks["nothing waits for a password"] = "Waiting" not in said and "password" not in said
+    row.locator("#questLogin").click()
+    page.wait_for_selector("span#questLogin code")
+    shown = row.locator("#questLogin code").all_inner_texts()
+    checks["an admin can see the login Parlor made in Questarr"] = shown[0] == "parlor" and len(shown[1]) >= 24
+    checks["and the link to Questarr's own page is at port 5000"] = row.locator("a", has_text="its own page").get_attribute("href").endswith(":5000/")
     row.scroll_into_view_if_needed()
     page.screenshot(path=str(OUT / "questarr-row.png"))
     phone = b.new_context(viewport={"width": 390, "height": 844}, color_scheme="light", is_mobile=True, has_touch=True, storage_state=ctx.storage_state()).new_page()
@@ -77,6 +83,6 @@ for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 print("page errors:", errors or "none")
 print(f"screenshots: questarr-row.png, questarr-row-phone.png in {OUT}")
-ok = len(checks) == 4 and all(checks.values()) and not errors
+ok = len(checks) == 7 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

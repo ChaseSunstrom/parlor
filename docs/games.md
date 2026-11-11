@@ -62,7 +62,7 @@ Then run `docker compose up -d`.
 
 [Questarr](https://github.com/Doezer/Questarr) is to games what Radarr is to films: you name a game, it searches the indexers and hands the download to qBittorrent, behind the VPN like everything else.
 
-It runs at port 5000 (`http://your-server:5000`) and always asks for a login: your Parlor name and password, which setup gives it the first time you type your password in **Settings → Services**. Setup also:
+It runs at port 5000 (`http://your-server:5000`) and always asks for a login. Setup makes that login itself, with nothing typed by you: **Settings → Services → Questarr → show its login** shows an admin the name and password. Setup also:
 
 - adds qBittorrent as its download client (category `games`, saved under `DOWNLOADS/games`);
 - has it read Prowlarr's indexers, and again on any later setup run after you add or remove one in Prowlarr;
@@ -85,9 +85,10 @@ Questarr looks every game up at IGDB, which wants keys from a Twitch developer a
 
 ### Login and network
 
-- Questarr has one login, the admin's who ran setup first.
+- Questarr has one login: the name `parlor` with a long random password that Parlor made and keeps with its own data.
+- A Questarr that an earlier Parlor set up keeps the login it got then (the name and password of the admin who ran setup).
 - Like the other apps' pages, port 5000 is for your home network only.
-- Until setup has run, whoever reaches it first can make its login (setup then says Questarr has its own login), so don't forward it to the internet.
+- Until setup has run (it runs by itself when the stack starts), whoever reaches it first can make its login. Setup then waits for your password in case that login is yours, and says so if it isn't; so don't forward the port to the internet.
 
 ### Your own Questarr and the pinned image
 

@@ -64,11 +64,14 @@ async function drawServices(t) {
              ask: a.yours ? "" : `<label class="check svc-ask"><input type="checkbox" id="checkrrReplace"${a.replaces ? " checked" : ""}><span>Replace broken files
                <br><small class="dim">On: a film, episode or song that can't be read is deleted by Sonarr, Radarr or Lidarr and searched for again. Off: it's only listed.</small></span></label>` };
   };
+  // Questarr: its own page, and the login Parlor made for it (nobody typed one)
+  const questarr = (a) => ` · <a href="${esc(/\/\/questarr:5000$/.test(a.url) ? `http://${location.hostname}:5000/` : a.url)}" target="_blank" rel="noopener noreferrer">its own page</a>${a.login ? `
+    · <button type="button" class="linkish" id="questLogin">show its login</button>` : ""}`;
   const row = (a) => {
     const ck = a.app === "checkrr" ? checkrr(a) : null;
     const mine = steps(a.app), worst = ["failed", "skipped", "done", "ok"].find((st) => mine.some((r) => r.status === st));
     return `<li class="svc"><span class="state ${a.up ? "up" : "down"}" title="${a.up ? "Answering" : "Not answering"}"></span>
-      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}${a.app === "qbittorrent" ? ` · <a href="#/torrents">manage torrents</a>` : ""}${ck ? ck.note : ""}</small>
+      <div><strong>${esc(a.label)}</strong><small class="dim">${esc(a.url)}${a.key === false ? " · no API key yet" : ""}${a.app === "qbittorrent" ? ` · <a href="#/torrents">manage torrents</a>` : ""}${ck ? ck.note : ""}${a.app === "questarr" ? questarr(a) : ""}</small>
         ${mine.length ? `<ul class="svc-steps">${mine.map((r) => `<li class="${r.status}"><b>${esc(r.step)}</b> ${esc(r.detail)}</li>`).join("")}</ul>` : ""}
         ${ck ? ck.ask : ""}</div>
       ${worst ? pill(...SETUP_STEP[worst]) : ""}</li>`;
@@ -93,6 +96,8 @@ async function drawServices(t) {
     .then((r) => toast(r.detail.charAt(0).toUpperCase() + r.detail.slice(1)), (err) => toast(err.message)));
   $("#checkrrReplace")?.addEventListener("change", (e) => post("/api/stack/checkrr", { replace: e.target.checked })
     .then((r) => toast(r.replaces ? "Checkrr replaces broken files" : "Checkrr only lists broken files"), (err) => { e.target.checked = !e.target.checked; toast(err.message); }));
+  $("#questLogin")?.addEventListener("click", (e) => api("/api/stack/questarr/login")
+    .then((l) => { e.target.outerHTML = `<span id="questLogin">name <code>${esc(l.name)}</code>, password <code>${esc(l.password)}</code></span>`; }, (err) => toast(err.message)));
   $("#stackForm").addEventListener("submit", (e) => {
     e.preventDefault();
     post("/api/stack/setup", { password: $("#stackPw").value || null }).then(() => { toast("Setting up your apps…"); drawServices(t); }, (err) => toast(err.message));

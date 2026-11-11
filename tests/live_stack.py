@@ -141,8 +141,10 @@ def quest(method, path, body=None, token=None):
 
 image = json.loads(dc("config", "--format", "json").stdout)["services"]["questarr"]["image"]
 checks["Questarr's image is the official one, pinned by digest"] = image.startswith("ghcr.io/doezer/questarr:") and "@sha256:" in image
-token = quest("POST", "/api/auth/login", {"username": NAME, "password": PASSWORD}).get("token")
-checks["Questarr takes your name and password"] = bool(token)
+login = s.get(f"{BASE}/api/stack/questarr/login", timeout=30).json()  # the one Parlor made by itself, as an admin reads it
+token = quest("POST", "/api/auth/login", {"username": login.get("name"), "password": login.get("password")}).get("token")
+checks["Questarr takes the login Parlor made for it (nobody typed one), which Services shows an admin"] = bool(token) and login.get("name") == "parlor"
+checks["and Questarr's login isn't your Parlor name and password"] = not quest("POST", "/api/auth/login", {"username": NAME, "password": PASSWORD}).get("token")
 clients = quest("GET", "/api/downloaders", token=token) if token else []
 qb_ = next((d for d in clients if isinstance(d, dict) and d.get("type") == "qbittorrent"), None)
 checks["Questarr has qBittorrent (behind the VPN's container) as its download client"] = bool(qb_) and qb_["url"] == "http://gluetun" and qb_["category"] == "games"

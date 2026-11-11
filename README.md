@@ -60,7 +60,7 @@ The compose file runs these beside Parlor. Setup connects them once you have an 
 | qBittorrent, Gluetun | Download, only through your VPN | No way out until you upload a WireGuard file |
 | Bazarr | Subtitles | Sonarr and Radarr |
 | Cleanuparr | Clears stuck, failed and junk downloads | The *arrs and qBittorrent, with its cleaners on |
-| Questarr | Games you ask for | Your login, qBittorrent, Prowlarr's indexers. No IGDB keys needed |
+| Questarr | Games you ask for | Its login (made for you; an older install keeps yours), qBittorrent, Prowlarr's indexers. No IGDB keys needed |
 | Checkrr | Finds files that no longer play | Your library folders; the *arr that owns a broken file fetches it again |
 
 More: [The apps around Parlor](docs/stack.md) (what setup does, torrents, the VPN, broken files).

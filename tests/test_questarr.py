@@ -18,10 +18,11 @@ class Wiring(Base):
         return {step: (r["status"], r["detail"]) for (app, step), r in results.items() if app == "questarr"}
 
     def test_wiring_a_fresh_stack_and_a_second_run_changes_nothing(self):
-        first = self.steps(self.run_all())
+        first = self.steps(self.run_all(password=None))  # nothing typed: Parlor makes Questarr's login itself
         self.assertEqual({k: v[0] for k, v in first.items()}, {"connections": "done", "indexers": "done"}, first)
         k = self.fake.quest
-        self.assertEqual(k["user"], ("admin", "correct horse"), "your Parlor name and password are its login")
+        self.assertEqual(k["user"], ("parlor", core.setting("questarr_password")), "a login of Parlor's own")
+        self.assertRegex(k["user"][1], r"^(?=.*[A-Za-z])(?=.*\d)\S{24,}$", "long, random, and what Questarr's password rule takes")
         self.assertEqual(core.setting("questarr_key"), "qsr_0")
         d = k["downloaders"][0]
         self.assertEqual((d["type"], d["url"], d["port"], d["category"], d["downloadPath"], d["enabled"]),
@@ -61,27 +62,43 @@ class Wiring(Base):
         self.assertTrue(stack.worth_retrying(results))
         self.assertFalse(stack.worth_retrying([{**results[0], "app": "prowlarr"}]), "Prowlarr's public sites come and go: not a reason")
 
-    def test_wiring_waits_for_the_password_and_leaves_yours_alone(self):
-        self.assertEqual(self.steps(self.run_all(password=None))["connections"][0], "skipped")
-        self.assertIsNone(self.fake.quest["user"])
-        # a library folder and a download client you set yourself stay
+    def test_wiring_leaves_a_folder_and_a_download_client_of_yours_alone(self):
         k = self.fake.quest
-        k.update(user=("admin", "correct horse"), root="/mnt/games", downloaders=[{"id": "9", "type": "qbittorrent", "url": "http://mine", "port": 1}])
-        got = self.steps(self.run_all())
+        k.update(root="/mnt/games", downloaders=[{"id": "9", "type": "qbittorrent", "url": "http://mine", "port": 1}])
+        got = self.steps(self.run_all(password=None))
         self.assertEqual(got["connections"][0], "ok", got)
         self.assertEqual((k["root"], len(k["downloaders"])), ("/mnt/games", 1))
 
-    def test_wiring_says_when_questarr_has_another_login_or_forgot_the_key(self):
+    def test_wiring_an_older_questarr_whose_login_is_yours_takes_your_password_once(self):
+        self.fake.quest["user"] = ("admin", "correct horse")  # as Parlor's setup made it before it had a login of its own
+        got = self.steps(self.run_all(password=None))["connections"]
+        self.assertEqual(got[0], "skipped")
+        self.assertIn("your password once", got[1])
+        self.assertEqual(self.steps(self.run_all())["connections"][0], "done")
+        self.assertEqual(core.setting("questarr_key"), "qsr_0")
+        self.assertEqual(self.fake.quest["user"], ("admin", "correct horse"), "your login stays as it is")
+        self.assertFalse(core.setting("questarr_password"), "and Parlor has no login of its own to show")
+
+    def test_wiring_says_when_questarr_has_another_login(self):
         self.fake.quest["user"] = ("someone", "else")
         got = self.steps(self.run_all())["connections"]
         self.assertEqual(got[0], "failed")
         self.assertIn("its own login", got[1])
-        self.fake.quest["user"] = ("admin", "correct horse")
+
+    def test_wiring_a_key_questarr_forgot_is_made_again_with_nothing_typed(self):
+        self.run_all(password=None)
+        login = self.fake.quest["user"]
         core.set_setting("questarr_key", "qsr_gone")
         got = self.steps(self.run_all(password=None))["connections"]
         self.assertEqual(got[0], "failed")
-        self.assertIn("password", got[1])
-        self.assertFalse(core.setting("questarr_key"), "the dead key is dropped, so the next run with a password makes a new one")
+        self.assertFalse(core.setting("questarr_key"), "the dead key is dropped")
+        self.assertEqual(self.steps(self.run_all(password=None))["connections"][0], "ok")
+        self.assertEqual((core.setting("questarr_key"), self.fake.quest["user"]), ("qsr_1", login), "a new key, the same login")
+        # Questarr's data started over: the same login is made there again
+        self.fake.quest.update(user=None, keys=[], downloaders=[], root="/data")
+        self.run_all(password=None)
+        self.assertEqual(self.steps(self.run_all(password=None))["connections"][0], "done")
+        self.assertEqual(self.fake.quest["user"], login)
 
     def test_wiring_leaves_a_questarr_of_your_own_alone(self):
         core.set_setting("questarr_url", "http://games.example.test:5000")
@@ -132,3 +149,24 @@ class NoKeys(Base):
         auth.create_user("secondadmin", "another horse", True)
         got = {r["step"]: r["status"] for r in stack.run("secondadmin", "another horse") if r["app"] == "questarr"}
         self.assertEqual(got, {"connections": "ok", "indexers": "ok"}, "it's wired already, under Parlor's key")
+
+    def test_nokeys_an_admin_can_read_the_login_parlor_made_and_nobody_else(self):
+        self.assertEqual(self.me.get("/api/stack/questarr/login").status_code, 404, "before setup there is none")
+        stack.run("questadmin", None)
+        row = next(a for a in self.me.get("/api/stack").json()["apps"] if a["app"] == "questarr")
+        self.assertIs(row["login"], True)
+        r = self.me.get("/api/stack/questarr/login")
+        self.assertEqual(r.json(), {"name": "parlor", "password": core.setting("questarr_password")})
+        self.assertEqual(self.fake.quest["user"], ("parlor", r.json()["password"]))
+        self.assertIn("no-store", r.headers.get("cache-control", ""))
+        self.assertEqual(signed_in("questmember").get("/api/stack/questarr/login").status_code, 403)
+        # a login Questarr never took (someone made its first account while setup ran) isn't shown as its login
+        core.db().execute("DELETE FROM settings WHERE key = 'questarr_key'")
+        self.fake.quest["user"] = ("someone", "else")
+        stack.run("questadmin", None)
+        self.assertIs(next(a for a in self.me.get("/api/stack").json()["apps"] if a["app"] == "questarr")["login"], False)
+        self.assertEqual(self.me.get("/api/stack/questarr/login").status_code, 404)
+        from yeerr_test_env import client
+
+        self.assertEqual(client().get("/api/stack/questarr/login").status_code, 401)
+
