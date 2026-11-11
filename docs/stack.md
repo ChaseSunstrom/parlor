@@ -56,11 +56,11 @@ Once you have an account, Parlor, in the background:
 What the apps are doing, in Parlor:
 
 - **Downloads drawer**: lists what Sonarr, Radarr and Lidarr are fetching beside your videos and songs: progress, time left, and why one is stuck (a download that won't import says so in red).
-- **Request → Films & shows**: opens with *Downloading now* and *Coming up*, the episodes and films due in the next two weeks; each opens its page in Parlor.
+- **Request → Films & shows** (**See all** beside the films on the Request page): opens with *Downloading now* and *Coming up*, the episodes and films due in the next two weeks; each opens its page in Parlor.
 
 ### Request music
 
-**Request → Music** sends albums and artists to Lidarr, since Seerr has no Lidarr support.
+**Request → Music** (**See all** beside Music on the Request page, or search there for an artist or an album) sends albums and artists to Lidarr, since Seerr has no Lidarr support.
 
 - Search, then ask for one album (only it is wanted and searched for, not the artist's whole catalogue) or a whole artist; asking again searches again.
 - Anyone signed in can request, as with Seerr.
@@ -98,7 +98,7 @@ If more than one Spotify album could be it, or none, you pick, and Lidarr keeps 
 
 The stack has no app for books (Readarr is retired upstream), so Parlor fetches them itself:
 
-1. Open **Request → Books**. The rows (read a lot this week, science fiction, mystery) and the search box at the top find books in [Open Library](https://openlibrary.org)'s catalogue. It needs no key.
+1. Open **Request** and press **See all** beside Books, or type a title or an author in the search box. The rows (read a lot this week, science fiction, mystery) and the search box at the top find books in [Open Library](https://openlibrary.org)'s catalogue. It needs no key.
 2. Open a book and press **Request**. The search starts at once, for members too.
 3. Parlor searches your indexers (through Prowlarr) for the title and the author, and hands the release that fits to qBittorrent, behind the VPN like every other download. The request reads **Downloading** and names the release.
 4. When the download is done, Parlor links the book into `/data/books/<Author>/<Title>/` and asks Jellyfin to scan. The request reads **In your library**, and the book is in **Library → Books**.

@@ -122,21 +122,16 @@ document.addEventListener("click", (e) => {
 
 /* ---------- the Watch section's pages ---------- */
 
-function watchHead(active, title, blurb, extra = "") {
+function watchHead(active, title, blurb) {
   const feeds = ["home", "subs", "rec"].includes(active) || active.startsWith("account");
   const account = ME?.youtube_cookies && feeds
     ? `<a href="#/yt/account/subscriptions"${active === "account-subscriptions" ? ' aria-current="page"' : ""}>Your YouTube feed</a>
        <a href="#/yt/account/later"${active === "account-later" ? ' aria-current="page"' : ""}>YouTube watch later</a>` : "";
-  const actions = [account, extra.replace(/^\s*<span class="sep"><\/span>/, "")].filter((x) => x.trim()).join('<span class="sep"></span>');
   return `<section class="home">${aurora}
     <h1>${esc(title)}</h1>${blurb ? `<p>${blurb}</p>` : ""}
-    ${subnav()}${actions ? `<div class="chips page-actions">${actions}</div>` : ""}
+    ${subnav()}${account ? `<div class="chips page-actions">${account}</div>` : ""}
   </section>`;
 }
-const shortsChip = () => `<span class="sep"></span><button data-shorts aria-pressed="${pref("hideShorts")}">Hide Shorts</button>`;
-document.addEventListener("click", (e) => {
-  if (e.target.closest("[data-shorts]")) { setPref("hideShorts", !pref("hideShorts")); keepScroll = true; route(); }
-});
 
 async function showYt(t, [tab = "home", ...rest]) {
   if (tab === "search") return showYtSearch(t, rest.join("/"));
@@ -148,11 +143,12 @@ async function showYt(t, [tab = "home", ...rest]) {
    topic shelves load as they scroll into view. */
 const vstrip = (items) => (items.length ? `<div class="vstrip">${items.map((v) => vcard(v)).join("")}</div>` : "");
 async function ytHome(t) {
-  paint(t, watchHead("home", "For you", "Picked from what you watch, the channels you follow and the topics you like.", shortsChip()) + `<div class="wrap">
-    ${slot("wContinue", "", "")}${slot("wBecause0", "", skeletons(4, "v", "vstrip"))}${slot("wSubs", "", "")}${slot("wBecause1", "", "")}
+  paint(t, watchHead("home", "For you", "Picked from what you watch, the channels you follow and the topics you like.") + `<div class="wrap">
+    ${slot("wContinue", "", "")}${slot("wBecause0", "", skeletons(4, "v", "vstrip"))}${slot("wSubs", "", "")}${slot("wBecause1", "", "")}${slot("wRec", "", "")}
     <div id="wTopics"></div></div>`);
   api("/api/me/history?unfinished=true&limit=16").then((r) => fill(t, "wContinue", shelf("Continue watching", vstrip(r.items), "#/yt/continue")), () => fill(t, "wContinue", ""));
   api("/api/yt/feed?limit=24").then((r) => fill(t, "wSubs", shelf("New from your subscriptions", vstrip(hideShorts(r.items).slice(0, 16)), "#/yt/subs")), () => fill(t, "wSubs", ""));
+  api("/api/yt/recommended").then((r) => fill(t, "wRec", shelf("Recommended", vstrip(hideShorts(r.items).slice(0, 16)), "#/yt/rec")), () => fill(t, "wRec", ""));
   api("/api/me/history?limit=60").then((h) => {
     const seeds = [], channels = new Set(); // your latest videos, one per channel
     for (const v of h.items) if (seeds.length < 2 && !channels.has(v.channel_id || v.id)) { channels.add(v.channel_id || v.id); seeds.push(v); }
@@ -231,11 +227,11 @@ document.addEventListener("submit", (e) => {
 });
 
 async function ytSubs(t) {
-  paint(t, watchHead("subs", "Subscriptions", "The newest videos from the channels you follow, without ads.", shortsChip()) + `<div class="wrap">${skeletons(12)}</div>`);
+  paint(t, watchHead("subs", "Subscriptions", "The newest videos from the channels you follow, without ads.") + `<div class="wrap">${skeletons(12)}</div>`);
   const r = await api("/api/yt/feed");
   const items = hideShorts(r.items);
   const failed = r.failed.length ? `<p class="dim">Couldn't read ${esc(r.failed.slice(0, 3).join(", "))}${r.failed.length > 3 ? ` and ${r.failed.length - 3} more` : ""} just now.</p>` : "";
-  paint(t, watchHead("subs", "Subscriptions", `The newest videos from ${plural(r.channels, "channel")} you follow, without ads.`, shortsChip()) + `<div class="wrap">${failed}${
+  paint(t, watchHead("subs", "Subscriptions", `The newest videos from ${plural(r.channels, "channel")} you follow, without ads.`) + `<div class="wrap">${failed}${
     r.channels ? vgrid(items) || `<div class="empty-state"><strong>Nothing new</strong>Your channels haven't posted lately.</div>`
     : `<div class="empty-state"><strong>You don't follow any channels yet</strong>Search for a channel and press Subscribe, or bring your subscriptions over from YouTube (Google Takeout), NewPipe, FreeTube or Invidious.
         <div class="actions"><a class="primary" href="#/yt/channels">Import subscriptions</a></div></div>`}</div>`);
@@ -245,7 +241,7 @@ async function ytRec(t) {
   paint(t, watchHead("rec", "Recommended", "") + `<div class="wrap">${skeletons(12)}</div>`);
   const r = await api("/api/yt/recommended");
   const blurb = { youtube: "YouTube's picks for your account.", local: "Videos like the ones you've watched, and new ones from the channels you watch most.", none: "" }[r.source];
-  paint(t, watchHead("rec", "Recommended", blurb, shortsChip()) + `<div class="wrap">${vgrid(hideShorts(r.items)) ||
+  paint(t, watchHead("rec", "Recommended", blurb) + `<div class="wrap">${vgrid(hideShorts(r.items)) ||
     `<div class="empty-state"><strong>Nothing to recommend yet</strong>Watch a few videos or subscribe to some channels and this fills up. For YouTube's own recommendations, add your YouTube cookies in <a href="#/settings">Settings</a>.</div>`}</div>`);
 }
 
@@ -383,7 +379,7 @@ async function ytAccount(t, [kind = "subscriptions"]) {
   const title = { subscriptions: "Your YouTube feed", later: "Your YouTube watch later", recommended: "YouTube recommends", history: "Your YouTube history" }[kind] || "YouTube";
   paint(t, watchHead(`account-${kind}`, title, "Straight from your YouTube account.") + `<div class="wrap">${skeletons(12)}</div>`);
   const r = await api(`/api/yt/account/${encodeURIComponent(kind)}`);
-  paint(t, watchHead(`account-${kind}`, title, "Straight from your YouTube account.", shortsChip()) + `<div class="wrap" data-queue="${esc(title)}">${vgrid(hideShorts(r.items)) || `<div class="empty-state"><strong>Empty</strong></div>`}</div>`);
+  paint(t, watchHead(`account-${kind}`, title, "Straight from your YouTube account.") + `<div class="wrap" data-queue="${esc(title)}">${vgrid(hideShorts(r.items)) || `<div class="empty-state"><strong>Empty</strong></div>`}</div>`);
 }
 
 async function showYtSearch(t, q) {

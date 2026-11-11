@@ -48,8 +48,8 @@ while not server.started:
 BASE = f"http://127.0.0.1:{PORT}"
 SHELL = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))), None)
 errors, checks = [], {}
-TARGETS = ["#/jf", "#/jf/movies", "#/jf/shows", "#/jf/music", "#/jf/books", "#/yt/home", "#/yt/subs", "#/yt/rec",
-           "#/music", "#/library", "#/playlists", "#/media", "#/lidarr", "#/gamereq", "#/bookreq", "#/requests"]  # every page of Library, Watch, Music and Request in the menu:
+TARGETS = ["#/jf", "#/jf/movies", "#/jf/shows", "#/jf/music", "#/jf/books", "#/games", "#/yt/home", "#/yt/subs", "#/live",
+           "#/music", "#/library", "#/request", "#/requests"]  # every page of Library, Watch, Music and Request in the menu:
 # a section's own entry first, since the menu lists a section's pages only once it is open
 
 

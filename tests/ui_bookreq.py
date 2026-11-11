@@ -18,9 +18,11 @@ import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the a
 import auth
 import bookreq
 import core
+import gamelookup
 import uvicorn
 from playwright.sync_api import sync_playwright
 from test_bookreq import OpenLibrary, Stack, hit
+from test_gamelookup import NOW, Steam
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="ui-bookreq-"))
 OUT.mkdir(parents=True, exist_ok=True)
@@ -33,7 +35,8 @@ DOWNLOADS, BOOKS = ROOT / "downloads" / "books", ROOT / "books"
 DOWNLOADS.mkdir(parents=True)
 BOOKS.mkdir()
 s, scans = Stack(DOWNLOADS), []
-for obj, name, value in ((bookreq, "ol", OpenLibrary()), (bookreq.arr, "call", s.prowlarr), (bookreq.requests, "get", s.get), (bookreq.qbit, "api", s.qbit),
+for obj, name, value in ((bookreq, "ol", OpenLibrary()), (gamelookup, "steam", Steam()), (gamelookup, "_now", lambda: NOW),  # the one search looks at games too
+                         (bookreq.arr, "call", s.prowlarr), (bookreq.requests, "get", s.get), (bookreq.qbit, "api", s.qbit),
                          (bookreq, "rescan", lambda: scans.append(1)), (bookreq, "DOWNLOADS", DOWNLOADS), (bookreq, "BOOKS", BOOKS)):
     mock.patch.object(obj, name, value).start()
 core.db()
@@ -88,13 +91,16 @@ with sync_playwright() as p:
     reader = someone(b, "reader")
     text = opened(reader, "#/bookreq", ".pcard[data-book]")
     checks["Request → Books shows Open Library's rows, each book with its author"] = all(w in text for w in ("Read a lot this week", "Science fiction", "Mystery", "Pride and Prejudice", "Jane Austen", "Dune"))
-    checks["Books is a page of Request"] = reader.get_attribute("#side a[href='#/bookreq']", "aria-current") == "page" and [
-        t.strip() for t in reader.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Books", "Your requests"]
+    checks["Books is under Request → Browse, with Back"] = reader.get_attribute("#side a:not(.side-head)[href='#/request']", "aria-current") == "page" and reader.locator("#back").is_visible()
     shot(reader, "browse-desk")
     reader.fill("#q", "dune")
     reader.press("#q", "Enter")
+    reader.wait_for_selector("#ask-books .pcard[data-book]", timeout=30000)
+    found = sorted(reader.locator("#ask-books .pcard .t").all_inner_texts())
+    reader.click("#ask-books a.more")
     reader.wait_for_selector(".pgrid .pcard[data-book]", timeout=30000)
-    checks["the search box finds books by title"] = "#/bookreq/search/dune" in reader.url and sorted(reader.locator(".pgrid .pcard .t").all_inner_texts()) == ["Dune", "Dune Messiah"]
+    checks["the search box finds books by title: a row of them, and More opens the books' own list"] = (
+        found == ["Dune", "Dune Messiah"] and "#/bookreq/search/dune" in reader.url and sorted(reader.locator(".pgrid .pcard .t").all_inner_texts()) == ["Dune", "Dune Messiah"])
     text = opened(reader, "#/bookreq/book/OL1W", ".hero [data-ask=book]")
     checks["a book's page: its author, when it came out, what it's about, a link to Open Library"] = all(
         w in text for w in ("Pride and Prejudice", "Jane Austen", "First published 1813", "3,000 editions", "About it.", "Fiction · Love · England", "On Open Library"))
@@ -132,9 +138,9 @@ with sync_playwright() as p:
     text = opened(reader, "#/requests", "#bookReqs .greqs li")
     checks["Your requests lists both under Books, with Open Books on the one that's here"] = ("Books" in reader.inner_text("#bookReqs h2") and reader.locator("#bookReqs .greqs li").count() == 2
                                                                                               and reader.locator("#bookReqs a[href='#/jf/books']").count() == 1)
-    checks["and Books is one of its kinds"] = "Books" in [t.strip() for t in reader.locator("nav[aria-label=Kind] a").all_inner_texts()]
     shot(reader, "requests-desk")
     opened(reader, "#/requests/books", "#bookReqs .greqs li.searching")
+    checks["and the books' own address lists them alone"] = reader.locator("#bookReqs .greqs li").count() == 2 and reader.locator("#gameReqs, #musicReqs, .reqs:not(.greqs)").count() == 0
     reader.click("#bookReqs li.searching [data-greq=cancel]")
     reader.wait_for_function("document.querySelectorAll('#bookReqs .greqs li').length === 1", timeout=30000)
     checks["cancelling takes the request off the list"] = [r["work"] for r in core.rows("SELECT work FROM book_requests")] == ["OL1W"]

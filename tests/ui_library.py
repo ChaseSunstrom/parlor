@@ -89,6 +89,16 @@ with sync_playwright() as p:
         # a film: play, seek, and the place is saved
         page.goto(BASE + "/#/jf/movies")
         page.wait_for_selector(".jgrid .jcard", timeout=30000)
+        # the Sort menu from the keyboard: each arrow changes the list, and the focus stays on the menu for the next one
+        page.focus("select[aria-label='Sort']")
+        page.keyboard.press("ArrowDown")
+        page.wait_for_function("location.hash === '#/jf/movies/DateCreated/all' && document.activeElement?.value === location.hash && document.querySelector('.jgrid .jcard')", timeout=30000)
+        page.keyboard.press("ArrowDown")
+        page.wait_for_function("location.hash === '#/jf/movies/ProductionYear/all' && document.activeElement?.value === location.hash && document.querySelector('.jgrid .jcard')", timeout=30000)
+        checks["Sort is a menu that works from the keyboard and keeps the focus"] = page.locator("main nav.chips:visible").count() == 0
+        page.goto(BASE + "/#/jf/movies/Nonsense/nope")
+        page.wait_for_selector(".jgrid .jcard", timeout=30000)
+        checks["an order or filter there isn't falls back to A–Z, All"] = page.eval_on_selector_all("select[data-go]", "els => els.map(e => e.selectedOptions[0].textContent)") == ["A–Z", "All"]
         page.click(".jcard a.t:has-text('Night Train')")
         page.wait_for_selector(".hero .primary", timeout=30000)
         settle(page)
@@ -196,6 +206,6 @@ print("page errors:", errors or "none")
 print("failed requests:", missing or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == 13 and all(checks.values()) and not errors and len(shots) == 9
+ok = len(checks) == 15 and all(checks.values()) and not errors and len(shots) == 9
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

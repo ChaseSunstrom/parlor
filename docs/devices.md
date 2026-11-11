@@ -44,7 +44,7 @@ Every song's and album's **⋯** has **Play next** and **Add to queue**. The que
 These keep a copy in the browser's own storage on that device:
 
 - **Music**: **⋯ → Save on this device** on an album or a song (yours from Jellyfin, or from your music folder).
-- **Downloaded video**: the save button on a downloaded video (Watch → Downloaded).
+- **Downloaded video**: the save button on a downloaded video (You → Downloaded).
 - **Jellyfin film or episode**: **Save on this device**, one at a time, not a whole season.
 
 With no network, or away from home without a way in, Parlor still opens: on **Saved for offline** (You → Saved for offline).

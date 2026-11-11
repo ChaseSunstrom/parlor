@@ -252,7 +252,8 @@ SET_ART: dict = {}  # a picture's path on the image host -> the title drawn on i
 
 
 def stock_sets():
-    """a franchise half in the library with one film requested, more franchises, studios and networks, each with a picture"""
+    """a franchise half in the library with one film requested, more franchises, studios and networks, each with a picture;
+    Seerr's own rows and its search answer with the franchise's five films"""
     fake, real = SeerrStandin(), seerr.requests.request
     for film, title in zip(fake.collection, LANTERN):
         film.update(title=title, posterPath=f"/poster-{film['id']}.png")
@@ -264,7 +265,10 @@ def stock_sets():
         if "seerr.test" not in url:
             return real(method, url, **kw)
         kind, _, sid = url.split("/api/v1/", 1)[1].partition("/")
-        if kind == "collection" and sid.isdigit() and int(sid) in SETS:
+        if kind.split("?")[0] == "search" or kind == "discover" and not {"studio", "network", "keywords"} & set(kw.get("params") or {}):
+            body = {"page": 1, "totalPages": 1, "totalResults": 5, "results": [{**film, "mediaType": "movie", "backdropPath": "/wide-100.png", "releaseDate": film["releaseDate"].replace("2999", "2027")}  # the stand-in's far-off film: next year's
+                                                                                 for film in fake.collection]}
+        elif kind == "collection" and sid.isdigit() and int(sid) in SETS:
             body = {"id": int(sid), "name": SETS[int(sid)], "posterPath": f"/set-{sid}.png", "parts": []}
         elif kind in ("studio", "network") and sid.isdigit() and int(sid) in (STUDIOS if kind == "studio" else NETWORKS):
             body = {"id": int(sid), "name": (STUDIOS if kind == "studio" else NETWORKS)[int(sid)], "logoPath": f"/logo-{kind}-{sid}.png"}
@@ -326,7 +330,8 @@ def stock_book_requests():
     import bookreq
 
     work = lambda i: {"key": f"/works/OL{i + 1}W", "title": SHELF[i][0], "author_name": [SHELF[i][1]], "cover_i": i + 1, "first_publish_year": SHELF[i][2]}  # noqa: E731
-    mock.patch.object(bookreq, "ol", lambda path, **kw: {"works": [work(i) for i in range(len(SHELF)) if i % 3 == BOOK_ROWS.index(path)]}).start()
+    row = lambda n: [work(i) for i in range(len(SHELF)) if i % 3 == n]  # noqa: E731
+    mock.patch.object(bookreq, "ol", lambda path, **kw: {"docs": row(0)} if path == "/search.json" else {"works": row(BOOK_ROWS.index(path))}).start()
     for i, state in ((3, "downloading"), (4, "available")):
         core.db().execute("INSERT INTO book_requests(user_id, work, title, author, state, created, updated, next_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)",
                           (f"OL{i + 1}W", *SHELF[i][:2], state, time.time(), time.time(), time.time() + 9e9))
@@ -413,7 +418,7 @@ def main():
             b = pw.chromium.launch(executable_path=str(shell) if shell else None, args=["--autoplay-policy=no-user-gesture-required"])
             desk, phone = signed_in(b, "desktop"), signed_in(b, "phone")
             # Steam: an admin's key, then this person's profile
-            desk.goto(base + "/#/games")
+            desk.goto(base + "/#/games/steam")
             desk.wait_for_selector("#steamKey", timeout=20000)
             desk.fill("#steamKeyIn", KEY)
             desk.click("#steamKey .primary")
@@ -490,6 +495,8 @@ def main():
             shoot(desk, "collections", "desktop", "#/sets", ".logogrid + .shelf-head + .logogrid img", tall=1200)
             shoot(desk, "request-all", "desktop", "#/set/collection/100", "#setGrid .pcard", lambda q: (
                 q.locator("#setAsk[open]").count() or q.click("#askAll"), q.wait_for_selector("#setAsk[open]"), q.wait_for_timeout(600)), tall=900)
+            # Request: everything you can ask for on one page
+            shoot(desk, "request", "desktop", "#/request", "#ask-books .pcard[data-book] img", lambda q: q.wait_for_selector("#ask-films .pcard img"), tall=1180)
             b.close()
     finally:
         server.should_exit = True

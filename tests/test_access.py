@@ -42,6 +42,7 @@ class Routes(unittest.TestCase):
     def test_rules(self):
         cases = {"/sw.js": acl.OPEN, "/api/yt/search": ("watch",), "/api/yt/downloads": ("watch", "downloads"), "/api/me/later": ("watch",),
                  "/api/seerr/discover": ("media",), "/api/arr/queue": ("media",), "/api/arr/music/search": ("music",),
+                 "/api/arr/apps": acl.EVERYONE,  # which apps are connected: Music asks it too, with Films & shows closed
                  "/api/jf/items": ("library",), "/api/jf/music/a.mp3": ("music",), "/rest/ping.view": ("music",),
                  "/music/api/downloads": ("music", "downloads"), "/music/api/import": ("music", "downloads"),
                  "/music/api/playlists/abc/sync": ("music", "downloads"), "/music/api/playlists/abc": ("music",),

@@ -2,7 +2,7 @@
 
 [← Parlor's README](../README.md)
 
-**Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying.
+**Music**: all of [music-fndr](https://github.com/ChaseSunstrom/music-fndr). Browse Spotify and download songs, albums, playlists and whole discographies into your music folder, with synced playlists and library tidying. **Music → Your library** has what you downloaded, a **Playlists** button and the tidying.
 
 - **Audio format**: new downloads keep YouTube's source audio as it is, with no re-encoding (AAC `.m4a` on a new install; Opus, MP3 320 or MP3 128 in Settings → Music downloads, for an admin).
 - **Changing it**: songs you already have count as there in any format, so changing it fetches nothing again and converts nothing.

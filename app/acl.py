@@ -25,7 +25,7 @@ RULES = [
     ("/api/me/youtube-cookies", ("watch",)),
     ("/api/private", ("watch", "downloads")),  # private items are Parlor's own downloads, YouTube's for now
     ("/api/seerr/users", ADMIN), ("/api/seerr/", ("media",)),
-    ("/api/arr/music/", ("music",)), ("/api/arr/", ("media",)),
+    ("/api/arr/music/", ("music",)), ("/api/arr/apps", EVERYONE), ("/api/arr/", ("media",)),  # apps: only which ones are connected; Music's pages ask too
     ("/api/jf/music/", ("music",)), ("/api/jf/", ("library",)),
     ("/api/books/", ("library",)),  # asking for books (bookreq.py): they land in the Library's Books
     ("/api/games/settings", ADMIN), ("/api/games/", ("games",)), ("/games/stream", ("games",)),  # a gaming PC (games.py)

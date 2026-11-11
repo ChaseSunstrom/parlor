@@ -58,9 +58,18 @@ function jcard(x, { wide = false, play = false } = {}) {
 }
 const jstrip = (items, opts) => (items?.length ? `<div class="jstrip${opts?.wide ? " wide" : ""}">${items.map((x) => jcard(x, opts)).join("")}</div>` : "");
 const jgrid = (items) => items.map((x) => jcard(x)).join("");
-const libChips = (on) => `<nav class="chips">${[["", "Home"], ["movies", "Films"], ["shows", "Shows"], ["music", "Music"], ["artists", "Artists"], ["books", "Books"]]
-  .map(([k, label]) => `<a href="#/jf${k ? "/" + k : ""}"${k === on ? ' aria-current="page"' : ""}>${label}</a>`).join("")}${
-  closedTo("games") ? "" : `<a href="#/games"${on === "games" ? ' aria-current="page"' : ""}>Games</a>`}</nav>`;
+/** a choice that opens another address: one small menu where a row of tabs would be */
+const pick = (label, options, now) => `<label class="pick"><span>${label}</span><select data-go aria-label="${label}">${
+  options.map(([href, text]) => `<option value="${esc(href)}"${href === now ? " selected" : ""}>${esc(text)}</option>`).join("")}</select></label>`;
+document.addEventListener("change", (e) => {
+  const s = e.target.closest("select[data-go]");
+  if (!s) return;
+  go(s.value);
+  // the page is drawn again with a new menu: the arrow keys change a closed menu, so the focus goes back on it
+  const o = new MutationObserver(() => { if (document.activeElement === document.body) $(`select[aria-label="${s.getAttribute("aria-label")}"]`)?.focus(); });
+  o.observe(stage, { childList: true });
+  setTimeout(() => o.disconnect(), 4000);
+});
 
 /* ---------- home: carry on, then what's new in each library ---------- */
 
@@ -74,7 +83,7 @@ async function showJfHome(t) {
   const upNext = next.filter((x) => !nextIds.has(x.id));
   paint(t, `<section class="home">${aurora}<h1>Library</h1>
       <p>Everything in Jellyfin, played right here${jfStatus?.user ? `, as ${esc(jfStatus.user.name)} in Jellyfin` : ""}: where you stop is where you start, on any device.</p>
-      ${libChips("")}</section>
+      ${subnav()}</section>
     <div class="wrap">
       ${shelf("Continue watching", jstrip(resume, { wide: true }))}
       ${shelf("Next up", jstrip(upNext, { wide: true }))}
@@ -87,19 +96,23 @@ async function showJfHome(t) {
 
 /* ---------- a whole library, or every film / show / album / book ---------- */
 
-async function showJfBrowse(t, { title, blurb, query, base, chip }, [sort = "SortName", filter = "all"]) {
+async function showJfBrowse(t, { title, blurb, query, base, chip }, [sort, filter]) {
+  if (!JF_SORTS.some(([k]) => k === sort)) sort = "SortName";  // an address with an order or a filter there isn't: the usual one
+  if (!JF_FILTERS.some(([k]) => k === filter)) filter = "all";
   const order = ["DateCreated", "ProductionYear", "CommunityRating"].includes(sort) ? "Descending" : "Ascending";
   const url = (start) => `/api/jf/items?${query}&sort=${encodeURIComponent(sort)}&order=${order}&start=${start}&limit=${PAGE}`
     + (filter !== "all" ? `&filters=${encodeURIComponent(filter)}` : "");
   const r = await api(url(0));
   if (t !== ticket) return;
-  const link = (s, f) => esc(`${base}/${s}/${f}`);
+  const link = (s, f) => `${base}/${s}/${f}`;
+  const by = { music: ["#/jf/music", "#/jf/artists"], artists: ["#/jf/music", "#/jf/artists"] }[chip];  // the music, by album or by artist
   paint(t, `<section class="home">${aurora}<h1>${esc(title)}</h1><p>${esc(blurb)} ${r.total ? `${compact.format(r.total)} in all.` : ""}</p>
-      ${chip !== undefined ? libChips(chip) : ""}
-      <nav class="chips">${JF_SORTS.map(([k, label]) => `<a href="${link(k, filter)}"${k === sort ? ' aria-current="page"' : ""}>${label}</a>`).join("")}
-        <span class="sep"></span>${JF_FILTERS.map(([k, label]) => `<a href="${link(sort, k)}"${k === filter ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav></section>
+      ${chip !== undefined ? subnav() : ""}
+      <div class="picks">${by ? pick("By", [[by[0], "Album"], [by[1], "Artist"]], by[+(chip === "artists")]) : ""}
+        ${pick("Sort", JF_SORTS.map(([k, label]) => [link(k, filter), label]), link(sort, filter))}
+        ${pick("Show", JF_FILTERS.map(([k, label]) => [link(sort, k), label]), link(sort, filter))}</div></section>
     <div class="wrap">${r.items.length ? `<div class="jgrid" id="jfMore">${jgrid(r.items)}</div><div class="sentinel" id="jfSentinel">${r.total > PAGE ? SPIN : ""}</div>`
-      : `<div class="empty-state"><strong>Nothing here</strong>${filter !== "all" ? `Try <a href="${link(sort, "all")}">All</a>.` : "Jellyfin hasn't found anything for this yet."}</div>`}</div>`);
+      : `<div class="empty-state"><strong>Nothing here</strong>${filter !== "all" ? `Try <a href="${esc(link(sort, "all"))}">All</a>.` : "Jellyfin hasn't found anything for this yet."}</div>`}</div>`);
   let start = r.items.length, busy = false;
   if (start >= r.total) return;
   const io = new IntersectionObserver(async ([e]) => { // the next page as you reach the bottom

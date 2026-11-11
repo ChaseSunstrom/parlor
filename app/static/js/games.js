@@ -49,10 +49,10 @@ async function showGames(t, [part] = []) {
           <input id="steamKeyIn" maxlength="40" autocomplete="off" spellcheck="false" placeholder="32 letters and digits" required></label><button class="primary small">Save</button></form>
           <p class="dim">The key stays on this server; nobody's browser sees it.</p>`;
     if (steam.error) return `<p class="note-inline">${esc(steam.error)}</p>${ME.admin && steam.status === 502 ? keyForm : ""}<button class="ghost" data-unlink>Unlink Steam</button>`;
-    if (!steam.linked) {
-      return `${!info.steam_key_set ? (ME.admin ? keyForm : `<p class="dim">An admin adds a Steam Web API key here first.</p>`) : ""}
+    if (!steam.linked) {  // not linked: a line to open, under the games there are; Steam's own page has it open
+      return `<details class="gsetup"${part === "steam" ? " open" : ""}><summary>Show the games you own on Steam here</summary>${!info.steam_key_set ? (ME.admin ? keyForm : `<p class="dim">An admin adds a Steam Web API key here first.</p>`) : ""}
         <form class="actions" id="steamLink"><label class="field grow"><span>Your Steam profile</span><input id="steamProfile" maxlength="200" autocomplete="off"
-          placeholder="steamcommunity.com/id/yourname, or its 17-digit id" required></label><button class="primary small">Link</button></form>`;
+          placeholder="steamcommunity.com/id/yourname, or its 17-digit id" required></label><button class="primary small">Link</button></form></details>`;
     }
     if (steam.private) return `<p class="note-inline">${esc(steam.note)}</p><button class="ghost" data-unlink>Unlink ${esc(steam.profile.name || "Steam")}</button>`;
     const all = part === "steam" ? steam.games : steam.games.slice(0, 12);
@@ -73,18 +73,18 @@ async function showGames(t, [part] = []) {
         : `<p class="dim">The first time: add your PC by its address, then type the PIN it shows into Sunshine's page on the PC (Sunshine → PIN).</p>
            <a class="primary" href="/games/stream/">${ICON.play}Open</a>`}</div></div>`;
   const sections = { steam: ["Steam", steamHtml], retro: ["Retro", retroHtml], pc: ["From your PC", pcHtml] };
-  const shown = part && sections[part] ? [part] : ["steam", "retro", "pc"];
+  const shown = part && sections[part] ? [part] : steam.linked || steam.error ? ["steam", "retro", "pc"] : ["retro", "pc", "steam"];  // what there is to play first
   paint(t, `<section class="home">${aurora}<h1>${part && sections[part] ? sections[part][0] : "Games"}</h1>
       <p>${part === "retro" ? "Played right here, saves kept on this server for every device." : part === "steam" ? "What you own on Steam, most played first." : part === "pc" ? "Your gaming PC, streamed to whatever you're holding." : "Your Steam library, retro games played right here, and your gaming PC streamed to any screen."}</p>
-      ${closedTo("library") ? "" : libChips("games")}</section>
+      ${closedTo("library") ? "" : subnav()}</section>
     <div class="wrap gamespage">${shown.map((k) => `<section class="panel gsec" id="g-${k}">${shown.length > 1 ? `<h2><a href="#/games/${k}">${sections[k][0]} <small>See all ›</small></a></h2>` : ""}${sections[k][1]()}</section>`).join("")}</div>`);
   $("#steamKey")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    try { await send("PUT")("/api/games/settings", { steam_key: $("#steamKeyIn").value }); route(); } catch (err) { toast(err.message); }
+    try { await send("PUT")("/api/games/settings", { steam_key: $("#steamKeyIn").value }); go("#/games/steam"); } catch (err) { toast(err.message); }  // on to Steam's own page: the next box, your profile, is open there
   });
   $("#steamLink")?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    try { await send("PUT")("/api/games/steam", { profile: $("#steamProfile").value }); route(); } catch (err) { toast(err.message); }
+    try { await send("PUT")("/api/games/steam", { profile: $("#steamProfile").value }); go("#/games"); } catch (err) { toast(err.message); }
   });
   $("#steamFind")?.addEventListener("input", (e) => {
     const q = e.target.value.trim().toLowerCase();

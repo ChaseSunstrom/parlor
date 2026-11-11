@@ -2,6 +2,13 @@
 
 [← Parlor's README](../README.md)
 
+**Request** is one page for everything you can ask for: a row each for films and shows, music, games and books, and one search box over all of them. **See all** beside a row opens that kind's own page.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/screens/request-desktop-dark.png">
+  <img alt="The Request page: a row of films and shows, a row of games and a row of books to ask for, each with See all, under one search box; the menu on the left lists Browse and Your requests." src="assets/screens/request-desktop-light.png">
+</picture>
+
 **Request → Films & shows**: discover, search and request films and shows through [Seerr](https://github.com/seerr-team/seerr). Each person requests as their own Seerr user. **Collections** opens a whole franchise, a studio's films, a network's shows or a theme, and requests everything you're missing in one go. Trailers play in the ad-free player.
 
 ## Your requests
@@ -16,7 +23,7 @@
 
 ## Whole collections
 
-Films & shows → **Collections** (the link under the page's title) starts from the franchises of the films you already have, then well-known franchises, studios and networks. Its search finds any other studio or theme (TMDB's keywords: heist, time travel, a shared universe).
+Films & shows → **Collections** (**See all** beside the page's Franchises or Collections row) starts from the franchises of the films you already have, then well-known franchises, studios and networks. Its search finds any other studio or theme (TMDB's keywords: heist, time travel, a shared universe).
 
 - **Links**: a film's page links its collection ("Part of …"), studios and keywords, and a show's its networks.
 - **A set's page**: it shows what you have and what's requested, and narrows by year, rating and whether it's out yet.

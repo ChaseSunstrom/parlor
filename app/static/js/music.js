@@ -216,14 +216,15 @@ async function showLibrary(t, [artist, album] = []) {
       <h1>Your library</h1>
       <p>${plural(all.length, "artist")}, ${plural(albums, "album")} and ${plural(songs.length, "song")} in your music folder.</p>
       ${musicChips("library")}
+      <div class="chips page-actions"><a href="#/playlists">Playlists</a></div>
     </section>
     <div class="wrap">
-      ${tidyPanel()}
       ${songs.length ? `<div class="lib-tools">
         <input class="filter" id="filter" type="search" placeholder="Filter by artist, album or song" aria-label="Filter your library">
         <button class="ghost" data-complete-all>Get missing songs for every artist</button>
       </div>` : ""}
       <div id="shelf">${songs.length ? render("") : `<p class="note" style="padding:24px 0">Your music folder is empty. Search for something above and download it.</p>`}</div>
+      ${tidyPanel()}
     </div>`);
   $("#filter")?.addEventListener("input", (e) => { $("#shelf").innerHTML = render(e.target.value); });
 }
@@ -335,7 +336,7 @@ async function showPlaylists(t) {
   };
   paint(t, `<section class="home">${aurora}
       <h1>Your playlists</h1>
-      <p>Download a Spotify playlist and it stays in sync. ${every} Nothing is copied: the playlist points at the songs you already have.</p>
+      <p>Spotify playlists, kept in sync. ${every}</p>
       ${musicChips("playlists")}
     </section>
     <div class="wrap">
@@ -481,7 +482,7 @@ function lidarrCard(x) {
 async function showLidarr(t, parts) {
   const q = parts.join("/");
   paint(t, `<section class="home">${aurora}<h1>Request music</h1>
-      <p>Lidarr finds albums and artists, downloads them in the best quality it can and keeps them in your music library; if it can't, Parlor gets them from YouTube. Ask for one album, or an artist and everything they make.</p>
+      <p>Ask for one album, or an artist and everything they make. Lidarr fetches the best copy; if it can't, Parlor gets it from YouTube.</p>
       ${musicChips("lidarr")}
       <form id="lidarrForm" class="actions"><label class="field grow"><span class="vh">Artist or album</span><input id="lidarrQ" type="search" placeholder="Artist or album" value="${esc(q)}"></label><button class="primary">Search</button></form>
     </section><div class="wrap" id="lidarrOut">${q ? SPIN : ""}</div><div class="wrap" id="musicReqs"></div>`);

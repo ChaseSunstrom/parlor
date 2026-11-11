@@ -14,12 +14,14 @@ from unittest import mock
 import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
 
 import auth
+import bookreq
 import core
 import gamelookup
 import gamereq
 import stack
 import uvicorn
 from playwright.sync_api import sync_playwright
+from test_bookreq import OpenLibrary
 from test_gamelookup import NOW, Steam
 from test_gamereq import Questarr, release
 
@@ -31,7 +33,7 @@ COVER = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 3'><defs><linea
 q = Questarr()
 q.releases = [release("Doom-HARBOUR", known=None), release("Doom [Some Repack]", seeders=3, kind="repack", known="repack"), release("Doom Update 4", part="update", kind="update")]
 own = {"password": q.password}
-for obj, name, value in ((gamelookup, "steam", Steam()), (gamelookup, "_now", lambda: NOW), (gamereq.requests, "request", q), (gamereq, "start", lambda: None),
+for obj, name, value in ((gamelookup, "steam", Steam()), (gamelookup, "_now", lambda: NOW), (gamereq.requests, "request", q), (gamereq, "start", lambda: None), (bookreq, "ol", OpenLibrary()),  # the one search looks at books too
                          (stack, "_questarr_own", lambda: own["password"]), (stack, "questarr_url", lambda: "http://questarr:5000")):
     mock.patch.object(obj, name, value).start()
 core.db()
@@ -85,14 +87,17 @@ with sync_playwright() as p:
     text = opened(gamer, "#/gamereq", ".pcard[data-game]")
     checks["Request → Games shows Steam's rows: popular, new, coming soon"] = all(w in text for w in ("Popular now", "New and popular", "Coming soon", "Doom", "Fresh Quest", "Soon Quest"))
     checks["adult-only games and things that aren't games stay out"] = "After Dark" not in text and "Console of Steam" not in text and "Add-on" not in text
-    checks["Games is a page of Request"] = gamer.get_attribute("#side a[href='#/gamereq']", "aria-current") == "page" and [
-        t.strip() for t in gamer.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Books", "Your requests"]
+    checks["Games is under Request → Browse, with Back"] = gamer.get_attribute("#side a:not(.side-head)[href='#/request']", "aria-current") == "page" and gamer.locator("#back").is_visible()
     checks["a member isn't offered the admin's switch"] = gamer.locator("#gameAuto").count() == 0
     shot(gamer, "browse-desk")
     gamer.fill("#q", "doom")
     gamer.press("#q", "Enter")
+    gamer.wait_for_selector("#ask-games .pcard[data-game]", timeout=30000)
+    found = sorted(gamer.locator("#ask-games .pcard .t").all_inner_texts())
+    gamer.click("#ask-games a.more")
     gamer.wait_for_selector(".pgrid .pcard[data-game]", timeout=30000)
-    checks["the search box finds games by title"] = "#/gamereq/search/doom" in gamer.url and sorted(gamer.locator(".pgrid .pcard .t").all_inner_texts()) == ["Doom", "Doom Eternal"]
+    checks["the search box finds games by title: a row of them, and More opens the games' own list"] = (
+        found == ["Doom", "Doom Eternal"] and "#/gamereq/search/doom" in gamer.url and sorted(gamer.locator(".pgrid .pcard .t").all_inner_texts()) == ["Doom", "Doom Eternal"])
     text = opened(gamer, "#/gamereq/game/10", ".hero [data-ask=game]")
     checks["a game's page: what it is, who made it, its pictures, a link to Steam"] = all(w in text for w in ("Doom", "About Doom.", "By Makers", "Screenshots", "On Steam")) and gamer.locator(".gshots img").count() == 1
     shot(gamer, "game-desk")

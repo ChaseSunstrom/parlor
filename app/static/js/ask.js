@@ -1,5 +1,5 @@
-/* Request → Games and Request → Books: rows to browse and a title search, a page each with one Request button, and the
-   requests followed to the end. Games come from Steam's store and go through Questarr (gamereq.py): a member's
+/* Request. The page of everything to ask for and its one search are at the end. Before them, the Games and Books pages:
+   rows to browse and a title search, a page each with one Request button, and the requests followed to the end. Games come from Steam's store and go through Questarr (gamereq.py): a member's
    request waits for an admin's yes, and a release nobody could be sure of waits for an admin to pick it. Books come
    from Open Library and Parlor fetches them itself (bookreq.py): no yes needed, only book files reach the library. */
 
@@ -40,7 +40,7 @@ async function showGameReq(t, [what = "", ...rest]) {
   if (what === "search") return showAskSearch("game", t, rest.join("/"));
   if (what === "game") return showGame(t, rest[0]);
   const head = `<section class="home">${aurora}<h1>Games</h1>
-    <p>Find a game and ask for it. Questarr looks for it on the indexers and qBittorrent fetches it, behind the VPN like everything else.</p>${subnav()}</section>`;
+    <p>Find a game and ask for it: it's fetched behind the VPN, like everything else.</p>${subnav()}</section>`;
   paint(t, `${head}<div class="wrap">${skeletons(8, "p", "pstrip")}</div>`);
   const [s, d] = await Promise.all([api("/api/games/requests/status"), api("/api/games/requests/discover")]);
   paint(t, `${head}<div class="wrap">${notReady(s)}
@@ -58,7 +58,7 @@ async function showBookReq(t, [what = "", ...rest]) {
   if (what === "search") return showAskSearch("book", t, rest.join("/"));
   if (what === "book") return showBook(t, rest[0]);
   const head = `<section class="home">${aurora}<h1>Books</h1>
-    <p>Find a book and ask for it. Parlor looks for it on the indexers, qBittorrent fetches it behind the VPN, and it turns up in <a href="#/jf/books">your Books</a>.</p>${subnav()}</section>`;
+    <p>Find a book and ask for it: it turns up in <a href="#/jf/books">your Books</a>.</p>${subnav()}</section>`;
   paint(t, `${head}<div class="wrap">${skeletons(8, "p", "pstrip")}</div>`);
   const d = await api("/api/books/requests/discover").catch(() => ({}));
   paint(t, `${head}<div class="wrap">
@@ -189,5 +189,56 @@ document.addEventListener("click", async (e) => {
   }
 });
 
+/* ---------- Request: everything you can ask for on one page, a row a kind, and one search box over all of them ---------- */
+
+const few = (items) => (items || []).slice(0, 14);
+// each kind: the section it needs open, its own page, whether it is set up, its row here, its matches, and its own search page
+const ASK_KINDS = [
+  { key: "films", title: "Films & shows", needs: "media", at: "#/media", off: "Seerr isn't connected yet.", more: (q) => `#/media/search/${q}`,
+    up: async () => { const s = await checkSeerr(); return s === true || s.connected; },
+    row: async () => pstrip(few((await api("/api/seerr/discover")).trending)),
+    find: async (q) => pstrip(few((await api(`/api/seerr/search?q=${q}`)).items.filter((x) => x.type !== "person"))) },
+  { key: "games", title: "Games", needs: "games", at: "#/gamereq", more: (q) => `#/gamereq/search/${q}`, up: async () => true,
+    row: async () => askStrip("game", few((await api("/api/games/requests/discover")).popular)),
+    find: async (q) => askStrip("game", few((await api(`/api/games/requests/search?q=${q}`)).items)) },
+  { key: "books", title: "Books", needs: "library", at: "#/bookreq", more: (q) => `#/bookreq/search/${q}`, up: async () => true,
+    row: async () => askStrip("book", few((await api("/api/books/requests/discover")).trending)),
+    find: async (q) => askStrip("book", few((await api(`/api/books/requests/search?q=${q}`)).items)) },
+  { key: "music", title: "Music", needs: "music", at: "#/lidarr", off: "Lidarr isn't connected yet.", more: (q) => `#/lidarr/${q}`,
+    up: async () => (await api("/api/arr/apps")).apps.includes("lidarr"),
+    row: async () => `<p class="dim">Lidarr has no rows to look through: search above for an artist or an album.</p>`,
+    find: async (q) => grid(few((await api(`/api/arr/music/search?q=${q}`)).items).map(lidarrCard).join(""), "strip") },
+];
+const askHead = (k, href, word) => `<div class="shelf-head"><h2>${esc(k.title)}</h2><a class="more" href="${href}">${word}</a></div>`;
+const askNote = (text) => `<p class="dim">${text}</p>`;
+
+async function showRequest(t, [what = "", ...rest]) {
+  if (what === "search") return showAskAll(t, rest.join("/"));
+  const kinds = ASK_KINDS.filter((k) => !closedTo(k.needs));
+  paint(t, `<section class="home">${aurora}<h1>Request</h1>
+    <p>Films, shows, music, games and books: search above, or pick from a row.</p>${subnav()}</section>
+    <div class="wrap">${kinds.map((k) => `<div id="ask-${k.key}">${askHead(k, k.at, "See all")}${k.key === "music" ? "" : skeletons(8, "p", "pstrip")}</div>`).join("")}</div>`);
+  kinds.forEach(async (k) => {
+    const body = await k.up().then((up) => (up ? k.row().then((html) => html || askNote("Nothing to show here just now: search above.")) : askNote(k.off)))
+      .catch(() => askNote(`${esc(k.title)} didn't load just now.`));
+    fill(t, `ask-${k.key}`, askHead(k, k.at, "See all") + body);
+  });
+}
+
+/** one search over every kind you may ask for: a row each as it arrives, with a link to the kind's own, longer list */
+async function showAskAll(t, q) {
+  input.value = q;
+  const enc = encodeURIComponent(q), kinds = ASK_KINDS.filter((k) => !closedTo(k.needs));
+  paint(t, `<div class="wrap">${kinds.map((k) => `<div id="ask-${k.key}">${askHead(k, k.more(enc), "More")}${skeletons(8, "p", "pstrip")}</div>`).join("")}
+    <div class="note" id="askNone" hidden><strong>Nothing to ask for matches “${esc(q)}”</strong>Try the title alone, or the name as its maker writes it.</div></div>`);
+  const got = await Promise.all(kinds.map(async (k) => {
+    const html = await k.up().then((up) => (up ? k.find(enc) : "")).catch(() => askNote(`${esc(k.title)} couldn't be searched just now.`));
+    fill(t, `ask-${k.key}`, html ? askHead(k, k.more(enc), "More") + html : "");
+    return html;
+  }));
+  if (t === ticket && !got.some(Boolean)) $("#askNone").hidden = false;
+}
+
+page("request", showRequest, "media");
 page("gamereq", showGameReq, "gamereq");
 page("bookreq", showBookReq, "bookreq");

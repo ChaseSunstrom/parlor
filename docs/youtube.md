@@ -25,24 +25,24 @@ The player streams through your server:
 
 ## Browsing
 
-You don't need links or an account to find something to watch. **Watch → Home** has:
+You don't need links or an account to find something to watch. **Watch → For you** has:
 
 - **Continue watching**, and **Because you watched …**: the videos YouTube suggests beside the ones you watched last.
-- **New from your subscriptions**.
+- **New from your subscriptions**, and a row of **Recommended** (**See all** opens the whole page).
 - **Topics**: a shelf of this week's most-watched videos for each topic you pick (Music, Gaming, Science… to start; **Edit topics** to change them). YouTube retired its Trending page, so this stands in for it. Each account has its own topics.
 
 The player's **Up next** list is YouTube's own suggestions for that video, and autoplay follows it. Channels in search results have a Subscribe button.
 
 ## Subscriptions
 
-Subscribe on any channel or video page, or import them in Watch → Channels from:
+Subscribe on any channel or video page, or import them in You → Channels from:
 
 - Google Takeout (`subscriptions.csv`, under YouTube and YouTube Music)
 - NewPipe or FreeTube (`.json`)
 - Invidious or FreeTube (`.opml`)
 - a list of channel links or `@handles`
 
-The feed reads each channel's public RSS feed (no Google account involved) and falls back to yt-dlp when a feed is down. **Hide Shorts** filters them out. Export your list as OPML any time.
+The feed reads each channel's public RSS feed (no Google account involved) and falls back to yt-dlp when a feed is down. **Hide Shorts in feeds** in Settings filters them out. Export your list as OPML any time.
 
 ## Recommended
 
@@ -83,11 +83,11 @@ Watch → **Live** shows who's live now: YouTube lives from your subscriptions (
 
 Use the download button on any video (choose Best up to 4K, 1080p, 720p or 480p), or **Download all** on a playlist.
 
-- **Videos** go to `VIDEO_DIR/<channel>/<title> [<id>].mp4`, with chapters, English subtitles, the thumbnail and the description embedded. Jellyfin and Plex read them, and they play in Parlor from Watch → Downloaded. Up to 1080p Parlor prefers H.264 + AAC, which plays everywhere; higher qualities only exist as VP9 or AV1.
+- **Videos** go to `VIDEO_DIR/<channel>/<title> [<id>].mp4`, with chapters, English subtitles, the thumbnail and the description embedded. Jellyfin and Plex read them, and they play in Parlor from You → Downloaded. Up to 1080p Parlor prefers H.264 + AAC, which plays everywhere; higher qualities only exist as VP9 or AV1.
 - **Cut sponsors out of downloaded videos** (Settings) removes SponsorBlock's sponsor segments from the file.
 - **Save audio to music** puts a tagged audio file (artist, album, square cover art) in your music library, in music-fndr's format and bitrate. Non-music parts of music videos are cut out.
 - Downloads resume after a restart. If YouTube rate-limits the server, they wait 15 minutes and try again instead of failing.
-- **Clearing out old downloads** (Settings → Downloaded videos, off by default): delete each video a week, 30 days, 90 days… after it was downloaded, or only once someone has watched it to the end, counting from then. Press **Keep** on a video in Watch → Downloaded and it's never deleted automatically. Each video there says when it goes.
+- **Clearing out old downloads** (Settings → Downloaded videos, off by default): delete each video a week, 30 days, 90 days… after it was downloaded, or only once someone has watched it to the end, counting from then. Press **Keep** on a video in You → Downloaded and it's never deleted automatically. Each video there says when it goes.
 
 ## Keeping up with YouTube
 

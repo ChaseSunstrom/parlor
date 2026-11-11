@@ -4,32 +4,38 @@
 const NAV = [
   { key: "home", label: "Home", icon: "home", href: "#/" },
   { key: "library", label: "Library", icon: "shelf", pages: [["Home", "#/jf"], ["Films", "#/jf/movies"], ["Shows", "#/jf/shows"], ["Music", "#/jf/music"], ["Books", "#/jf/books"], ["Games", "#/games"]] },
-  { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Live", "#/live"], ["Recommended", "#/yt/rec"]] },
-  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"], ["Playlists", "#/playlists"]] },
-  // everything you can ask for, in one place: each kind has its page, and Your requests lists them all
-  { key: "media", label: "Request", icon: "plus", pages: [["Films & shows", "#/media"], ["Music", "#/lidarr"], ["Games", "#/gamereq"], ["Books", "#/bookreq"], ["Your requests", "#/requests"]] },
-  { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Continue watching", "#/yt/continue", "Right where you left off", "play"],
-    ["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
+  { key: "watch", label: "Watch", icon: "tv", pages: [["For you", "#/yt/home"], ["Subscriptions", "#/yt/subs"], ["Live", "#/live"]] },
+  { key: "music", label: "Music", icon: "disc", pages: [["Discover", "#/music"], ["Your library", "#/library"]] },
+  // everything you can ask for on one page (films, shows, music, games, books), and one list of what was asked for
+  { key: "media", label: "Request", icon: "plus", pages: [["Browse", "#/request"], ["Your requests", "#/requests"]] },
+  { key: "you", label: "You", icon: "user", href: "#/you", pages: [["Watch later", "#/yt/later", "Videos you saved", "clock"], ["History", "#/yt/history", "Everything you've watched", "clock"],
     ["Downloaded", "#/yt/downloads", "Videos on this server", "dl"], ["Saved for offline", "#/offline", "Music and videos on this device", "offline"],
     ["TVs", "#/tvs", "Pair a TV, play on it, the remote", "screen"], ["Channels", "#/yt/channels", "Follow, import, export", "tv"],
     ["Settings", "#/settings", "Playback, account and more", "gear"]] },
 ];
 const TABS = 6; // the phone tab bar: the first sections, then You (all six today); the You page lists every page
 const ALIASES = { "#/yt": "#/yt/home", "": "#/", "#": "#/" };
+// pages opened from a menu page and not listed themselves: that menu page lights up for them, and they get Back
+const UNDER = { "#/media": "#/request", "#/lidarr": "#/request", "#/gamereq": "#/request", "#/bookreq": "#/request", "#/sets": "#/request", "#/set": "#/request",
+  "#/playlists": "#/library", "#/yt/rec": "#/yt/home", "#/yt/continue": "#/yt/home", "#/jf/artists": "#/jf/music" };
 const SECTION_GROUP = { settings: "you", games: "library", musicreq: "media", gamereq: "media", bookreq: "media" }; // a page's section, when no nav link matches the address
 
 /** the nav group and page link for an address: the longest link that the address starts with */
 function navAt(hash, section) {
   hash = ALIASES[hash] ?? hash;
+  const within = (href) => hash === href || (href !== "#/" && hash.startsWith(href + "/"));
   let best = null;
   for (const g of NAV) {
     for (const [, href] of [[g.label, g.href], ...(g.pages || [])]) {
-      if (href && (hash === href || (href !== "#/" && hash.startsWith(href + "/"))) && (!best || href.length > best.href.length)) best = { group: g.key, href };
+      if (href && within(href) && (!best || href.length > best.href.length)) best = { group: g.key, href };
     }
   }
+  const up = Object.keys(UNDER).filter(within).sort((a, b) => b.length - a.length)[0];
+  const over = up && (!best || up.length > best.href.length) && NAV.find((g) => (g.pages || []).some(([, href]) => href === UNDER[up]));
+  if (over) best = { group: over.key, href: UNDER[up], under: true };
   const own = !!best && NAV.find((g) => g.key === best.group).href === best.href && best.href !== "#/"; // a group's own page, like You
   const group = best?.group || SECTION_GROUP[section] || (NAV.some((g) => g.key === section) ? section : "home");
-  return { group, href: own ? null : best?.href ?? null, own };
+  return { group, href: own ? null : best?.href ?? null, own, under: !!best?.under };
 }
 
 const groupHref = (g) => g.href || g.pages[0][1];
@@ -59,7 +65,7 @@ function youHtml() {
       ${g.pages.map(([label, href]) => `<a href="${href}">${esc(label)}</a>`).join("")}</section>`).join("")}</div>`;
 }
 
-/** the current section's pages as a row (shown on phones; the sidebar has them on wide screens) */
+/** the current section's pages as a row (phones and tablets, under the header; the sidebar has them on wide screens) */
 function subnavHtml(at) {
   const g = NAV.find((x) => x.key === at.group);
   return g?.pages ? `<nav class="chips subnav" aria-label="${esc(g.label)}">${g.pages.map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</nav>` : "";

@@ -1,7 +1,7 @@
 """The menu in a real browser, against the Seerr stand-in: six sections; on a computer the sidebar lists only the open
-section's pages; on a phone every section is a tab; Request holds every way of asking and one list of what was asked
-for (a film and an album here); Games is one page under Library; and every address the old menu had still opens its
-page. Screenshots at computer, tablet and phone width:
+section's pages; on a phone every section is a tab and a section's pages are one row under the header; Request is one
+page to ask from (a row a kind, one search) and one list of what was asked for (a film and an album here); Games is
+one page under Library; and every address the old menu had still opens its page. Screenshots at computer, tablet and phone width:
    python tests/ui_nav.py [OUT_DIR]   (needs Playwright and its Chromium beside the app's packages)"""
 import socket
 import sys
@@ -14,34 +14,42 @@ from unittest import mock
 import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
 
 import auth
+import bookreq
 import bulk
 import core
+import gamelookup
 import uvicorn
 from playwright.sync_api import sync_playwright
 from seerr_standin import Seerr
+from test_bookreq import OpenLibrary
+from test_gamelookup import NOW, Steam
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="ui-nav-"))
 OUT.mkdir(parents=True, exist_ok=True)
 NAME, PASSWORD = "uiadmin", "Ui-nav-pass-42!"  # pragma: allowlist secret (a made-up password for a throwaway server)
 ART = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 3'><rect width='2' height='3' fill='#6b5cff'/></svg>"
-OLD = ["#/games/steam", "#/games/retro", "#/games/pc", "#/sets", "#/playlists", "#/library", "#/lidarr", "#/yt/rec", "#/requests/mine/pending", "#/media"]
+OLD = ["#/games/steam", "#/games/retro", "#/games/pc", "#/sets", "#/playlists", "#/library", "#/lidarr", "#/yt/rec", "#/requests/mine/pending", "#/media",
+       "#/gamereq", "#/bookreq", "#/yt/continue", "#/jf/artists", "#/requests/games", "#/requests/books"]
 fake = Seerr()
 
 
 def answer(method, url, **kw):
-    """the stand-in, with one request in its list and empty shelves where it has none"""
+    """the stand-in, with one request in its list; its trending row and its search are the saga's films, its other rows empty"""
     r = Seerr.__call__(fake, method, url, **kw)
     path = url.split("/api/v1/", 1)[1]
     if path == "request" and method == "GET":
         body = {"results": [{"id": 1, "type": "movie", "status": 2, "createdAt": "2026-11-01T10:00:00.000Z", "seasons": [],
                              "media": {"mediaType": "movie", "tmdbId": fake.collection[0]["id"], "status": 3}, "requestedBy": {"id": 7, "displayName": NAME}}]}
         return mock.Mock(ok=True, status_code=200, content=b"x", text="", json=lambda: body)
-    if r.status_code == 404 and path.startswith("discover/"):
-        return mock.Mock(ok=True, status_code=200, content=b"x", text="", json=lambda: {"results": []})
+    if path.split("?")[0] in ("search", "discover/trending") or r.status_code == 404 and path.startswith("discover/"):
+        body = {"results": [{**f, "mediaType": "movie"} for f in fake.collection] if "/" not in path.split("?")[0] or path.startswith("discover/trending") else []}
+        return mock.Mock(ok=True, status_code=200, content=b"x", text="", json=lambda: body)
     return r
 
 
 mock.patch.object(bulk.seerr.requests, "request", answer).start()
+for obj, name, value in ((gamelookup, "steam", Steam()), (gamelookup, "_now", lambda: NOW), (bookreq, "ol", OpenLibrary())):  # Steam's shop and Open Library: stand-ins too
+    mock.patch.object(obj, name, value).start()
 bulk.STUDIOS, bulk.NETWORKS, bulk.FRANCHISES = (), (), ()
 core.db()
 core.set_setting("seerr_url", "http://seerr.test")
@@ -77,7 +85,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=str(SHELL) if SHELL else None)
     for label, size in (("desk", {"width": 1280, "height": 900}), ("tablet", {"width": 820, "height": 1100}), ("phone", {"width": 390, "height": 844})):
         ctx = b.new_context(viewport=size, color_scheme="dark" if label == "desk" else "light")
-        ctx.route("https://image.tmdb.org/**", lambda route: route.fulfill(content_type="image/svg+xml", body=ART))
+        ctx.route("https://**/*", lambda route: route.continue_() if "//fonts.g" in route.request.url else route.fulfill(content_type="image/svg+xml", body=ART))  # covers are painted here
         page = ctx.new_page()
         page.on("pageerror", lambda e: errors.append(f"{label}: {e}"))
         page.goto(BASE + "/")
@@ -92,16 +100,28 @@ with sync_playwright() as p:
             page.wait_for_selector("#side a")
             checks["desk: on Home the sidebar is the six sections and nothing else"] = side() == ["Home", "Library", "Watch", "Music", "Request", "You"]
             page.click("#side a.side-head:has-text('Request')")
-            page.wait_for_function("location.hash === '#/media'")
-            page.wait_for_selector("main a[href='#/sets']")
+            page.wait_for_function("location.hash === '#/request'")
+            page.wait_for_selector("#ask-films .pcard")
             page.wait_for_selector("#side a[href='#/requests']")
-            checks["desk: Request opens with its five pages listed under it, and only its own"] = side() == [
-                "Home", "Library", "Watch", "Music", "Request", "Films & shows", "Music", "Games", "Books", "Your requests", "You"]
-            checks["desk: Films & shows links Collections"] = page.locator("main a[href='#/sets']").count() >= 1
+            checks["desk: Request opens with its two pages listed under it, and only its own"] = side() == ["Home", "Library", "Watch", "Music", "Request", "Browse", "Your requests", "You"]
+            checks["desk: Request has a row for each kind, each with the way to its own page"] = [
+                (h.inner_text().split("\n")[0], h.locator("a.more").get_attribute("href")) for h in page.locator("main .shelf-head").all()] == [
+                ("Films & shows", "#/media"), ("Games", "#/gamereq"), ("Books", "#/bookreq"), ("Music", "#/lidarr")]
+            checks["desk: no row of tabs in the page: the sidebar has them"] = page.locator("main nav.chips:visible").count() == 0
             page.screenshot(path=str(OUT / "request-desk.png"))
-            page.click("#side a[href='#/lidarr']")
-            page.wait_for_selector("#lidarrForm")
-            checks["desk: asking for music is a page of Request"] = "Request music" in page.inner_text("main h1") and page.get_attribute("#side a[href='#/lidarr']", "aria-current") == "page"
+            page.fill("#q", "dune")
+            page.press("#q", "Enter")
+            page.wait_for_selector("#ask-films a.more[href='#/media/search/dune'] >> xpath=../.. >> .pcard")  # the search's own row, not the page before it
+            page.wait_for_selector("#ask-books .pcard[data-book]")
+            checks["desk: the one search box looks in every kind"] = ("#/request/search/dune" in page.url and page.locator("#ask-books .pcard .t").all_inner_texts() == ["Dune", "Dune Messiah"]
+                                                                      and page.locator("#ask-games .pcard").count() == 0)  # the stand-in shop has no such game: no row
+            page.click("#ask-films a.more")
+            page.wait_for_selector(".pgrid .pcard")
+            opened(page, "#/media", "main a[href='#/sets']")
+            checks["desk: Films & shows links Collections, and lights Browse"] = page.locator("main a[href='#/sets']").count() >= 1 and page.get_attribute("#side a:not(.side-head)[href='#/request']", "aria-current") == "page"
+            opened(page, "#/lidarr", "#lidarrForm")
+            checks["desk: asking for music is under Request, with Back"] = ("Request music" in page.inner_text("main h1") and page.get_attribute("#side a:not(.side-head)[href='#/request']", "aria-current") == "page"
+                                                                        and page.locator("#back").is_visible())
             page.click("#side a.side-head:has-text('Library')")
             page.wait_for_function("location.hash === '#/jf'")
             page.wait_for_selector("#side a[href='#/games']")
@@ -116,11 +136,15 @@ with sync_playwright() as p:
             checks[f"{label}: every section is a tab"] = tabs == ["Home", "Library", "Watch", "Music", "Request", "You"]
             page.click(".nav a[data-nav='media']")
             page.wait_for_selector("main .subnav")
-            checks[f"{label}: Request's pages are a row on its pages"] = [t.strip() for t in page.locator("main .subnav a").all_inner_texts()] == ["Films & shows", "Music", "Games", "Books", "Your requests"]
+            checks[f"{label}: Request's two pages are a row under the header"] = ([t.strip() for t in page.locator("main .subnav a").all_inner_texts()] == ["Browse", "Your requests"]
+                                                                              and page.evaluate("document.querySelector('#pages').getBoundingClientRect().top < document.querySelector('main h1').getBoundingClientRect().top"))
             page.screenshot(path=str(OUT / f"request-{label}.png"))
             opened(page, "#/games", "#g-pc")
-            checks[f"{label}: Games shows the Library's row, with Games lit"] = page.get_attribute("main .chips a[href='#/games']", "aria-current") == "page"
+            checks[f"{label}: Games shows the Library's row, with Games lit, and no second row"] = (page.get_attribute("main .chips a[href='#/games']", "aria-current") == "page"
+                                                                                               and page.locator("main nav.chips:visible").count() == 1)
             page.screenshot(path=str(OUT / f"games-{label}.png"))
+            opened(page, f"#/movie/{fake.collection[0]['id']}", ".hero")
+            checks[f"{label}: a film's own page has no row of pages"] = page.locator("#pages").is_hidden()
 
         # one list of everything asked for; each kind alone; the old addresses
         text = opened(page, "#/requests", ".reqs li")
@@ -145,6 +169,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots), "in", OUT)
-ok = all(checks.values()) and not errors and len(checks) == 6 + 3 + 10 + 2 * (3 + 3 + 20)
+ok = all(checks.values()) and not errors and len(checks) == 9 + 3 + len(OLD) + 2 * (4 + 3 + 2 * len(OLD))  # desk's own, the lists, the old addresses; then tablet and phone
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

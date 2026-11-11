@@ -32,5 +32,7 @@ All of it stops under `prefers-reduced-motion`. Light mode follows the system.
 One list (`NAV` in `app/static/js/nav.js`) draws all of it, so a new section or page is one entry:
 
 - **Wide screens (900 px and up):** a sidebar with the six sections (Home, Library, Watch, Music, Request, You) and, under the open one only, its pages; the section icon in its own colour, a glowing dot on the current page. A **Back** button appears in the top bar on pages inside a section (a film, an album, a video).
-- **Phones and tablets:** a tab bar with all six sections, and a row of the section's pages under each page title.
-- **You** holds your own lists (continue watching, watch later, history, downloaded, channels) and Settings, and lists every section's pages, so anything is two taps away.
+- **Phones and tablets:** a tab bar with all six sections, and one row of the section's pages in one fixed place: right under the top bar (`#pages`; a page asks for it by putting `subnav()` in what it paints). A page never adds a second row of links.
+- **You** holds your own lists (watch later, history, downloaded, channels) and Settings, and lists every section's pages, so anything is two taps away.
+- **Pages off the menu:** a page reached from a menu page (Request's four kinds, Collections, Recommended, Playlists, Continue watching) is listed in `UNDER` beside `NAV`: it lights its menu page and gets **Back**.
+- **Choices on a page** (a list's order, a filter) are small menus (`pick()`), never another row of chips.

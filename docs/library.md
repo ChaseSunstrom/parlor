@@ -14,8 +14,8 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 ## Films and shows
 
 - **Browsing**: Continue watching, Next up and what's new in each library; every film, show, album and book; a show's seasons and episodes.
-- **Sorting**: A–Z, recently added, year, rating, shuffle.
-- **Filters**: new to you, in progress, favourites.
+- **Sorting**: the **Sort** menu above a list: A–Z, recently added, year, rating, shuffle.
+- **Filters**: the **Show** menu beside it: new to you, in progress, favourites.
 - **Play**: **Play** resumes where you stopped; **From the start** doesn't.
 - **Your place**: it's saved every few seconds and when you pause. Near the end it's marked watched and the next episode starts after a countdown.
 - **Films & shows** (under Request) shows **Play** (or **Watch**, for a show) on a title Jellyfin has, straight into the Library.

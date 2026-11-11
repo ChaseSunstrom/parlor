@@ -11,7 +11,7 @@
 
 ## Steam
 
-An admin adds a Steam Web API key once, on the Games page (get one at steamcommunity.com/dev/apikey). It stays on the server: no browser ever sees it.
+An admin adds a Steam Web API key once: on the Games page, open **Show the games you own on Steam here** (get a key at steamcommunity.com/dev/apikey). Until someone links Steam, that line sits under the retro games and the PC. It stays on the server: no browser ever sees it.
 
 Each person then links their profile with any of these:
 
@@ -77,7 +77,7 @@ It runs at port 5000 (`http://your-server:5000`) and always asks for a login. Se
 
 You don't need Questarr's own page to ask for a game:
 
-1. Open **Request → Games**. The rows (popular now, new, coming soon) and the search box at the top find games in Steam's store.
+1. Open **Request** and press **See all** beside Games, or type a game's title in the search box. The rows (popular now, new, coming soon) and the search find games in Steam's store.
 2. Open a game and press **Request**. An admin's request starts at once; a member's waits in **Request → Your requests** until an admin approves or declines it.
 3. Parlor makes the request in Questarr, which searches your indexers for the game.
 4. A release that passes every check is taken by itself. Otherwise the request reads **Pick a release** and an admin picks one from the list under it in **Your requests**.

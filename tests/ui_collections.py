@@ -149,6 +149,14 @@ with sync_playwright() as p:
             checks["Cancel sends nothing"] = len(fake.posted) == before and not page.locator("#setJobs .job").count()
             page.click("#askAll")
             page.wait_for_selector("#setAsk[open]")
+            page.go_back()  # the browser's Back with the question open: it goes with its page, and asks for nothing
+            page.wait_for_function("!document.querySelector('#setAsk').open && !location.hash.startsWith('#/set/')", timeout=15000)
+            checks["leaving the page closes the question and sends nothing"] = len(fake.posted) == before
+            page.go_forward()
+            page.wait_for_selector("#askAll")
+            time.sleep(0.4)
+            page.click("#askAll")
+            page.wait_for_selector("#setAsk[open]")
             page.click("#setAsk button.primary")
             page.wait_for_selector("#setJobs .job", state="attached", timeout=15000)
             page.wait_for_function("document.querySelector('#setJobs .state').textContent.startsWith('2 requested')", timeout=30000)

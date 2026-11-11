@@ -131,7 +131,16 @@ body.busy .brand img { animation: spin 3.2s linear infinite; } /* the record tur
   background: var(--g); box-shadow: 0 0 10px var(--g); animation: pop .2s ease;
 }
 .chips.page-actions { padding-top: 14px; }
-.subnav + .chips.page-actions { padding-top: 10px; }
+/* a section's row of pages: one place, under the header, on phones and tablets (#pages in index.html; core.js fills and hides it) */
+#pages { padding: 0 var(--edge); }
+#pages .chips { padding: 12px 0 0; }
+@media (max-width: 899px) { #pages:not([hidden]) + #view .home { padding-top: clamp(20px, 4vh, 40px); } }
+/* a choice in a small menu, where a row of tabs would be (the Library's Sort and Show) */
+.picks { display: flex; flex-wrap: wrap; gap: 8px 12px; padding-top: 20px; }
+.pick { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-weight: 600; font-size: .88rem; }
+.pick select { max-width: 9.5em; padding: 0 4px 0 10px; field-sizing: content; } /* as wide as what's chosen, where the browser can: three fit a phone's line */
+.gsetup summary { cursor: pointer; font-weight: 600; }
+.gsetup[open] summary { margin-bottom: 14px; }
 .back-btn {
   display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px 0 10px; border-radius: 20px;
   border: 1px solid var(--line); background: var(--raise); color: var(--text); font-weight: 600; animation: pop .18s ease;
@@ -160,7 +169,6 @@ body.busy .brand img { animation: spin 3.2s linear infinite; } /* the record tur
     padding: 10px 12px 40px; overflow-y: auto; scrollbar-width: thin; border-right: 1px solid var(--line); background: var(--bg);
   }
   main { margin-left: var(--side); }
-  .subnav + .page-actions { padding-top: 22px; }
 }
 @media (max-width: 899px) { .side { display: none; } }
 @media (max-width: 1100px) { .nav a span { display: none; } .nav a { padding: 0 12px; } }
@@ -479,7 +487,9 @@ a.ghost { display: inline-flex; align-items: center; }
 .pcard:hover .poster img { transform: scale(1.05); filter: brightness(.7); }
 .poster .noart { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center; color: var(--dim); font-weight: 700; }
 .poster .pill { position: absolute; left: 8px; top: 8px; backdrop-filter: blur(8px); background: rgb(0 0 0 / .62); }
-.poster .pill.available { color: var(--ok); } .poster .pill.partial, .poster .pill.processing { color: var(--info); } .poster .pill.pending, .poster .pill.requested { color: var(--amber); }
+/* on a poster the pill's ground is always dark, so its ink is the dark theme's in both themes */
+.poster .pill.available { color: #8bd5a6; } .poster .pill.partial, .poster .pill.processing { color: #8ec5ff; } .poster .pill.pending, .poster .pill.requested { color: #ffb547; }
+.poster .pill + .kindtag { left: 8px; right: auto; top: 36px; }  /* under the pill: a narrow poster has no room for both side by side */
 .poster .kindtag { position: absolute; right: 8px; top: 8px; padding: 1px 7px; border-radius: 5px; background: rgb(0 0 0 / .62); color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .04em; }
 .poster .req { position: absolute; left: 10px; right: 10px; bottom: 10px; height: 38px; border: 0; border-radius: 19px; background: var(--accent); color: var(--accent-ink); font-weight: 700; opacity: 0; translate: 0 8px; transition: opacity .15s ease, translate .15s ease; }
 .pcard:hover .poster .req, .poster .req:focus-visible { opacity: 1; translate: 0 0; }
@@ -534,7 +544,7 @@ a.ghost { display: inline-flex; align-items: center; }
 .sb-sponsor { background: #00d400; } .sb-selfpromo { background: #ffff00; } .sb-interaction { background: #cc00ff; } .sb-intro { background: #00ffff; }
 .sb-outro { background: #0202ed; } .sb-preview { background: #008fd6; } .sb-music_offtopic { background: #ff9900; } .sb-filler { background: #7300ff; } .sb-poi_highlight { background: #ff1684; }
 .ptools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
-.ptools select { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--raise); font-weight: 600; font-size: .9rem; }
+.ptools select, .pick select { height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 18px; background: var(--raise); font-weight: 600; font-size: .9rem; }
 .ptools .ghost { height: 36px; padding: 0 14px; font-size: .9rem; }
 .ptools .grow { flex: 1; }
 .ptools .stat { color: var(--dim); font-size: .82rem; font-variant-numeric: tabular-nums; }

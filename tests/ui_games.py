@@ -113,13 +113,18 @@ try:
         p = device(b)
         # the Games page: an admin adds the Steam key, links a profile; shelves, retro tiles, the PC card
         p.goto(BASE + "/#/games")
-        p.wait_for_selector("#steamKey", timeout=20000)
+        p.wait_for_selector("#g-steam .gsetup", timeout=20000)
+        checks["with no Steam linked, the page leads with the games there are; Steam is one line to open"] = (
+            p.eval_on_selector_all(".gsec", "els => els.map(e => e.id)") == ["g-retro", "g-pc", "g-steam"] and not p.locator("#steamKey").is_visible())
+        p.click("#g-steam .gsetup summary")
         p.fill("#steamKeyIn", KEY)
         p.click("#steamKey .primary")
-        p.wait_for_selector("#steamLink", timeout=10000)
+        p.wait_for_selector("#steamLink", timeout=10000)  # Steam's own page now, the profile box open
+        p.wait_for_selector("#steamKey", state="detached")
         p.fill("#steamProfile", f"https://steamcommunity.com/profiles/{STEAM_ID}")
         p.click("#steamLink .primary")
         p.wait_for_selector("#g-steam .gshelf .gcard", timeout=10000)
+        checks["once linked, Steam comes first"] = p.eval_on_selector_all(".gsec", "els => els.map(e => e.id)") == ["g-steam", "g-retro", "g-pc"]
         names = p.eval_on_selector_all("#steamGrid .gname", "els => els.map(e => e.textContent)")
         recent = p.eval_on_selector_all("#g-steam .gshelf .gname", "els => els.map(e => e.textContent)")
         checks["Steam: linked by profile address, most played first, recently played above"] = names[:2] == ["Dota 2", "Counter-Strike 2"] and recent == ["Portal 2", "Counter-Strike 2"]
@@ -199,6 +204,6 @@ for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 print("page errors:", errors or "none")
 print("screenshots:", OUT)
-ok = len(checks) == 10 and all(checks.values()) and not errors
+ok = len(checks) == 12 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

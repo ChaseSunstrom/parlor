@@ -1,7 +1,7 @@
 /* Shared helpers, the API client, the router and the search box. */
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-const main = $("#main"), input = $("#q"), drawer = $("#queue");
+const main = $("#main"), stage = $("#view"), input = $("#q"), drawer = $("#queue");
 const ESC = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ESC[c]);
 const tint = (c) => (/^#[0-9a-f]{6}$/i.test(c || "") ? c : "#3a3550");
@@ -197,18 +197,22 @@ const PAGES = {};
 const SECTIONS = {
   home: "Search videos, movies, shows and music",
   watch: "Search YouTube, or paste a link",
-  media: "Search movies, shows and people",
+  media: "A film, a show, an album, a game or a book to ask for",
   music: "Artists, albums, songs, playlists or a Spotify link",
   library: "Search your films, shows, music and books",
   settings: "Search videos, movies, shows and music",
   games: "Search videos, movies, shows and music",
-  musicreq: "An artist or an album to ask for",
-  gamereq: "A game to ask for",
-  bookreq: "A book or an author to ask for",
+  musicreq: "A film, a show, an album, a game or a book to ask for",
+  gamereq: "A film, a show, an album, a game or a book to ask for",
+  bookreq: "A film, a show, an album, a game or a book to ask for",
 };
-const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/media/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/lidarr/", gamereq: "#/gamereq/search/", bookreq: "#/bookreq/search/" };
+const SEARCH = { home: "#/search/", watch: "#/yt/search/", media: "#/request/search/", music: "#/music/search/", library: "#/jf/search/", settings: "#/search/", games: "#/search/", musicreq: "#/request/search/", gamereq: "#/request/search/", bookreq: "#/request/search/" };  // one box for everything you can ask for
 let ticket = 0, current = "home";
-const paint = (t, html) => { if (t === ticket) main.innerHTML = html; };
+/* a section's row of pages sits under the header, outside what a page paints (drawNav fills it): a page that wants it
+   puts subnav() in its paint, and one that doesn't (a film, a player) hides it */
+const ROW = "<!--pages-->";
+const subnav = () => ROW;
+const paint = (t, html) => { if (t === ticket) { stage.innerHTML = html; $("#pages").hidden = !html.includes(ROW); } };
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }
 function go(hash) {
   if (location.hash === hash) route();
@@ -225,13 +229,17 @@ async function route() {
   drawNav();
   input.placeholder = SECTIONS[current] || SECTIONS.home;
   closeMenus();
+  document.querySelector("dialog[open]")?.close();  // Back with a question open: it goes with its page, unanswered
   if (!(PAGES[view] && /search/.test(location.hash))) input.value = "";
-  paint(t, `<div class="note">${SPIN}</div>`);
+  stage.innerHTML = `<div class="note">${SPIN}</div>`;  // the row of pages stays as it was until the page itself paints
   try {
     await entry.fn(t, parts);
     if (!/\/search\//.test(location.hash) && !keepScroll) scrollTo(0, 0);
   } catch (e) {
-    paint(t, `<div class="note"><strong>Couldn't load this</strong>${esc(e.message)}<br><button class="ghost" onclick="route()">Try again</button></div>`);
+    if (t === ticket) {
+      stage.innerHTML = `<div class="note"><strong>Couldn't load this</strong>${esc(e.message)}<br><button class="ghost" onclick="route()">Try again</button></div>`;
+      $("#pages").hidden = !navAt(location.hash, current).href;  // the page never said: its section's row shows on the section's own pages
+    }
   }
   keepScroll = false;
 }
@@ -242,11 +250,10 @@ function drawNav() {
   const put = (el, html) => { if (drawn[el] !== html) $(el).innerHTML = drawn[el] = html; }; // unchanged: keep focus where it is
   put(".nav", tabsHtml(at));
   put("#side", sideHtml(at));
-  $("#back").hidden = !!(at.href || at.own || at.group === "home" && !location.hash.startsWith("#/search")); // pages inside a section get Back
+  put("#pages", subnavHtml(at));
+  $("#back").hidden = !!(at.href && !at.under || at.own || at.group === "home" && !location.hash.startsWith("#/search")); // pages inside a section get Back
 }
 $("#back").addEventListener("click", () => (history.length > 1 ? history.back() : go("#/")));
-/** this section's pages as a row of chips; phones only (wide screens have the sidebar) */
-const subnav = () => subnavHtml(navAt(location.hash, current));
 
 /* ---------- search box: searches the section you're in ---------- */
 

@@ -78,12 +78,12 @@ async function showMedia(t, [what = "", ...rest]) {
   if (what === "more") return showMore(t, rest[0]);
   const s = await checkSeerr();
   if (s !== true && !s.connected) return notConnected(t, s.reason);
-  paint(t, `<div class="hero backdrop" style="--tint:#2a2440"><div></div></div><div class="wrap">${skeletons(8, "p", "pstrip")}</div>`);
+  paint(t, `${subnav()}<div class="hero backdrop" style="--tint:#2a2440"><div></div></div><div class="wrap">${skeletons(8, "p", "pstrip")}</div>`);
   const d = await api("/api/seerr/discover");
   const spot = (d.trending || []).filter((x) => x.backdrop && x.type !== "person").slice(0, 6);
-  paint(t, `<div id="spotlight">${spot.length ? spotlight(spot[0]) : ""}</div>
-    <div class="wrap">${mediaChips("")}
-      <nav class="chips page-actions" aria-label="More ways to ask"><a href="#/sets">Collections: a whole franchise, studio or network</a></nav>
+  paint(t, `${subnav()}${spot.length ? `<div id="spotlight">${spotlight(spot[0])}</div>` : `<section class="home">${aurora}<h1>Films &amp; shows</h1>
+      <p>Find films and shows and request them; Seerr gets them into your library.</p></section>`}
+    <div class="wrap">
       <div id="arrShelves"></div>
       <div id="setShelf"></div>
       ${shelf("Trending this week", pstrip(d.trending), "#/media/more/trending")}
@@ -93,7 +93,11 @@ async function showMedia(t, [what = "", ...rest]) {
       ${shelf("New and upcoming shows", pstrip(d.upcoming_tv), "#/media/more/upcoming_tv")}
     </div>`);
   arrShelves(t);
-  api("/api/seerr/sets").then((s) => { const box = $("#setShelf"); if (box && t === ticket) box.innerHTML = shelf("Franchises", s.franchises.length ? `<div class="pstrip">${s.franchises.slice(0, 18).map(setCard).join("")}</div>` : "", "#/sets"); }, () => {});
+  // whole sets to ask for at once: a row of franchises, or at least the way to Collections
+  api("/api/seerr/sets").catch(() => ({ franchises: [] })).then((s) => { const box = $("#setShelf"); if (box && t === ticket) box.innerHTML = s.franchises.length
+    ? shelf("Franchises", `<div class="pstrip">${s.franchises.slice(0, 18).map(setCard).join("")}</div>`, "#/sets")
+    : shelf("Collections", `<p class="dim">Whole franchises, a studio's films, a network's shows: ask for the lot in one go.</p>`, "#/sets"); });
+  if (spot.length < 2) return;
   // the spotlight cycles through what's trending
   let i = 0;
   const timer = setInterval(() => {
@@ -221,7 +225,6 @@ async function showPerson(t, [id]) {
 
 const REQ_FILTERS = [["all", "All"], ["pending", "Waiting for approval"], ["approved", "Approved"], ["processing", "Processing"], ["available", "Available"], ["failed", "Failed"]];
 // Your requests: every kind in one list (#/requests), or one kind: #/requests/mine and /all are films & shows (yours, everyone's), /music is music, /games is games, /books is books
-const REQ_KINDS = [["", "Everything", () => true], ["mine", "Films & shows", () => !closedTo("media")], ["music", "Music", () => !closedTo("music")], ["games", "Games", () => !closedTo("games")], ["books", "Books", () => !closedTo("library")]];
 async function showRequests(t, [a = "", filter = "all"]) {
   const kind = ["music", "games", "books"].includes(a) ? a : a ? "mine" : "", scope = a === "all" ? "all" : "mine";
   const one = (k, section) => (!kind || kind === k) && !closedTo(section);
@@ -237,7 +240,6 @@ async function showRequests(t, [a = "", filter = "all"]) {
     } else if (kind) r = await asked();
     else r = await asked().catch(() => { why = "Seerr didn't answer, so film and show requests aren't listed."; return null; });  // the music below still shows
   }
-  const scopes = ME?.admin ? `<a href="#/requests/mine/${filter}"${scope === "mine" ? ' aria-current="page"' : ""}>Yours</a><a href="#/requests/all/${filter}"${scope === "all" ? ' aria-current="page"' : ""}>Everyone's</a><span class="sep"></span>` : "";
   const row = (q) => `<li style="${q.backdrop ? esc(`--bd:${cssUrl(q.backdrop)}`) : ""}">
       ${img(q.poster)}
       <div><a class="t" href="#/${esc(q.type)}/${esc(q.tmdb)}">${esc(q.title)}</a>
@@ -255,8 +257,8 @@ async function showRequests(t, [a = "", filter = "all"]) {
   paint(t, `<section class="home">${aurora}<h1>Your requests</h1>
       <p>${kind === "mine" && scope === "all" ? "Every film and show everyone has asked for." : "What you've asked for, and where it's at."}</p>
       ${mediaChips("requests")}
-      <nav class="chips" aria-label="Kind">${REQ_KINDS.filter(([, , open]) => open()).map(([k, label]) => `<a href="#/requests${k && "/" + k}"${k === kind ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>
-      ${kind === "mine" ? `<nav class="chips" aria-label="Which">${scopes}${REQ_FILTERS.map(([k, label]) => `<a href="#/requests/${scope}/${k}"${k === filter ? ' aria-current="page"' : ""}>${label}</a>`).join("")}</nav>` : ""}</section>
+      ${kind === "mine" ? `<div class="picks">${ME?.admin ? pick("Whose", [[`#/requests/mine/${filter}`, "Yours"], [`#/requests/all/${filter}`, "Everyone's"]], `#/requests/${scope}/${filter}`) : ""}
+        ${pick("Show", REQ_FILTERS.map(([k, label]) => [`#/requests/${scope}/${k}`, label]), `#/requests/${scope}/${filter}`)}</div>` : ""}</section>
     <div class="wrap">${kind || !list ? list : shelf("Films & shows", list, "#/requests/mine")}</div>
     ${music ? `<div class="wrap" id="musicReqs"></div>` : ""}
     ${games ? `<div class="wrap" id="gameReqs"></div>` : ""}
