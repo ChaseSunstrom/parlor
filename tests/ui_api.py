@@ -82,8 +82,15 @@ with sync_playwright() as pw:
     checks["Delete stops it at once"] = bot.get(BASE + "/api/me").status_code == 401
     docs = ctx.new_page()
     docs.goto(BASE + "/api/docs")
-    docs.wait_for_selector(".opblock-summary-path[data-path='/api/v1/search']", timeout=30000)
-    checks["the API docs open for a signed-in person"] = True
+    docs.wait_for_selector(".opblock", timeout=30000)
+    search = docs.locator(".opblock-summary-path[data-path='/api/v1/search']")
+    for _ in range(80):  # Swagger UI (5.33 on) draws a route only once it scrolls into view
+        if search.count():
+            break
+        docs.mouse.wheel(0, 2000)
+        docs.wait_for_timeout(100)
+    search.scroll_into_view_if_needed(timeout=10000)
+    checks["the API docs open for a signed-in person"] = search.is_visible()
     docs.screenshot(path=str(OUT / "docs-desk.png"))
     checks["and not for anyone else"] = requests.get(BASE + "/api/docs").status_code == 401
     phone = b.new_context(viewport={"width": 390, "height": 844}, color_scheme="dark", is_mobile=True)
