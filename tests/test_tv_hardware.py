@@ -196,6 +196,31 @@ class Address(unittest.TestCase):
         for ip in ("10.0.0.7", "172.16.4.2", "172.31.255.254", "192.168.1.40", "fd12:3456:789a::5"):
             self.assertEqual(tvhw.checked_ip(ip), ip)
 
+    def test_inside_docker_the_containers_own_networks_are_refused(self):
+        """the other containers and Docker's gateway are private addresses too, but they're no TV"""
+        with tempfile.TemporaryDirectory() as d:
+            route, six, inside = Path(d, "route"), Path(d, "if_inet6"), Path(d, "dockerenv")
+            route.write_text("Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
+                             "eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n"      # default via 172.18.0.1
+                             "eth0\t000012AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n"      # 172.18.0.0/16, attached
+                             "eth1\t0001A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\n")     # 192.168.1.0/24, attached (the LAN)
+            six.write_text("fd00000000000000000000000000dead 02 40 00 80 eth0\nfe800000000000000000000000000001 02 40 20 80 eth0\n")
+            where = mock.patch.multiple(tvhw, ROUTES=str(route), ROUTES6=str(six), INSIDE=str(inside))
+            with where, mock.patch.object(tvhw, "LAN", [ipaddress.ip_network("192.168.0.0/16")]):
+                for ip in ("172.18.0.1", "172.18.0.5", "192.168.1.40", "fd00::5"):  # outside a container nothing is Docker's
+                    self.assertEqual(tvhw.checked_ip(ip), ip)
+                inside.touch()
+                for ip in ("172.18.0.1", "172.18.0.5", "172.18.255.254", "fd00::5"):
+                    with self.assertRaises(tvhw.Refused, msg=ip) as no:
+                        tvhw.checked_ip(ip)
+                    self.assertIn("containers", no.exception.detail)
+                for ip in ("172.19.0.5", "10.0.0.7", "192.168.1.40", "fd12::5"):  # the LAN (in LAN_SUBNET) even when attached: host networking
+                    self.assertEqual(tvhw.checked_ip(ip), ip)
+                route.unlink()  # can't tell which networks are Docker's: every private address but LAN_SUBNET's is refused
+                with self.assertRaises(tvhw.Refused):
+                    tvhw.checked_ip("172.19.0.5")
+                self.assertEqual(tvhw.checked_ip("192.168.1.40"), "192.168.1.40")
+
     def test_everything_else_is_refused(self):
         for ip in ("127.0.0.1", "127.8.8.8", "::1", "169.254.169.254", "169.254.1.1", "fe80::1", "224.0.0.251", "ff02::1", "0.0.0.0", "::",
                    "8.8.8.8", "172.32.0.1", "192.169.0.1", "100.64.0.1", "::ffff:127.0.0.1", "::ffff:192.168.1.40", "2001:4860:4860::8888",

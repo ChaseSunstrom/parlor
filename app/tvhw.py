@@ -39,6 +39,8 @@ router = APIRouter(prefix="/api/tv")
 KINDS = {"roku": "Roku", "webos": "LG (webOS)", "tizen": "Samsung (Tizen)", "adb": "Android TV (adb)", "cec": "HDMI-CEC adapter"}
 PAIRS = ("webos", "tizen")  # these ask on their screen once, then give a key Parlor keeps
 PRIVATE = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")]
+LAN = [ipaddress.ip_network(n.strip(), strict=False) for n in os.environ.get("LAN_SUBNET", "192.168.0.0/16").split(",") if n.strip()]  # compose's own setting
+ROUTES, ROUTES6, INSIDE = "/proc/net/route", "/proc/net/if_inet6", "/.dockerenv"
 ALSO: set = set()  # for the tests only: their fake TVs listen on 127.0.0.1. Nothing else adds to it, and no setting does
 PORTS = {"roku": 8060, "webos": 3001, "tizen": 8002, "adb": 5555}  # each protocol's own port, fixed
 TLS = True  # LG and Samsung take wss only; the tests' fakes speak plain ws
@@ -96,6 +98,26 @@ class Off(Exception):
 
 # --- the address check -----------------------------------------------------------------------
 
+def _dockers():
+    """The networks this container sits on itself: the other containers and Docker's gateway are there, and none of
+    them is a TV. Empty outside a container. None when it can't be read (then only LAN_SUBNET passes)."""
+    if not os.path.exists(INSIDE):
+        return []
+    try:
+        nets = []
+        for line in Path(ROUTES).read_text().splitlines()[1:]:
+            f = line.split()
+            if len(f) > 7 and f[2] == "00000000" and f[1] != "00000000":  # attached, not through a gateway
+                nets.append(ipaddress.ip_network((bytes.fromhex(f[1])[::-1], bin(int(f[7], 16)).count("1"))))
+        if os.path.exists(ROUTES6):
+            for line in Path(ROUTES6).read_text().splitlines():
+                f = line.split()
+                nets.append(ipaddress.ip_network((bytes.fromhex(f[0]), int(f[2], 16)), strict=False))
+        return nets
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def checked_ip(host: str) -> str:
     """The one address to connect to for `host`, or Refused. The name is resolved here, once; every address it has
     must be on the LAN's private ranges (so never loopback, link-local, the cloud's metadata address, multicast or
@@ -109,6 +131,13 @@ def checked_ip(host: str) -> str:
         raise Refused("Can't find a TV at that address") from None
     if not ips or not all(any(ip in net for net in (*PRIVATE, *ALSO)) for ip in ips):
         raise Refused("That address isn't on your home network (10.x, 172.16–31.x, 192.168.x or fc00::/7)")
+    mine = _dockers()
+    for ip in ips:
+        if any(ip in net for net in (*LAN, *ALSO)):  # the home network as compose was told it, even when attached (host networking)
+            continue
+        if mine is None or any(ip in net for net in mine):
+            raise Refused("That address is on Docker's own network, where Parlor's other containers are, not a TV. "
+                          "If your home network really uses it, add it to LAN_SUBNET")
     return str(ips[0])
 
 
@@ -145,6 +174,9 @@ def _ws(ip, kind, path="/"):
     try:
         return connect(f"{'wss' if TLS else 'ws'}://{_at(ip, kind)}{path}", sock=sock, ssl=ctx, open_timeout=TIMEOUT, close_timeout=1,
                        max_size=65536, logger=_quiet)
+    except TimeoutError:  # it took the connection and then said nothing: not a prompt on its screen
+        sock.close()
+        raise Off() from None
     except BaseException:
         sock.close()
         raise
@@ -283,16 +315,20 @@ def _adb_folder() -> str:
             if not shutil.which(ADB):
                 raise Failed(NO_ADB)
             home = Path(tempfile.mkdtemp(prefix="parlor-adb-"))  # 0700
-            keyfile = home / ".android" / "adbkey"
-            keyfile.parent.mkdir()
-            if key := core.setting("tv_adb_key"):
-                keyfile.touch(mode=0o600)
-                keyfile.write_text(key)
-            else:
-                _tool([ADB, "keygen", str(keyfile)], NO_ADB, home=str(home))
-                if not keyfile.is_file():
-                    raise Failed("adb couldn't make its key")
-                core.set_setting("tv_adb_key", keyfile.read_text())
+            try:
+                keyfile = home / ".android" / "adbkey"
+                keyfile.parent.mkdir()
+                if key := core.setting("tv_adb_key"):
+                    keyfile.touch(mode=0o600)
+                    keyfile.write_text(key)
+                else:
+                    _tool([ADB, "keygen", str(keyfile)], NO_ADB, home=str(home))
+                    if not keyfile.is_file():
+                        raise Failed("adb couldn't make its key")
+                    core.set_setting("tv_adb_key", keyfile.read_text())
+            except BaseException:
+                shutil.rmtree(home, ignore_errors=True)
+                raise
             _adb_home = str(home)
         return _adb_home
 
@@ -425,8 +461,14 @@ def set_users(sid: int, body: Users, user=Depends(admin)):
     if len(rows(f"SELECT id FROM users WHERE id IN ({','.join('?' * len(want))})", *want)) != len(want):
         raise HTTPException(404, "No such account")
     conn = db()
-    conn.execute("DELETE FROM tv_access WHERE set_id = ?", (sid,))
-    conn.executemany("INSERT INTO tv_access(set_id, user_id) VALUES (?, ?)", [(sid, u) for u in want])
+    conn.execute("BEGIN IMMEDIATE")  # both or neither: a failure between them would leave nobody ticked
+    try:
+        conn.execute("DELETE FROM tv_access WHERE set_id = ?", (sid,))
+        conn.executemany("INSERT INTO tv_access(set_id, user_id) VALUES (?, ?)", [(sid, u) for u in want])
+        conn.execute("COMMIT")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
     return {"users": sorted(want)}
 
 
