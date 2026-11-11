@@ -64,6 +64,7 @@ services:
       - ./seerr/config:/stack/seerr:ro
       - ./gluetun:/stack/gluetun       # the VPN file you upload goes here
       - ./checkrr/config:/stack/checkrr   # Parlor writes Checkrr's config (the library folders and the *arrs' keys)
+      - ./questarr/config:/stack/questarr:ro   # the key Questarr shows with its game lookups
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/api/health', timeout=5)"]
       interval: 30s
@@ -236,6 +237,12 @@ services:
     depends_on:
       setup:
         condition: service_completed_successfully   # its folder must be the apps' user's before it starts
+    environment:
+      <<: *env
+      # games are looked up by title with no IGDB keys of yours: Parlor answers from Steam's store (README -> Games you ask for)
+      IGDB_CLIENT_ID: parlor
+      IGDB_CLIENT_SECRET: parlor
+      NODE_OPTIONS: --require /app/data/parlor-lookup.cjs   # setup puts it there, with the key Questarr shows Parlor
     ports: ["5000:5000"]
     volumes:
       - ./questarr/config:/app/data

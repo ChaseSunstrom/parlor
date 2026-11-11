@@ -3,10 +3,9 @@ Parlor's front door switched to "VPN off", since there's no VPN here; no publish
 from this repo. Create the admin account over HTTP, wait for the automatic setup, check every app, then
 run setup again: it must change nothing. Exit 0 when all of that holds. The stack is removed at the end
 (--keep leaves it running for a look). Needs Docker and internet: python tests/live_stack.py [--keep]
---only questarr judges only Questarr's part (the whole stack still runs: it needs Prowlarr and qBittorrent). With
-PARLOR_TEST_IGDB_ID and PARLOR_TEST_IGDB_SECRET in the environment, a game search by title is checked too."""
+--only questarr judges only Questarr's part (the whole stack still runs: it needs Prowlarr and qBittorrent). A game is
+searched by title there with no IGDB keys of anyone's: Parlor answers Questarr from Steam's store."""
 import json
-import os
 import socket
 import subprocess
 import sys
@@ -162,14 +161,16 @@ for word in ("doom", "linux", "2024"):  # a raw search of the indexers: no IGDB 
         break
 checks["a search through Questarr returns results from the indexers (no IGDB)"] = bool(found.get("items"))
 row = next(a for a in second["apps"] if a["app"] == "questarr")
-igdb = os.environ.get("PARLOR_TEST_IGDB_ID"), os.environ.get("PARLOR_TEST_IGDB_SECRET")
-if all(igdb):
-    r = s.post(f"{BASE}/api/stack/questarr/igdb", json={"client_id": igdb[0], "client_secret": igdb[1], "password": PASSWORD}, timeout=60)
-    games = quest("GET", "/api/igdb/search?q=doom&limit=5", token=token)
-    checks["with IGDB keys, Questarr finds a game by title"] = r.status_code == 200 and bool(games) and "error" not in games
-else:
-    print("  skipped: a game search by title (no PARLOR_TEST_IGDB_ID / PARLOR_TEST_IGDB_SECRET here)")
-    checks["without IGDB keys, Services says Questarr needs them"] = row["needs"] == "IGDB keys"
+# a game by its title, on this clean stack with no keys of anyone's: Questarr asks "IGDB", and Parlor answers from Steam's store
+games = quest("GET", "/api/igdb/search?q=portal&limit=5", token=token)
+print("  a title search for portal:", [g.get("title") for g in games][:5] if isinstance(games, list) else games)
+checks["with no IGDB keys, Questarr finds a game by its title"] = isinstance(games, list) and any("portal" in (g.get("title") or "").lower() and g.get("coverUrl", "").startswith("https://") for g in games)
+game = quest("GET", f"/api/igdb/game/{games[0]['igdbId']}", token=token) if isinstance(games, list) and games else {}
+checks["Questarr opens that game's own page: summary, cover, release date"] = bool(game.get("title") and game.get("summary") and game.get("coverUrl") and game.get("releaseDate"))
+config = quest("GET", "/api/config", token=token)
+checks["Questarr counts itself set up, and Services asks for no keys"] = (config.get("igdb") or {}).get("configured") is True and "needs" not in row
+without = requests.post(f"{BASE}/lookup/games/v4/games", data='search "portal"; fields name; limit 5;', timeout=30)
+checks["nobody but Questarr gets an answer from Parlor's lookup"] = without.status_code == 401
 if "--only" in sys.argv:  # judge one app's part
     only = sys.argv[sys.argv.index("--only") + 1]
     bad, changed = [x for x in bad if x["app"] == only], [x for x in changed if x["app"] == only]

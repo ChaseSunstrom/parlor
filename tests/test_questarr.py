@@ -1,5 +1,5 @@
 """Questarr in the stack: Parlor's setup makes its login, connects it to qBittorrent and Prowlarr's indexers and gives
-it the games folder; the IGDB keys are asked for once in Settings -> Services."""
+it the games folder. It needs no IGDB keys: the compose sends its game lookups to Parlor (test_gamelookup.py)."""
 import re
 from pathlib import Path
 from unittest import mock
@@ -98,62 +98,37 @@ class Wiring(Base):
         self.assertIn("/questarr/", (ROOT / ".gitignore").read_text().split())
         self.assertIn("questarr", stack.CONFIG_DIRS, "setup makes its folder, owned by the stack's user")
 
+    def test_wiring_in_the_compose_sends_its_game_lookups_to_parlor(self):
+        text = (ROOT / "docker-compose.yml").read_text()
+        block = re.search(r"^  questarr:.*\n(?:    .*\n)+", text, re.M)[0]
+        for line in ("<<: *env", "IGDB_CLIENT_ID: parlor", "IGDB_CLIENT_SECRET: parlor", "NODE_OPTIONS: --require /app/data/parlor-lookup.cjs", "condition: service_completed_successfully"):
+            self.assertIn(line, block)  # (setup first: it puts that file and the key into ./questarr/config)
+        parlor = re.search(r"^  parlor:.*\n(?:(?:    .*)?\n)+?(?=  \w+:)", text, re.M)[0]
+        self.assertIn("./questarr/config:/stack/questarr:ro", parlor, "Parlor reads the key Questarr shows, and can't change Questarr's files")
+        lookup = (ROOT / "app" / "questarr-lookup.cjs").read_text()
+        self.assertIn('"http://parlor:8800/lookup/games"', lookup)
+        self.assertIn('"/app/data/parlor-lookup.key"', lookup)
 
-class Igdb(Base):
-    ID, SECRET = "a" * 30, "b" * 30  # pragma: allowlist secret (made up)
 
+class NoKeys(Base):
     def setUp(self):
         super().setUp()
         with mock.patch.object(stack, "start"):  # the very first account would start a setup run of its own, as "admin"
             self.me = signed_in("questadmin", admin=True)
 
-    def row(self):
-        return next(a for a in self.me.get("/api/stack").json()["apps"] if a["app"] == "questarr")
-
-    def give(self, **over):
-        return self.me.post("/api/stack/questarr/igdb", json={"client_id": self.ID, "client_secret": self.SECRET, "password": "correct horse", **over}, headers=H)
-
-    def test_igdb_keys_are_asked_for_once_and_until_then_it_needs_them(self):
-        self.assertEqual(self.give().status_code, 409, "before setup there's no Questarr login to give them to")
+    def test_nokeys_the_row_asks_for_nothing_and_the_old_route_is_gone(self):
         stack.run("questadmin", "correct horse")
-        row = self.row()
-        self.assertEqual((row["up"], row["key"], row["needs"]), (True, True, "IGDB keys"))
-        self.assertEqual(self.give(password="wrong").status_code, 403)
-        r = self.give(client_id="short")
-        self.assertEqual(r.status_code, 400)
-        self.assertIn("doesn't look valid", r.json()["detail"])
-        self.assertIsNone(self.fake.quest["igdb"])
-        self.assertEqual(self.give().status_code, 200)
-        self.assertEqual(self.fake.quest["igdb"], (self.ID, self.SECRET))
-        self.assertIsNone(self.row()["needs"])
-        stored = " ".join(str(r["value"]) for r in core.rows("SELECT value FROM settings"))
-        self.assertNotIn(self.SECRET, stored, "Questarr keeps them; Parlor keeps no copy")
+        row = next(a for a in self.me.get("/api/stack").json()["apps"] if a["app"] == "questarr")
+        self.assertEqual((row["up"], row["key"]), (True, True))
+        self.assertNotIn("needs", row)
+        r = self.me.post("/api/stack/questarr/igdb", json={"client_id": "a" * 30, "client_secret": "b" * 30, "password": "correct horse"}, headers=H)
+        self.assertIn(r.status_code, (404, 405))
+        self.assertFalse([c for c in self.fake.calls if "igdb" in str(c).lower() or c[1].endswith("/api/config")], "and Questarr is never asked about IGDB")
 
-    def test_igdb_keys_given_in_questarr_itself_are_noticed_at_setup(self):
-        self.fake.quest.update(user=("questadmin", "correct horse"), igdb=("x", "y"))
-        stack.run("questadmin", "correct horse")
-        self.assertIsNone(self.row()["needs"])
-        # and later too: taken away there, a run with the password sees it; a run without one changes nothing
-        self.fake.quest["igdb"] = None
-        stack.run("questadmin", None)
-        self.assertIsNone(self.row()["needs"])
-        stack.run("questadmin", "correct horse")
-        self.assertEqual(self.row()["needs"], "IGDB keys")
-
-    def test_igdb_from_another_admin_says_whose_login_questarr_has(self):
+    def test_nokeys_another_admins_setup_run_doesnt_need_questarrs_login(self):
         stack.run("questadmin", "correct horse")
         import auth
 
         auth.create_user("secondadmin", "another horse", True)
-        other = signed_in("secondadmin", password="another horse")
-        r = other.post("/api/stack/questarr/igdb", json={"client_id": self.ID, "client_secret": self.SECRET, "password": "another horse"}, headers=H)
-        self.assertEqual(r.status_code, 409)
-        self.assertIn("questadmin", r.json()["detail"])
-        self.assertIsNone(self.fake.quest["igdb"])
-        # a setup run by that other admin doesn't fail on Questarr's login either: it's wired already
         got = {r["step"]: r["status"] for r in stack.run("secondadmin", "another horse") if r["app"] == "questarr"}
-        self.assertEqual(got, {"connections": "ok", "indexers": "ok"})
-
-    def test_igdb_is_for_admins(self):
-        member = signed_in("questmember")
-        self.assertEqual(member.post("/api/stack/questarr/igdb", json={"client_id": self.ID, "client_secret": self.SECRET, "password": "x"}, headers=H).status_code, 403)
+        self.assertEqual(got, {"connections": "ok", "indexers": "ok"}, "it's wired already, under Parlor's key")

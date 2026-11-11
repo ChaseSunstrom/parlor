@@ -353,11 +353,17 @@ An admin adds the set in **Settings → TVs → TV sets**: its type, a name and 
 - has it read Prowlarr's indexers, and again on any later setup run after you add or remove one in Prowlarr;
 - points its library at your `GAMES` folder (`/data/games`), unless you chose another in Questarr.
 
-**It needs IGDB keys from you, once.** Questarr looks games up by title in IGDB, which is free but wants keys of your own: at [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps) register an application (any name, redirect URL `http://localhost`, category Application Integration) and copy its Client ID and a new Client Secret into the form on Questarr's row in Settings → Services, with your password. They go straight to Questarr; Parlor keeps no copy. Until then the row says *needs IGDB keys*: searching the indexers by hand works in Questarr, finding a game by title doesn't.
+**It needs no keys from you.** Questarr looks every game up at IGDB, which wants keys from a Twitch developer account. In this stack you register nothing: Parlor answers those lookups itself, from Steam's public store, so finding a game by its title works on a fresh install.
 
-Questarr has one login, the admin's who ran setup first; another admin gives the keys in Questarr's own Settings. Like the other apps' pages, port 5000 is for your home network only: until setup has run, whoever reaches it first can make its login (setup then says Questarr has its own login), so don't forward it to the internet.
+- What you get: titles, covers, screenshots, release dates, genres, Steam's review score, and the popular, new and upcoming lists.
+- What you don't: games Steam doesn't sell (console exclusives, games only in another store) aren't found by title, though searching the indexers by hand in Questarr still works for them; and there are no editions or time-to-beat figures.
+- Rather have IGDB's catalogue? Enter IGDB keys of your own in Questarr's Settings, then `docker compose restart questarr`: its lookups go to IGDB instead.
 
-A Questarr of your own elsewhere is left alone. The image is pinned to a version by its digest in `docker-compose.yml`, as the project is young: read its release notes before moving the pin.
+How it's done: setup puts a small file and a random key into `./questarr/config`. The file is loaded into Questarr and sends its IGDB lookups to Parlor; the key goes with each one, and Parlor answers nobody without it. It is written against the Questarr version pinned in `docker-compose.yml`; when an update of Parlor changes the file, Questarr uses the new one from its next start (`docker compose restart questarr`).
+
+Questarr has one login, the admin's who ran setup first. Like the other apps' pages, port 5000 is for your home network only: until setup has run, whoever reaches it first can make its login (setup then says Questarr has its own login), so don't forward it to the internet.
+
+A Questarr of your own elsewhere is left alone (it keeps needing its own IGDB keys). The image is pinned to a version by its digest in `docker-compose.yml`, as the project is young: read its release notes before moving the pin, and run `python tests/live_stack.py --only questarr` after moving it, which searches a game by title for real.
 
 ### Broken files (Checkrr)
 

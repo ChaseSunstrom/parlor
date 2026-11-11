@@ -24,6 +24,7 @@ import live
 import music  # music-fndr, whole (vendored by scripts/vendor-music.sh)
 import musicreq
 import private
+import gamelookup
 import games
 import pwa
 import tv
@@ -114,6 +115,7 @@ app.include_router(qbit.router)
 app.include_router(qbit.page)  # /qbit/: qBittorrent's own page, for admins
 app.include_router(live.router)  # /api/live: YouTube lives and Twitch, in Parlor's player
 app.include_router(games.router)  # /api/games: Steam, retro games, streaming from a PC
+app.include_router(gamelookup.router)  # /lookup/games: Questarr's game lookups, answered from Steam's store (its own key, no session)
 app.include_router(games.page)  # /games/stream/: the bridge to a gaming PC, behind the sign-in
 app.include_router(pwa.router)  # /sw.js: the app kept on devices, for offline
 app.include_router(tvhw.router)  # /api/tv/sets, /api/tv/hw: the TV set's own power, input and volume (before tv's /api/tv/{id})

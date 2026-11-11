@@ -1,6 +1,6 @@
 """Questarr's row in Settings → Services in a real browser, against the fake stack from test_stack.py: after setup it
-says it needs IGDB keys and shows the form; a wrong password and a bad key are said; the right ones go to Questarr,
-and the form and the note are gone. Screenshots at desktop and phone width:
+shows its steps and asks for nothing: no IGDB keys, no form, and the old route for them is gone. Screenshots at desktop
+and phone width:
    python tests/ui_questarr.py [OUT_DIR]   (needs Playwright and its Chromium)"""
 import os
 import socket
@@ -42,17 +42,6 @@ while not server.started:
 BASE = f"http://127.0.0.1:{PORT}"
 SHELL = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))), None)
 errors, checks = [], {}
-ID, SECRET = "a" * 30, "b" * 30  # pragma: allowlist secret (made up)
-
-
-def give(page, cid, pw, says):
-    page.fill("#igdbId", cid)
-    page.fill("#igdbSecret", SECRET)
-    page.fill("#igdbPw", pw)
-    with page.expect_response(lambda r: r.url.endswith("/questarr/igdb"), timeout=15000):
-        page.click("#igdbForm button")
-    page.wait_for_function("(t) => [...document.querySelectorAll('.toast')].some((e) => e.textContent.includes(t))", arg=says, timeout=8000)
-
 
 with sync_playwright() as pw:
     b = pw.chromium.launch(executable_path=str(SHELL) if SHELL else None)
@@ -66,34 +55,28 @@ with sync_playwright() as pw:
     page.click("#gateForm .primary")
     page.wait_for_selector("#gateForm", state="detached", timeout=30000)
     page.goto(BASE + "/#/settings")
-    page.wait_for_selector("#igdbForm", timeout=15000)
+    page.wait_for_selector(".svc", timeout=15000)
     row = page.locator(".svc", has_text="Questarr")
-    checks["Questarr's row says it needs IGDB keys, with its setup steps"] = "needs IGDB keys" in row.inner_text() and "connections" in row.inner_text() and "from Prowlarr" in row.inner_text()
-    checks["the form links to where the keys come from"] = page.get_attribute("#igdbForm a", "href") == "https://dev.twitch.tv/console/apps"
+    said = row.inner_text()
+    checks["Questarr's row shows its setup steps"] = "connections" in said and "from Prowlarr" in said
+    checks["it asks for no keys: no IGDB, no form"] = "IGDB" not in page.content() and "needs" not in said and page.locator("#igdbForm").count() == 0 and row.locator("input").count() == 0
+    checks["the old route for the keys is gone"] = page.evaluate(
+        """() => fetch("/api/stack/questarr/igdb", {method: "POST", headers: {"X-Requested-With": "parlor", "Content-Type": "application/json"}, body: "{}"}).then((r) => r.status)""") in (404, 405)
     row.scroll_into_view_if_needed()
-    page.screenshot(path=str(OUT / "questarr-needs-keys.png"))
-    give(page, ID, "not my password", "That isn't your password")
-    give(page, "short", PASSWORD, "doesn't look valid")
-    checks["a wrong password and a bad key are said, and nothing is sent on"] = fake.quest["igdb"] is None
-    give(page, ID, PASSWORD, "Questarr has its IGDB keys")
-    page.wait_for_selector("#igdbForm", state="detached", timeout=8000)
-    row = page.locator(".svc", has_text="Questarr")
-    checks["the right ones reach Questarr, and the form and the note go"] = fake.quest["igdb"] == (ID, SECRET) and "needs IGDB" not in row.inner_text()
-    checks["the secret is in no page"] = SECRET not in page.content()
-    core.set_setting("questarr_igdb", "")
+    page.screenshot(path=str(OUT / "questarr-row.png"))
     phone = b.new_context(viewport={"width": 390, "height": 844}, color_scheme="light", is_mobile=True, has_touch=True, storage_state=ctx.storage_state()).new_page()
     phone.on("pageerror", lambda e: errors.append(f"phone: {e}"))
     phone.goto(BASE + "/#/settings")
-    phone.wait_for_selector("#igdbForm", timeout=15000)
-    phone.locator("#igdbForm").scroll_into_view_if_needed()
-    checks["on a phone the form fits the screen"] = phone.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
-    phone.screenshot(path=str(OUT / "questarr-needs-keys-phone.png"))
+    phone.wait_for_selector(".svc", timeout=15000)
+    phone.locator(".svc", has_text="Questarr").scroll_into_view_if_needed()
+    checks["on a phone the row fits the screen"] = phone.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1")
+    phone.screenshot(path=str(OUT / "questarr-row-phone.png"))
     b.close()
 server.should_exit = True
 for k, v in checks.items():
     print(f"  {'✓' if v else '✗'} {k}")
 print("page errors:", errors or "none")
-print(f"screenshots: questarr-needs-keys.png, questarr-needs-keys-phone.png in {OUT}")
-ok = len(checks) == 6 and all(checks.values()) and not errors
+print(f"screenshots: questarr-row.png, questarr-row-phone.png in {OUT}")
+ok = len(checks) == 4 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

@@ -52,7 +52,7 @@ class FakeStack:
         self.jf = {"wizard": False, "user": None, "keys": [], "libs": []}
         self.seerr = {"initialized": False, "key": "SEERRKEY", "libs": [{"id": "m1", "name": "Movies", "enabled": False}], "radarr": [], "sonarr": []}
         self.bazarr = {"use_sonarr": False, "use_radarr": False, "sonarr_key": "", "radarr_key": ""}
-        self.quest = {"user": None, "igdb": None, "downloaders": [], "root": "/data", "indexers": [], "keys": []}
+        self.quest = {"user": None, "downloaders": [], "root": "/data", "indexers": [], "keys": []}
         self.cleanup = {"setup": False, "instances": {"sonarr": [], "radarr": [], "lidarr": []}, "clients": [], "local": False,
                         # Cleanuparr's jobs as a fresh one has them (shapes copied from Cleanuparr 2.x)
                         "queue_cleaner": {"enabled": False, "cronExpression": "0 0/5 * * * ?", "failedImport": {"maxStrikes": 0, "ignorePrivate": False,
@@ -376,18 +376,11 @@ class FakeStack:
         if path == "/api/auth/login":
             return Resp(200, {"token": "QT"}) if k["user"] == (body["username"], body["password"]) else Resp(401, {"error": "Invalid credentials"})
         jwt, key = headers.get("Authorization") == "Bearer QT", bool(k["keys"]) and headers.get("X-Api-Key") in k["keys"]
-        if path in ("/api/api-keys", "/api/settings/igdb", "/api/config"):  # these take a signed-in person only, never a key
+        if path == "/api/api-keys":  # takes a signed-in person only, never a key
             if not jwt:
                 return Resp(401, {"error": "Authentication required"})
-            if path == "/api/api-keys":
-                k["keys"].append(f"qsr_{len(k['keys'])}")
-                return Resp(201, {"name": body["name"], "scope": body["scope"], "key": k["keys"][-1]})
-            if path == "/api/config":
-                return Resp(200, {"igdb": {"configured": bool(k["igdb"])}})
-            if len(body["clientId"]) < 20:
-                return Resp(400, {"error": "Client ID doesn't look valid — check for extra spaces or a partial copy."})
-            k["igdb"] = (body["clientId"], body["clientSecret"])
-            return Resp(200, {"success": True})
+            k["keys"].append(f"qsr_{len(k['keys'])}")
+            return Resp(201, {"name": body["name"], "scope": body["scope"], "key": k["keys"][-1]})
         if not (jwt or key):
             return Resp(401, {"error": "Authentication required"})
         if path == "/api/downloaders":
@@ -427,7 +420,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "checkrr_report_only", "checkrr_url", "questarr_key", "questarr_igdb", "questarr_url", "questarr_user", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "checkrr_report_only", "checkrr_url", "questarr_key", "questarr_url", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),

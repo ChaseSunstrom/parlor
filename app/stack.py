@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import socket
 import sys
 import tempfile
@@ -29,7 +30,7 @@ from urllib.parse import urlsplit
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 import arr
 import core
@@ -412,6 +413,9 @@ def _write_private(path: Path, text: str):
         raise
 
 
+QUESTARR_LOOKUP = Path(__file__).with_name("questarr-lookup.cjs")
+
+
 def init_files(root: Optional[Path] = None) -> list:
     """Before the apps start (the compose's one-shot, with the compose folder at /compose):
     every app's ./<app>/config folder exists and belongs to PUID:PGID (Docker would make
@@ -436,6 +440,14 @@ def init_files(root: Optional[Path] = None) -> list:
     if not made.exists():
         _write_private(made, checkrr_config([], True))
         done.append("checkrr: a config to start on")
+    # Questarr looks games up at Parlor (gamelookup.py): the file that sends its lookups there, and the key it shows with each
+    made, lookup = root / "questarr" / "config" / "parlor-lookup.key", root / "questarr" / "config" / "parlor-lookup.cjs"
+    if not made.is_file() or made.stat().st_size < 40:  # none yet, or one cut short
+        _write_private(made, secrets.token_urlsafe(32) + "\n")
+        done.append("questarr: a key for its game lookups")
+    if not lookup.is_file() or lookup.read_text() != QUESTARR_LOOKUP.read_text():
+        _write_private(lookup, QUESTARR_LOOKUP.read_text())
+        done.append("questarr: game lookups go to Parlor")
     for kind in KINDS:  # Docker makes a missing media folder root's when it mounts it
         if hand_over(DATA / kind):
             done.append(f"{kind}: folder handed to the apps' user")
@@ -868,18 +880,11 @@ def _questarr(method, path, **kw):
 
 
 def questarr(name, password):
-    fresh = not setting("questarr_key")
-    if fresh and not password:
-        raise Wait("needs your password once: it becomes Questarr's login")
-    if password and (fresh or name == setting("questarr_user")):  # Questarr has one login: whoever set it up first
+    if not setting("questarr_key"):
+        if not password:
+            raise Wait("needs your password once: it becomes Questarr's login")
         signed = {"Authorization": f"Bearer {_questarr_token(name, password)}"}
-        if fresh:
-            key = need(http("POST", f"{questarr_url()}/api/api-keys", headers=signed, json={"name": "Parlor", "scope": "admin"}), "Questarr").json()["key"]
-            core.set_setting("questarr_key", key)
-            core.set_setting("questarr_user", name)
-        # whether it has its IGDB keys, which only a signed-in person may ask: read whenever there's a password to ask with
-        igdb = need(http("GET", f"{questarr_url()}/api/config", headers=signed), "Questarr").json().get("igdb") or {}
-        core.set_setting("questarr_igdb", "1" if igdb.get("configured") else "")
+        core.set_setting("questarr_key", need(http("POST", f"{questarr_url()}/api/api-keys", headers=signed, json={"name": "Parlor", "scope": "admin"}), "Questarr").json()["key"])
     changed = []
     if not any(d.get("type") == "qbittorrent" for d in _questarr("GET", "/api/downloaders")):
         where_ = urlsplit(qbit())
@@ -1299,8 +1304,6 @@ def status():
                                    ("bazarr", "Bazarr", bazarr_url(), "/"), ("cleanuparr", "Cleanuparr", cleanuparr_url(), "/health"),
                                    ("questarr", "Questarr", questarr_url(), "/api/health"), ("checkrr", "Checkrr", checkrr_url(), "/api/stats/current")):
         apps.append({"app": app, "label": label, "url": url, "key": bool(keys[app]) if app in keys else None, "probe": probe})
-    # Questarr finds games by title through IGDB, with keys only you can get: until it has them it's wired but can't look anything up
-    next(a for a in apps if a["app"] == "questarr")["needs"] = "IGDB keys" if keys["questarr"] and not setting("questarr_igdb") else None
     with ThreadPoolExecutor(len(apps)) as pool:  # all at once: a page shouldn't wait 4 s per app that's down
         for a, up in zip(apps, pool.map(lambda a: reachable(a["url"] + a.pop("probe")), apps)):
             a["up"] = up
@@ -1367,41 +1370,6 @@ def setup(body: Setup, user=Depends(admin)):
     if body.password:
         _is_theirs(user, body.password)
     return {"started": start(user["name"], body.password or None)}
-
-
-class Igdb(BaseModel):
-    client_id: str = Field(min_length=1, max_length=200)
-    client_secret: str = Field(min_length=1, max_length=200)
-    password: str = Field(min_length=1, max_length=1000)
-
-
-@router.post("/questarr/igdb")
-def questarr_igdb(body: Igdb, user=Depends(admin)):
-    """The IGDB keys go straight to Questarr, which keeps them; Parlor keeps no copy. Questarr takes them only from a
-    signed-in person, so this needs your password again."""
-    _is_theirs(user, body.password)
-    if not ours("questarr"):
-        raise HTTPException(409, "That Questarr is your own: give it the keys in its own Settings")
-    if not setting("questarr_key"):
-        raise HTTPException(409, "Set up the services first (with your password), then give the keys")
-    whose = setting("questarr_user") or user["name"]
-    if whose != user["name"]:
-        raise HTTPException(409, f"Questarr's login is {whose}'s: {whose} can give the keys here, or anyone signed in to Questarr in its own Settings")
-    try:
-        signed = {"Authorization": f"Bearer {_questarr_token(user['name'], body.password)}"}
-        r = http("POST", f"{questarr_url()}/api/settings/igdb", headers=signed, json={"clientId": body.client_id.strip(), "clientSecret": body.client_secret.strip()})
-    except Fail as exc:
-        raise HTTPException(409, str(exc)) from None
-    except requests.RequestException:
-        raise HTTPException(502, "Questarr didn't answer") from None
-    if r.status_code != 200:
-        try:
-            said = r.json().get("error")
-        except (ValueError, AttributeError):
-            said = ""
-        raise HTTPException(400 if r.status_code < 500 else 502, str(said or f"Questarr said {r.status_code}")[:300])
-    core.set_setting("questarr_igdb", "1")
-    return {"ok": True}
 
 
 class Replace(BaseModel):

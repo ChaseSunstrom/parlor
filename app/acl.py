@@ -14,7 +14,7 @@ from core import admin, db, one
 
 SECTIONS = {"watch": "Watch", "media": "Movies & TV", "music": "Music", "library": "Library", "games": "Games", "downloads": "Downloads"}
 EVERYONE, ADMIN = ("everyone",), ("admin",)  # no section: any signed-in person; or admins only (core.admin decides)
-SECRET = ("secret",)  # no session at all: another app calls it, and the address carries a secret the route checks
+SECRET = ("secret",)  # no session at all: another app calls it, and the address or a header carries a secret the route checks
 OPEN = ("open",)  # no session at all: part of the app itself, which has to load to show its sign-in
 # path prefix -> sections it needs (all of them), first match wins: the specific ones first
 RULES = [
@@ -37,6 +37,7 @@ RULES = [
     ("/api/health", EVERYONE), ("/api/auth/", EVERYONE), ("/api/vault/", EVERYONE), ("/api/me/app-passwords", EVERYONE),
     ("/api/me/password", EVERYONE), ("/api/me", EVERYONE),
     ("/hooks/lidarr/", SECRET),  # Lidarr's webhook (musicreq.lidarr_hook)
+    ("/lookup/games/", SECRET),  # Questarr's game lookups, with the key setup wrote for it (gamelookup.py)
     ("/sw.js", OPEN),  # the app's service worker (pwa.py)
     ("/tv", OPEN),  # Parlor on a TV: the page itself
     ("/api/tv/code", OPEN), ("/api/tv/claim", OPEN), ("/api/tv/me", OPEN),  # a TV pairing (tv.py)
