@@ -3,7 +3,7 @@
   "motion": true,
   "direction": "TB",
   "nodes": [
-    {"id": "ask", "label": "You tap Request", "sub": "Movies & TV page"},
+    {"id": "ask", "label": "You tap Request", "sub": "Request page"},
     {"id": "parlor", "label": "Parlor", "sub": "POST /api/seerr/request"},
     {"id": "seerr", "label": "Seerr", "sub": "records the request"},
     {"id": "radarr", "label": "Radarr", "sub": "searches via Prowlarr"},
