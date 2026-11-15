@@ -327,7 +327,8 @@ function drawHw(tvId, sets) {
       <div class="rline"><span id="hwAt">0:00</span><i id="hwLine" title="Press along the line to jump there"><b id="hwBar"></b></i><span id="hwLen">0:00</span></div>
       <div class="rrow"><button class="icon-btn" data-hwp="seek:-10" aria-label="Back 10 seconds">−10</button>
         <button class="icon-btn big" data-hwp="pause" id="hwToggle" aria-label="Pause">${ICON.pause}</button>
-        <button class="icon-btn" data-hwp="seek:30" aria-label="Forward 30 seconds">+30</button><button class="ghost" data-hwp="stop">Stop</button></div></div>` : ""}
+        <button class="icon-btn" data-hwp="seek:30" aria-label="Forward 30 seconds">+30</button><button class="ghost" data-hwp="stop">Stop</button></div></div>
+      <p class="dim rnone" id="hwIdle" hidden>To play something on it, open a film or an episode in the <a href="#/jf">Library</a>, or a video in <a href="#/yt">Watch</a>, and press <b>On TV</b>. The buttons to pause and skip show here.</p>` : ""}
     ${row(["power", "input", "voldown", "mute", "volup"])}${row(["hdmi1", "hdmi2", "hdmi3", "hdmi4"])}${row(["parlor"])}`;
   byId("rHwSet")?.addEventListener("change", (e) => { setPref(`hw${tvId}`, +e.target.value); drawHw(tvId, sets); });
   clearInterval(hwTimer);
@@ -345,6 +346,7 @@ async function hwNow(sid) {
   if (!box.isConnected) return;
   const shown = !box.hidden;
   box.hidden = !p;
+  byId("hwIdle").hidden = !!p || !r;
   if (!p) return;
   if (!shown) box.scrollIntoView({ block: "center" });  // it sits under the pairing form: the remote is why they're here
   hwLength = p.length;

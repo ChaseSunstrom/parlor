@@ -129,6 +129,9 @@ with sync_playwright() as pw:
     checks["the link's name is in no page"] = token not in phone.content() + boss.content()
     press(phone, "[data-hwp='stop']")
     checks["Stop stops it, the remote clears, and the link ends"] = player.state == "STOPPED" and until(lambda: phone.is_hidden("#hwNow")) and cast._links == {}
+    checks["with nothing playing, the remote says how to play something"] = until(lambda: phone.is_visible("#hwIdle")) and "On TV" in phone.inner_text("#hwIdle")
+    phone.locator("#hwIdle").scroll_into_view_if_needed()
+    phone.screenshot(path=str(OUT / "remote-idle-phone.png"))
     checks["where it got to was saved to Jellyfin"] = bool(jf.requests.request.saves)
 
     # a Watch video goes the same way
@@ -149,6 +152,6 @@ print("page errors:", errors or "none")
 if not all(checks.values()):
     print("the player heard:", player.actions, "state", player.state, "at", player.at)
 print("screenshots:", ", ".join(sorted(x.name for x in OUT.glob("*.png"))), "in", OUT)
-ok = len(checks) == 16 and all(checks.values()) and not errors
+ok = len(checks) == 17 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
