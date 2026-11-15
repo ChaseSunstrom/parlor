@@ -99,6 +99,7 @@ Where a Watch video got to is saved to your Watch history.
 
 Limits, on purpose for now:
 
+- A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. A TV may still stop if Parlor is away for longer than it waits: press **On TV** again and it carries on from where it was.
 - The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
 - No choice of subtitles or audio track: the TV's own remote picks from what is in the file.
 - The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, kept only in memory, never shown in a page or a log, gone when you press **Stop**, when the remote sees the film end, after 12 hours at most, or when Parlor restarts.

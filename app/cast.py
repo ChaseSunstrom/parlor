@@ -12,6 +12,7 @@ kept out of the access log.
 """
 import html
 import ipaddress
+import json
 import logging
 import re
 import secrets
@@ -33,6 +34,7 @@ import jf
 import yt
 import tv
 import tvhw
+import core
 from core import me
 from tvhw import Failed, Refused
 
@@ -204,7 +206,37 @@ def _clock(secs: float) -> str:
 
 # --- the link a TV fetches the film by ----------------------------------------------------------
 
+_recalled = False
+
+
+def _recall():
+    """the links from before a restart, once: an update of Parlor doesn't cut off a film that is playing"""
+    global _recalled
+    with _lock:
+        if _recalled:
+            return
+        db = core.db()
+        db.execute("CREATE TABLE IF NOT EXISTS cast_links(token TEXT PRIMARY KEY, link TEXT NOT NULL, until REAL NOT NULL)")
+        db.execute("DELETE FROM cast_links WHERE until < ?", (time.time(),))
+        for r in core.rows("SELECT token, link FROM cast_links"):
+            link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+            if _links.setdefault(r["token"], link) is link:
+                _on.setdefault(link["sid"], r["token"])
+        _recalled = True
+
+
+def _keep(token: str, link: dict):
+    core.db().execute("INSERT OR REPLACE INTO cast_links(token, link, until) VALUES (?, ?, ?)",
+                      (token, json.dumps({k: v for k, v in link.items() if k not in ("saved", "sent")}), link["until"]))
+
+
+def _drop(*tokens):
+    for token in tokens:
+        core.db().execute("DELETE FROM cast_links WHERE token = ?", (token,))
+
+
 def _link(token: str) -> dict:
+    _recall()
     link = _links.get(token)
     if not link or link["until"] < time.time():
         with _lock:
@@ -217,11 +249,13 @@ def _forget(sid: int, link: dict):
     """end this link; a newer film sent to the same set keeps its own"""
     with _lock:
         if _links.get(_on.get(sid, "")) is link:
+            _drop(_on[sid])
             del _links[_on.pop(sid)]
 
 
 def _playing(sid: int) -> dict:
     """the link this set is playing, or 409"""
+    _recall()
     token = _on.get(sid, "")
     try:
         return _link(token)
@@ -425,6 +459,7 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
     tv._throttle(request, "hw")
     s = _set(sid, user)
     source, ext, mime, title, at = (_watch if body.kind == "yt" else _library)(body, user)
+    _recall()
     token = secrets.token_urlsafe(32)
     url = f"{tvhw.parlor_address(request)}/cast/{token}/video.{ext}"
     at = at if body.start is None else body.start
@@ -436,11 +471,13 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
         now = time.time()
         for old in [t for t, link in _links.items() if link["until"] < now] + ([_on[sid]] if sid in _on else []):
             _links.pop(old, None)
+            _drop(old)
         if len(_links) >= MAX_LINKS:
             raise HTTPException(429, "Too many films are being sent to TVs: stop one first")
         link = _links[token] = {**source, "uid": user["id"], "sid": sid, "mime": mime, "title": title, "until": now + LIFE, "saved": 0.0,
                                 "seen": False, "sent": time.monotonic()}
         _on[sid] = token
+        _keep(token, link)
 
     def go(ip):
         ctl = _player(sid, ip)
@@ -480,6 +517,7 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
 def playing(sid: int, user=Depends(me)):
     """what Parlor is playing on this set and where it got to; the film's place is saved from here"""
     s = _set(sid, user)
+    _recall()
     if sid not in _on:
         return {"playing": None}
     link = _playing(sid)

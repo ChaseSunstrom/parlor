@@ -184,6 +184,8 @@ class Case(unittest.TestCase):
         cast._links.clear()
         cast._on.clear()
         cast._found.clear()
+        if getattr(cast, "_recalled", False):
+            core.db().execute("DELETE FROM cast_links")
         self.jf = Jellyfin()
         for p in (mock.patch.object(cast, "PORTS", ()), mock.patch.object(tvhw, "ALSO", LOCAL), mock.patch.object(tvhw, "TIMEOUT", 2), mock.patch.object(cast, "SEEK_WAIT", 0),
                   mock.patch.object(cast, "SEARCH_WAIT", 0.5), mock.patch.object(jf.requests, "request", self.jf)):
@@ -339,6 +341,18 @@ class Link(Case):
         p, sid = self.player()
         self.play(sid)
         return p, sid, p.uri.split("192.168.1.20:8800", 1)[1]
+
+    def test_a_film_playing_outlives_a_restart_of_parlor(self):
+        """An update of Parlor restarts it; a film an hour in froze on a real TV because its link was only in memory."""
+        p, sid, path = self.link()
+        cast._links.clear(), cast._on.clear()  # the restart: memory is gone
+        cast._recalled = False
+        self.assertEqual(client().get(path, headers={"Range": "bytes=100-199"}).content, BODY[100:200], "the TV's next fetch still works")
+        self.assertEqual(self.now(sid)["title"], "Stalker <1979> & co", "and the remote still finds it")
+        self.do(sid, do="stop")
+        cast._links.clear(), cast._on.clear()
+        cast._recalled = False
+        self.assertEqual(client().get(path).status_code, 404, "a stopped film's link stays ended after a restart")
 
     def test_it_serves_the_film_with_no_sign_in_and_byte_ranges(self):
         p, sid, path = self.link()
