@@ -78,24 +78,31 @@ An LG also has **Open Parlor on it**: the TV opens its own browser at this Parlo
 
 ### A film in the TV's own player
 
-An LG can also play a film or an episode from your library with no browser and no Parlor screen on the TV: the TV's built-in network player fetches the file from Parlor, and your phone is the remote.
+An LG can also play a film or an episode from your library, or a video from **Watch**, with no browser and no Parlor screen on the TV: the TV's built-in network player fetches the file from Parlor, and your phone is the remote.
 
-1. Open a film or an episode in the **Library** and press **On TV**. Sets that can play are listed as "(its own player)".
+1. Open a film or an episode in the **Library**, or a video in **Watch**, and press **On TV**. Sets that can play are listed as "(its own player)".
 2. Pick the set. The TV starts the film from where you left off, and the phone goes to **You → TVs**.
 3. Under **The TV set** you see what is playing, with **−10**, **Pause**, **+30**, **Stop** and a line to press along. Where it got to is saved to your library as it plays.
 
 What it needs:
 
 - **An address the TV can use.** The TV fetches the film over plain `http` from an address on your home network. If you open Parlor by a name or over https, an admin types the plain one in **Settings → TVs → The address TVs reach Parlor at**, like `http://192.168.1.20:8800`. Empty means the address you are using.
-- **A way through, if a firewall sits between them.** Parlor's server asks the TV on UDP port 1900, then talks to the TCP port the TV answers with (it differs by model); the TV fetches the film from Parlor's port (8800). The TV needs no internet.
+- **A way through, if a firewall sits between them.** Parlor's server asks the TV on UDP port 1900, then talks to the TCP port the TV answers with (it differs by model, and an LG changes it). An LG on another network segment than the server doesn't answer that question, so Parlor then looks through the TV's TCP ports 1024–9999 for its player: allow the server those. The TV fetches the film from Parlor's port (8800): if it can't, Parlor says the TV couldn't fetch it. The TV needs no internet.
 - **The TV on.** A TV in standby doesn't answer.
+
+A **Watch** video plays one of two ways:
+
+- **Downloaded**: the TV gets the file, at the quality you downloaded.
+- **Not downloaded**: the TV gets YouTube's one stream that has picture and sound together, fetched through Parlor. It is small, usually 360p, and Parlor says so when it starts. For the full picture, download the video first, then press **On TV**. A video with no such stream plays only once downloaded; a live stream doesn't play on a set.
+
+Where a Watch video got to is saved to your Watch history.
 
 Limits, on purpose for now:
 
 - The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
 - No choice of subtitles or audio track: the TV's own remote picks from what is in the file.
 - The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, kept only in memory, never shown in a page or a log, gone when you press **Stop**, when the remote sees the film end, after 12 hours at most, or when Parlor restarts.
-- Only an LG is listed, and it has only been tested against a stand-in player, not a real TV. If yours refuses, the message says what the TV answered.
+- Only an LG is listed. On a real LG (an OLED C6) Parlor has found the player and been answered by it; a film playing through has only been seen on a stand-in. If yours refuses, the message says what the TV answered.
 
 With more than one set you pick which goes with the TV, and the phone remembers.
 

@@ -25,6 +25,7 @@ import core
 import jf
 import tv
 import tvhw
+import yt
 
 LOCAL = {ipaddress.ip_network("127.0.0.1/32")}
 FILM, SHOW, SONG = "a" * 32, "b" * 32, "c" * 32
@@ -36,7 +37,7 @@ AVT = "urn:schemas-upnp-org:service:AVTransport:1"
 class Player(http.server.ThreadingHTTPServer):
     """a DLNA renderer: SSDP on a UDP port, its description and its AVTransport control on a TCP one"""
 
-    def __init__(self, location=None, control="/ctl/avt", answers=True, refuses=()):
+    def __init__(self, location=None, control="/ctl/avt", answers=True, refuses=(), root=False, code=701):
         self.actions, self.state, self.at, self.uri, self.meta, self.refuses, self.searches = [], "NO_MEDIA_PRESENT", 0, "", "", list(refuses), []
         me = self
 
@@ -50,7 +51,7 @@ class Player(http.server.ThreadingHTTPServer):
                 h.wfile.write(body)
 
             def do_GET(h):
-                if h.path != "/desc.xml":
+                if h.path != "/desc.xml" and not (root and h.path == "/"):
                     return h.send(404, "")
                 h.send(200, f"""<?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0"><device><friendlyName>Den</friendlyName><serviceList>
                     <service><serviceType>urn:schemas-upnp-org:service:RenderingControl:1</serviceType><controlURL>/ctl/rc</controlURL></service>
@@ -63,7 +64,7 @@ class Player(http.server.ThreadingHTTPServer):
                 me.actions.append((h.path, action))
                 if action in me.refuses:
                     me.refuses.remove(action)
-                    return h.send(500, "<s:Envelope><s:Body><s:Fault><detail><UPnPError><errorCode>701</errorCode></UPnPError></detail></s:Fault></s:Body></s:Envelope>")
+                    return h.send(500, f"<s:Envelope><s:Body><s:Fault><detail><UPnPError><errorCode>{code}</errorCode></UPnPError></detail></s:Fault></s:Body></s:Envelope>")
                 out = ""
                 if action == "SetAVTransportURI":
                     me.uri, me.meta, me.state, me.at = arg("CurrentURI"), arg("CurrentURIMetaData"), "STOPPED", 0
@@ -184,7 +185,7 @@ class Case(unittest.TestCase):
         cast._on.clear()
         cast._found.clear()
         self.jf = Jellyfin()
-        for p in (mock.patch.object(tvhw, "ALSO", LOCAL), mock.patch.object(tvhw, "TIMEOUT", 2), mock.patch.object(cast, "SEEK_WAIT", 0),
+        for p in (mock.patch.object(cast, "PORTS", ()), mock.patch.object(tvhw, "ALSO", LOCAL), mock.patch.object(tvhw, "TIMEOUT", 2), mock.patch.object(cast, "SEEK_WAIT", 0),
                   mock.patch.object(cast, "SEARCH_WAIT", 0.5), mock.patch.object(jf.requests, "request", self.jf)):
             p.start()
             self.addCleanup(p.stop)
@@ -429,6 +430,14 @@ class Finding(Case):
         self.assertIn("network player", r.json()["detail"])
         self.assertEqual(cast._links, {})
 
+    def test_a_tv_that_doesnt_answer_the_search_is_found_by_its_open_ports(self):
+        p, sid = self.player(answers=False, root=True)  # an LG across network segments: silent, its player described at a port's root
+        with socket.socket() as shut:
+            shut.bind(("127.0.0.1", 0))  # a closed port, and one that isn't a description
+            with mock.patch.object(cast, "PORTS", (shut.getsockname()[1], p.ssdp, p.server_port)):
+                self.assertEqual(self.play(sid).status_code, 200)
+        self.assertEqual(p.did()[:2], ["SetAVTransportURI", "Play"])
+
     def test_a_description_at_another_address_is_not_fetched(self):
         other = Player(answers=False)
         self.addCleanup(other.shutdown)
@@ -467,11 +476,109 @@ class Finding(Case):
         self.assertIn("701", r.json()["detail"])
         self.assertEqual(cast._links, {})
 
+    def test_a_tv_that_cant_fetch_the_link_is_told_where_it_tried(self):
+        p, sid = self.player(refuses=["SetAVTransportURI"], code=716)  # what a real LG answers when a firewall is in its way
+        r = self.play(sid)
+        self.assertEqual(r.status_code, 502)
+        self.assertIn("couldn't fetch it from http://192.168.1.20:8800", r.json()["detail"])
+        self.assertNotIn("/cast/", r.json()["detail"])
+
     def test_a_huge_description_is_not_read_whole(self):
         p, sid = self.player()
         p.RequestHandlerClass.do_GET = lambda h: h.send(200, "<root>" + "x" * (cast.MAX_TEXT + 10) + "</root>")
         self.assertEqual(self.play(sid).status_code, 502)
 
+VID = "castvideo01"
+INFO = {"id": VID, "title": "A <talk> & more", "channel": "A channel", "channel_id": "UC" + "x" * 22, "duration": 600, "view_count": 5, "formats": [
+    {"format_id": "137", "protocol": "https", "url": "https://yt.test/137", "vcodec": "avc1.64", "acodec": "none", "height": 1080, "ext": "mp4"},
+    {"format_id": "18", "protocol": "https", "url": "https://yt.test/18", "vcodec": "avc1.42", "acodec": "mp4a.40", "height": 360, "ext": "mp4",
+     "http_headers": {"User-Agent": "yt"}}]}
+
+
+class Watch(Case):
+    """a Watch (YouTube) video on a set's own player: the downloaded file, else YouTube's one-file stream"""
+
+    def setUp(self):
+        super().setUp()
+        self.asked = []
+        core.db().execute("DELETE FROM history")
+        core.db().execute("DELETE FROM videos")
+
+        def get(url, headers=None, **kw):  # YouTube: only ranges, a piece at a time
+            self.asked.append((url, headers["Range"]))
+            a, b = map(int, re.fullmatch(r"bytes=(\d+)-(\d+)", headers["Range"]).groups())
+            if a >= len(BODY):
+                return Answer(416)
+            b = min(b, len(BODY) - 1)
+            return Answer(206, BODY[a:b + 1], {"Content-Range": f"bytes {a}-{b}/{len(BODY)}", "Content-Length": str(b - a + 1)})
+
+        for p in (mock.patch.object(yt, "video_info", lambda vid, user_id=None, fresh=False: INFO), mock.patch.object(yt.requests, "get", get),
+                  mock.patch.object(yt, "CHUNK", 4000)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_a_video_plays_from_youtubes_one_file_stream_whole_however_youtube_cuts_it(self):
+        p, sid = self.player()
+        core.db().execute("INSERT INTO history(user_id, video_id, item, position, watched) VALUES (?, ?, '{}', 90, 1)",
+                          (core.one("SELECT id FROM users WHERE name = 'admin'")["id"], VID))
+        r = self.play(sid, VID, kind="yt")
+        self.assertEqual((r.status_code, r.json()["title"]), (200, "A <talk> & more"))
+        self.assertIn("360p", r.json()["note"])  # the small one: said, with the way to the full one
+        self.assertEqual((p.did()[:3], p.at), (["SetAVTransportURI", "Play", "Seek"], 90))  # from where it was left
+        self.assertTrue(p.uri.endswith("/video.mp4"))
+        path = p.uri.split("192.168.1.20:8800", 1)[1]
+        tvset = client()  # a TV: no session
+        r = tvset.get(path)
+        self.assertEqual((r.status_code, r.content, r.headers["content-length"], r.headers["content-type"]), (200, BODY, str(len(BODY)), "video/mp4"))
+        self.assertEqual([x[1] for x in self.asked], ["bytes=0-3999", "bytes=4000-7999", "bytes=8000-10239"])
+        self.assertEqual(self.asked[0][0], "https://yt.test/18")  # the stream with sound in it
+        r = tvset.get(path, headers={"Range": "bytes=100-5099"})
+        self.assertEqual((r.status_code, r.content, r.headers["content-range"]), (206, BODY[100:5100], f"bytes 100-5099/{len(BODY)}"))
+        r = tvset.get(path, headers={"Range": "bytes=10000-"})
+        self.assertEqual((r.status_code, r.content, r.headers["content-range"]), (206, BODY[10000:], f"bytes 10000-10239/{len(BODY)}"))
+        self.assertEqual(tvset.head(path).headers["content-length"], str(len(BODY)))
+        self.assertEqual(tvset.get(path, headers={"Range": "bytes=99999-"}).status_code, 416)
+        r = tvset.get(path, headers={"Range": "bytes=-240"})  # the last bytes: a player reading an MP4's index
+        self.assertEqual((r.status_code, r.content, r.headers["content-range"]), (206, BODY[-240:], f"bytes 10000-10239/{len(BODY)}"))
+        r = tvset.get(path, headers={"Range": "bytes=0-1,5-9"})  # a range this can't read: the whole video, said as such
+        self.assertEqual((r.status_code, r.content, "content-range" in r.headers), (200, BODY, False))
+        # where it got to goes to the Watch history, not Jellyfin
+        p.at = 240
+        self.assertEqual(self.now(sid)["title"], "A <talk> & more")
+        self.assertEqual(core.one("SELECT position FROM history WHERE video_id = ?", VID)["position"], 240)
+        self.assertEqual(self.jf.saves, [])
+        self.assertEqual(self.play(sid, VID, kind="yt", start=0).status_code, 200)  # from the start
+        self.assertNotIn("Seek", p.did()[-2:])
+
+    def test_a_downloaded_video_plays_from_its_file(self):
+        p, sid = self.player()
+        (core.VIDEOS / "talk.mkv").write_bytes(BODY)
+        self.addCleanup((core.VIDEOS / "talk.mkv").unlink)
+        core.db().execute("INSERT INTO videos(id, item, path, added) VALUES (?, '{}', 'talk.mkv', 1)", (VID,))
+        r = self.play(sid, VID, kind="yt")
+        self.assertEqual((r.status_code, r.json()["note"]), (200, ""))
+        self.assertTrue(p.uri.endswith("/video.mkv"))
+        path = p.uri.split("192.168.1.20:8800", 1)[1]
+        r = client().get(path, headers={"Range": "bytes=10-19"})
+        self.assertEqual((r.status_code, r.content, r.headers["content-type"], r.headers["contentfeatures.dlna.org"]),
+                         (206, BODY[10:20], "video/x-matroska", cast.DLNA))
+        self.assertEqual(self.asked, [])  # YouTube isn't asked
+
+    def test_what_cant_play_is_said_and_who_may(self):
+        p, sid = self.player()
+        with mock.patch.object(yt, "video_info", lambda *a, **k: {**INFO, "formats": INFO["formats"][:1]}):  # picture and sound apart only
+            r = self.play(sid, VID, kind="yt")
+        self.assertEqual(r.status_code, 409)
+        self.assertIn("downloaded", r.json()["detail"])
+        with mock.patch.object(yt, "video_info", lambda *a, **k: {**INFO, "formats": [], "live_status": "is_live"}):
+            self.assertIn("live stream", self.play(sid, VID, kind="yt").json()["detail"])
+        self.assertEqual(self.play(sid, VID).status_code, 422)  # a Watch id isn't a Library item
+        self.assertEqual(self.play(sid, FILM, kind="yt").status_code, 422)
+        self.admin.put(f"/api/tv/sets/{sid}/users", json={"users": [self.pat]}, headers=H)
+        self.admin.put(f"/api/users/{self.pat}/access", json={"blocked": ["watch"]}, headers=H)
+        self.addCleanup(lambda: self.admin.put(f"/api/users/{self.pat}/access", json={"blocked": []}, headers=H))
+        self.assertEqual(self.play(sid, VID, kind="yt", who=self.member).status_code, 403)
+        self.assertEqual(self.play(sid, who=self.member).status_code, 200)  # the Library is still theirs
 
 if __name__ == "__main__":
     unittest.main()

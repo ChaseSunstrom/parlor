@@ -101,7 +101,7 @@ async function tvBoot() {
     tvListen();
   } else {
     [tvKnown, tvSets] = await Promise.all([api("/api/tv").then((r) => r.tvs, () => []), api("/api/tv/hw").then((r) => r.sets.filter((x) => x.plays), () => [])]);
-    document.querySelectorAll(".ontv").forEach((b) => { b.hidden = !(tvKnown.length || (tvSets.length && b.hasAttribute("data-cast-jf"))); });
+    document.querySelectorAll(".ontv").forEach((b) => { b.hidden = !(tvKnown.length || tvSets.length); });
   }
 }
 
@@ -445,16 +445,17 @@ document.addEventListener("keydown", (e) => { // a computer's keyboard works the
   else if (e.key === " ") { e.preventDefault(); tvSend(remote.id, { cmd: "toggle" }, remote.all); }
 });
 
-/** Play on TV: straight to the one TV that's on, or a menu of them. A film (`film`: its Jellyfin id) can also go to a
-    TV set that plays it in its own player, with no Parlor on its screen: then this device is its remote (You → TVs). */
-async function tvChoose(anchor, cast, film = "") {
+/** Play on TV: straight to the one TV that's on, or a menu of them. A film or a Watch video (`own`: {kind, id, start?})
+    can also go to a TV set that plays it in its own player, with no Parlor on its screen: then this device is its
+    remote (You → TVs). */
+async function tvChoose(anchor, cast, own = null) {
   tvKnown = (await api("/api/tv").catch(() => ({ tvs: tvKnown }))).tvs;
-  const on = [...tvKnown.filter((x) => x.online), ...(film ? tvSets.map((x) => ({ ...x, set: true })) : [])];
+  const on = [...tvKnown.filter((x) => x.online), ...(own ? tvSets.map((x) => ({ ...x, set: true })) : [])];
   if (!on.length) return toast(tvKnown.length ? "None of your TVs is showing Parlor right now" : "Pair a TV first: You → TVs");
   const send = async (x) => {
     if (x.set) {
       toast(`Sending it to ${x.name}…`);
-      return post(`/api/tv/hw/${x.id}/play`, { id: film }).then((r) => { toast(`Playing ${r.title} on ${x.name}`); setPref("hw0", x.id); go("#/tvs"); }, (err) => toast(err.message));
+      return post(`/api/tv/hw/${x.id}/play`, own).then((r) => { toast(`Playing ${r.title} on ${x.name}${r.note ? `. ${r.note}` : ""}`); setPref("hw0", x.id); go("#/tvs"); }, (err) => toast(err.message));
     }
     await post(`/api/tv/${x.id}/do`, { cmd: "cast", cast: await cast() }).then(() => toast(`Playing on ${x.name}`), (err) => toast(err.message));
   };
@@ -485,10 +486,11 @@ document.addEventListener("click", (e) => {
   const v = byId("video");
   const at = yt && v ? v.currentTime : 0;
   if (yt && v) v.pause();
-  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }), jf ? jf.dataset.castJf : "");
+  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }),
+    jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, ...(v ? { start: at } : {}) });  // from where this player is; with none on the page, where it was left
 });
 // drawn hidden until this account's TVs are known (tvBoot runs alongside the first page)
-const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length || (tvSets.length && attr === "data-cast-jf") ? "" : " hidden"}>${ICON.tv}On TV</button>`);
+const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length || tvSets.length ? "" : " hidden"}>${ICON.tv}On TV</button>`);
 
 /** Settings → TVs (admins): every account's TVs, a remote for each, and unpairing; then the TV sets themselves (tvhw.py) */
 async function drawTvPanel() {

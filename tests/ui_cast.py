@@ -21,6 +21,7 @@ import jf
 import test_cast as fakes
 import tvhw
 import uvicorn
+import yt
 from playwright.sync_api import sync_playwright
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else tempfile.mkdtemp(prefix="ui-cast-"))
@@ -32,6 +33,7 @@ for k, v in (("jellyfin_url", "http://jellyfin.test:8096"), ("jellyfin_key", fak
     core.set_setting(k, v)
 jf.requests.request = fakes.Jellyfin()
 player = fakes.Player()
+yt.video_info = lambda vid, user_id=None, fresh=False: fakes.INFO  # a Watch video, with no YouTube behind it
 cast.SSDP_PORT, cast.SEEK_WAIT = player.ssdp, 0
 tvhw.ALSO, tvhw.OWN, tvhw.TIMEOUT = fakes.LOCAL, True, 3  # the stand-ins, and this Parlor, are on 127.0.0.1
 with socket.socket() as s:
@@ -128,6 +130,17 @@ with sync_playwright() as pw:
     press(phone, "[data-hwp='stop']")
     checks["Stop stops it, the remote clears, and the link ends"] = player.state == "STOPPED" and until(lambda: phone.is_hidden("#hwNow")) and cast._links == {}
     checks["where it got to was saved to Jellyfin"] = bool(jf.requests.request.saves)
+
+    # a Watch video goes the same way
+    phone.goto(f"{BASE}/#/watch/{fakes.VID}")
+    phone.wait_for_selector("[data-cast-yt]:not([hidden])", timeout=30000)
+    phone.screenshot(path=str(OUT / "watch-on-tv-phone.png"))
+    phone.click("[data-cast-yt]")
+    phone.wait_for_selector("#hwNow:not([hidden])", timeout=20000)
+    checks["a Watch video's On TV sends it to the set too, and the remote shows it"] = (
+        player.uri.endswith("/video.mp4") and until(lambda: phone.inner_text("#hwTitle") == "A <talk> & more"))
+    checks["and says it is the small picture, with the way to the full one"] = "360p" in " ".join(phone.locator(".toast").all_inner_texts())
+    press(phone, "[data-hwp='stop']")
     b.close()
 server.should_exit = True
 for k, v in checks.items():
@@ -136,6 +149,6 @@ print("page errors:", errors or "none")
 if not all(checks.values()):
     print("the player heard:", player.actions, "state", player.state, "at", player.at)
 print("screenshots:", ", ".join(sorted(x.name for x in OUT.glob("*.png"))), "in", OUT)
-ok = len(checks) == 14 and all(checks.values()) and not errors
+ok = len(checks) == 16 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
