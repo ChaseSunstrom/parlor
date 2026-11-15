@@ -990,8 +990,11 @@ body.tv .nav a:focus { background: color-mix(in oklab, var(--accent) 18%, transp
 .rnow { padding: 16px; border-radius: 16px; background: var(--raise); border: 1px solid var(--line); display: grid; gap: 10px; }
 .rtitle { display: grid; }
 .rline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; color: var(--dim); font-size: .82rem; font-variant-numeric: tabular-nums; }
-.rline i { height: 4px; border-radius: 2px; background: var(--sunk); overflow: hidden; }
+.rnow .rline { background: none; }  /* the book reader's .rline (above) is a bar itself: here it's a row with a bar in it */
+.rnow .rline i { width: auto; height: 4px; border-radius: 2px; background: var(--sunk); overflow: hidden; transition: none; }
 .rline b { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s linear; }
+.rnow #hwLine { height: 14px; border-radius: 7px; cursor: pointer; }  /* pressed to jump: big enough for a thumb */
+.rhw .rnow { margin: 4px 0 10px; }
 /* the joystick: a well with four notches, and a knob that follows the thumb and springs back */
 .stick { position: relative; justify-self: center; width: min(270px, 74vw); aspect-ratio: 1; border-radius: 50%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
   background: radial-gradient(circle at 50% 38%, color-mix(in oklab, var(--raise) 82%, var(--accent)), var(--sunk) 74%);

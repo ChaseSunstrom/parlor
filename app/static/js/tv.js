@@ -5,7 +5,7 @@
 
 const TV_MODE = location.pathname.replace(/\/+$/, "") === "/tv"
   || (NATIVE && navigator.maxTouchPoints === 0 && !matchMedia("(any-pointer: coarse)").matches); // the Android app on a TV
-let tvMe = null, tvKnown = [];
+let tvMe = null, tvKnown = [], tvSets = []; // tvSets: the TV sets that play a film in their own player (cast.py)
 const tvFit = () => document.documentElement.style.setProperty("zoom", String(innerWidth >= 1500 ? innerWidth / 1280 : 1)); // 10-foot: a 1920 screen lays out like 1280
 if (TV_MODE) { document.body.classList.add("tv"); tvFit(); addEventListener("resize", tvFit); }
 
@@ -100,8 +100,8 @@ async function tvBoot() {
     if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); }
     tvListen();
   } else {
-    tvKnown = (await api("/api/tv").catch(() => ({ tvs: [] }))).tvs;
-    document.querySelectorAll(".ontv").forEach((b) => { b.hidden = !tvKnown.length; });
+    [tvKnown, tvSets] = await Promise.all([api("/api/tv").then((r) => r.tvs, () => []), api("/api/tv/hw").then((r) => r.sets.filter((x) => x.plays), () => [])]);
+    document.querySelectorAll(".ontv").forEach((b) => { b.hidden = !(tvKnown.length || (tvSets.length && b.hasAttribute("data-cast-jf"))); });
   }
 }
 
@@ -323,9 +323,49 @@ function drawHw(tvId, sets) {
   box.hidden = false;
   box.dataset.set = set.id;
   box.innerHTML = `<div class="rrow"><b>The TV set</b>${sets.length > 1 ? `<select id="rHwSet" aria-label="Which TV set">${sets.map((s) => `<option value="${s.id}"${s === set ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select>` : `<span class="dim">${esc(set.name)}</span>`}</div>
+    ${set.plays ? `<div class="rnow" id="hwNow" hidden aria-live="polite"><div class="rtitle"><b id="hwTitle"></b><span class="dim" id="hwState"></span></div>
+      <div class="rline"><span id="hwAt">0:00</span><i id="hwLine" title="Press along the line to jump there"><b id="hwBar"></b></i><span id="hwLen">0:00</span></div>
+      <div class="rrow"><button class="icon-btn" data-hwp="seek:-10" aria-label="Back 10 seconds">−10</button>
+        <button class="icon-btn big" data-hwp="pause" id="hwToggle" aria-label="Pause">${ICON.pause}</button>
+        <button class="icon-btn" data-hwp="seek:30" aria-label="Forward 30 seconds">+30</button><button class="ghost" data-hwp="stop">Stop</button></div></div>` : ""}
     ${row(["power", "input", "voldown", "mute", "volup"])}${row(["hdmi1", "hdmi2", "hdmi3", "hdmi4"])}${row(["parlor"])}`;
   byId("rHwSet")?.addEventListener("change", (e) => { setPref(`hw${tvId}`, +e.target.value); drawHw(tvId, sets); });
+  clearInterval(hwTimer);
+  if (set.plays) { hwNow(set.id); hwTimer = setInterval(() => hwNow(set.id), 3000); }
 }
+
+/** what Parlor is playing in a TV set's own player (cast.py), asked every few seconds while its box is on the page */
+let hwTimer = 0, hwLength = 0;
+async function hwNow(sid) {
+  const box = byId("hwNow");
+  if (!box) return clearInterval(hwTimer);
+  if (document.hidden || +box.closest("[data-set]").dataset.set !== sid) return;  // a late answer for the set shown before
+  const r = await api(`/api/tv/hw/${sid}/playing`).catch(() => null), p = r?.playing;
+  if (r?.said) toast(r.said);
+  if (!box.isConnected) return;
+  const shown = !box.hidden;
+  box.hidden = !p;
+  if (!p) return;
+  if (!shown) box.scrollIntoView({ block: "center" });  // it sits under the pairing form: the remote is why they're here
+  hwLength = p.length;
+  byId("hwTitle").textContent = p.title;
+  byId("hwState").textContent = { playing: "", paused: "Paused", starting: "Starting…", stopped: "Starting…" }[p.state] ?? "";
+  byId("hwAt").textContent = clock(p.at);
+  byId("hwLen").textContent = clock(p.length);
+  byId("hwBar").style.width = p.length ? `${Math.min(100, (100 * p.at) / p.length)}%` : "0";
+  const t = byId("hwToggle"), paused = p.state === "paused";
+  t.dataset.hwp = paused ? "play" : "pause";
+  t.innerHTML = paused ? ICON.play : ICON.pause;
+  t.setAttribute("aria-label", paused ? "Play" : "Pause");
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-hwp]"), line = e.target.closest("#hwLine");
+  if (!b && !(line && hwLength)) return;
+  const sid = +(b || line).closest("[data-set]").dataset.set, [what, by] = b ? b.dataset.hwp.split(":") : [];
+  const r = line?.getBoundingClientRect();
+  const body = line ? { do: "seek", to: Math.round(hwLength * Math.min(1, Math.max(0, (e.clientX - r.left) / r.width))) } : by ? { do: what, by: +by } : { do: what };
+  post(`/api/tv/hw/${sid}/playing`, body).then(() => hwNow(sid), (err) => toast(err.message));
+});
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-hw]");
   if (b) post(`/api/tv/hw/${b.closest("[data-set]").dataset.set}/press`, { key: b.dataset.hw }).catch((err) => toast(err.message));
@@ -405,12 +445,17 @@ document.addEventListener("keydown", (e) => { // a computer's keyboard works the
   else if (e.key === " ") { e.preventDefault(); tvSend(remote.id, { cmd: "toggle" }, remote.all); }
 });
 
-/** Play on TV: straight to the one TV that's on, or a menu of them */
-async function tvChoose(anchor, cast) {
+/** Play on TV: straight to the one TV that's on, or a menu of them. A film (`film`: its Jellyfin id) can also go to a
+    TV set that plays it in its own player, with no Parlor on its screen: then this device is its remote (You → TVs). */
+async function tvChoose(anchor, cast, film = "") {
   tvKnown = (await api("/api/tv").catch(() => ({ tvs: tvKnown }))).tvs;
-  const on = tvKnown.filter((x) => x.online);
+  const on = [...tvKnown.filter((x) => x.online), ...(film ? tvSets.map((x) => ({ ...x, set: true })) : [])];
   if (!on.length) return toast(tvKnown.length ? "None of your TVs is showing Parlor right now" : "Pair a TV first: You → TVs");
   const send = async (x) => {
+    if (x.set) {
+      toast(`Sending it to ${x.name}…`);
+      return post(`/api/tv/hw/${x.id}/play`, { id: film }).then((r) => { toast(`Playing ${r.title} on ${x.name}`); setPref("hw0", x.id); go("#/tvs"); }, (err) => toast(err.message));
+    }
     await post(`/api/tv/${x.id}/do`, { cmd: "cast", cast: await cast() }).then(() => toast(`Playing on ${x.name}`), (err) => toast(err.message));
   };
   if (on.length === 1) return send(on[0]);
@@ -419,14 +464,14 @@ async function tvChoose(anchor, cast) {
   m.className = "popover qmenu";
   m.id = "tvMenu";
   m.setAttribute("role", "menu");
-  m.innerHTML = `<strong>Play on</strong>${on.map((x) => `<button role="menuitem" data-tv-pick="${x.id}">${ICON.tv}<span>${esc(x.name)}</span></button>`).join("")}`;
+  m.innerHTML = `<strong>Play on</strong>${on.map((x, i) => `<button role="menuitem" data-tv-pick="${i}">${ICON.tv}<span>${esc(x.name)}${x.set ? " (its own player)" : ""}</span></button>`).join("")}`;
   document.body.append(m);
   const r = anchor.getBoundingClientRect();
   m.style.top = `${Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 90)}px`;
   m.style.left = `${Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8))}px`;
   m.addEventListener("click", (e) => {
     const b = e.target.closest("[data-tv-pick]");
-    if (b) { m.remove(); send(on.find((x) => x.id === +b.dataset.tvPick)); }
+    if (b) { m.remove(); send(on[+b.dataset.tvPick]); }
   });
   setTimeout(() => document.addEventListener("pointerdown", (e) => { if (!m.contains(e.target)) m.remove(); }, { once: true }), 0);
   m.querySelector("button")?.focus();
@@ -440,10 +485,10 @@ document.addEventListener("click", (e) => {
   const v = byId("video");
   const at = yt && v ? v.currentTime : 0;
   if (yt && v) v.pause();
-  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }));
+  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }), jf ? jf.dataset.castJf : "");
 });
 // drawn hidden until this account's TVs are known (tvBoot runs alongside the first page)
-const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length ? "" : " hidden"}>${ICON.tv}On TV</button>`);
+const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length || (tvSets.length && attr === "data-cast-jf") ? "" : " hidden"}>${ICON.tv}On TV</button>`);
 
 /** Settings → TVs (admins): every account's TVs, a remote for each, and unpairing; then the TV sets themselves (tvhw.py) */
 async function drawTvPanel() {
@@ -461,13 +506,20 @@ async function drawTvPanel() {
       <label class="field"><span>Its name</span><input id="hwName" maxlength="40" placeholder="Living room TV" required></label>
       <label class="field" id="hwHostField"><span>Its address</span><input id="hwHost" maxlength="253" placeholder="192.168.1.40" autocomplete="off" spellcheck="false"></label>
       <label class="field" id="hwMacField" hidden><span>Its MAC, to switch it on (optional)</span><input id="hwMac" maxlength="17" placeholder="a0:b1:c2:d3:e4:f5" autocomplete="off" spellcheck="false"></label>
-      <button class="primary small">Add</button></form></section>`;
+      <button class="primary small">Add</button></form>
+    <form class="actions" id="hwAddr"><label class="field grow"><span>The address TVs reach Parlor at</span><input id="hwAddrText" maxlength="300" value="${esc(hw.address || "")}" placeholder="http://192.168.1.20:8800" autocomplete="off" spellcheck="false">
+      <small>Only needed when you open Parlor by a name or an https address a TV can't use: a TV set fetches films, and opens Parlor, at this one. Empty: the address you're using.</small></label>
+      <button class="ghost">Save</button></form></section>`;
   box.innerHTML = `<section class="panel"><h3>TVs</h3><p>Every account's paired TVs. Only from here can an admin work someone else's TV.</p>
     ${tvs.length ? `<ul class="tvlist">${tvs.map((x) => `<li><span class="dot${x.online ? " on" : ""}"></span><div><b>${esc(x.name)}</b><small class="dim">${esc(x.owner)}${x.online ? " · on" : ""}</small></div>
       <a class="ghost" href="#/tvs/${x.id}/all">${ICON.tv}Remote</a><button class="ghost danger" data-tv-drop="${x.id}" data-tv-all>Unpair</button></li>`).join("")}</ul>` : `<p class="dim">No TVs are paired.</p>`}</section>${hwPanel}`;
   const kind = byId("hwKind"), fields = () => { byId("hwHostField").hidden = kind.value === "cec"; byId("hwMacField").hidden = !["webos", "tizen"].includes(kind.value); };
   kind.addEventListener("change", fields);
   fields();
+  byId("hwAddr").addEventListener("submit", (e) => {
+    e.preventDefault();
+    put("/api/tv/address", { address: byId("hwAddrText").value }).then((r) => { byId("hwAddrText").value = r.address; toast(r.address ? "Saved" : "Saved: TVs get the address you're using"); }, (err) => toast(err.message));
+  });
   byId("hwAdd").addEventListener("submit", (e) => {
     e.preventDefault();
     const cec = kind.value === "cec", wakes = !byId("hwMacField").hidden;

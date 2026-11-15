@@ -3,6 +3,7 @@
 [← Parlor's README](../README.md)
 
 - **Sessions**: every API call needs a session. Sessions last 30 days, renew while used, and are stored hashed. Passwords are hashed with scrypt.
+- **One link needs no session**: a film sent to a TV set's own player ([On a TV](tv.md#a-film-in-the-tvs-own-player)) is fetched by the TV at `/cast/<a long random name>/…`. The name is made per film, lives only in memory for at most 12 hours, ends with **Stop** or when the remote sees the film end, and is kept out of pages and the access log. Anyone on your network who learned it could fetch that one film until then.
 - Every change needs an `X-Requested-With: parlor` header (formerly yeerr, still accepted), which other websites can't send, so a page you visit can't act for you.
 - Wrong passwords are throttled per name and per address. Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address so the address is each visitor's, not the proxy's (see [Settings](settings.md)).
 - Changing a password signs out your other devices; Settings also has **Sign out everywhere**.

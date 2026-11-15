@@ -41,6 +41,7 @@ RULES = [
     ("/lookup/games/", SECRET),  # Questarr's game lookups, with the key setup wrote for it (gamelookup.py)
     ("/sw.js", OPEN),  # the app's service worker (pwa.py)
     ("/tv", OPEN),  # Parlor on a TV: the page itself
+    ("/cast/", OPEN),  # the film a TV set's own player fetches: its long random name is the key (cast.py)
     ("/api/tv/code", OPEN), ("/api/tv/claim", OPEN), ("/api/tv/me", OPEN),  # a TV pairing (tv.py)
     ("/api/tv/sets", ADMIN),  # TV hardware: adding sets, pairing them, who may use each (tvhw.py)
     ("/api/tv/", EVERYONE),  # TVs, casting and the remote: what plays checks its own sections

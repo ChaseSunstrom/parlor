@@ -23,7 +23,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -37,6 +37,7 @@ from core import admin, db, me, one, rows
 
 router = APIRouter(prefix="/api/tv")
 KINDS = {"roku": "Roku", "webos": "LG (webOS)", "tizen": "Samsung (Tizen)", "adb": "Android TV (adb)", "cec": "HDMI-CEC adapter"}
+PLAYS = ("webos",)  # these play a film in their own player (cast.py). ponytail: only an LG is listed; any DLNA player could be, once tried on one
 PAIRS = ("webos", "tizen")  # these ask on their screen once, then give a key Parlor keeps
 PRIVATE = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")]
 LAN = [ipaddress.ip_network(n.strip(), strict=False) for n in os.environ.get("LAN_SUBNET", "192.168.0.0/16").split(",") if n.strip()]  # compose's own setting
@@ -447,7 +448,7 @@ class Press(BaseModel):
 
 
 def _shown(s: dict) -> dict:
-    return {"id": s["id"], "kind": s["kind"], "name": s["name"], "keys": list(KEYMAPS[s["kind"]])}
+    return {"id": s["id"], "kind": s["kind"], "name": s["name"], "keys": list(KEYMAPS[s["kind"]]), "plays": s["kind"] in PLAYS}
 
 
 def _set(sid: int, user: dict) -> dict:
@@ -461,7 +462,7 @@ def _set(sid: int, user: dict) -> dict:
 @router.get("/sets")
 def all_sets(_=Depends(admin)):
     sets = rows("SELECT id, kind, name, host, mac, secret != '' AS paired FROM tv_sets ORDER BY name, id")
-    return {"kinds": KINDS, "sets": [{**_shown(s), "host": s["host"], "mac": s["mac"], "pairs": s["kind"] in PAIRS, "paired": bool(s["paired"]),
+    return {"kinds": KINDS, "address": core.setting("tv_address"), "sets": [{**_shown(s), "host": s["host"], "mac": s["mac"], "pairs": s["kind"] in PAIRS, "paired": bool(s["paired"]),
                                       "users": [r["user_id"] for r in rows("SELECT user_id FROM tv_access WHERE set_id = ? ORDER BY user_id", s["id"])]}
                                      for s in sets]}
 
@@ -530,22 +531,55 @@ def my_sets(user=Depends(me)):
                                                 WHERE a.user_id = ? ORDER BY s.name, s.id""", user["id"])]}
 
 
-def _tv_screen(request: Request) -> str:
-    """this Parlor's TV screen, at the address the person pressing reached it by. That address comes from the request,
-    which a member can write as they like, so it must be on the home network like a TV's own (checked_ip), is built
-    again from its name and port alone, and is never one only this computer has: a TV would open nothing there.
-    ponytail: a Parlor reached only by a public name is refused; add a setting for its address if someone needs that"""
-    no = HTTPException(409, "Open Parlor by the server's address on your network (like http://192.168.1.20:8800, not localhost "
-                            "or a public name), then press this again: the TV opens the same address")
-    host = request.url.hostname or ""
+NO_ADDRESS = ("Open Parlor by the server's address on your network (like http://192.168.1.20:8800, not localhost "
+              "or a public name), then press this again: the TV opens the same address")
+
+
+def _home(scheme: str, host: str, port, no: HTTPException) -> str:
+    """scheme://host[:port] for a host on the home network like a TV's own (checked_ip), never one only this computer
+    has: a TV would open nothing there"""
     try:
         own = ipaddress.ip_address(checked_ip(host)).is_loopback
-        port = request.url.port
     except (HTTPException, ValueError):
         raise no from None
-    if (own and not OWN) or request.url.scheme not in ("http", "https"):
+    if (own and not OWN) or scheme not in ("http", "https"):
         raise no
-    return f"{request.url.scheme}://{f'[{host}]' if ':' in host else host}{f':{port}' if port else ''}/tv"
+    return f"{scheme}://{f'[{host}]' if ':' in host else host}{f':{port}' if port else ''}"
+
+
+def parlor_address(request: Request) -> str:
+    """Where a TV reaches this Parlor: the address an admin set in Settings → TVs, else the one the person pressing
+    reached it by. That one comes from the request, which a member can write as they like, so it is checked and
+    built again from its name and port alone."""
+    if kept := core.setting("tv_address"):
+        return kept
+    try:
+        port = request.url.port
+    except ValueError:
+        raise HTTPException(409, NO_ADDRESS) from None
+    return _home(request.url.scheme, request.url.hostname or "", port, HTTPException(409, NO_ADDRESS))
+
+
+class Address(BaseModel):
+    address: str = Field(max_length=300)
+
+
+@router.put("/address")
+def set_address(body: Address, _=Depends(admin)):
+    """the address TVs reach Parlor at, for a Parlor people open by a name a TV can't use; empty forgets it"""
+    text = body.address.strip().rstrip("/")
+    if text:
+        no = Refused("Type it like http://192.168.1.20:8800: the server's own address on your home network, nothing after the port")
+        try:
+            u = urlsplit(text)
+            port = u.port
+        except ValueError:
+            raise no from None
+        if u.path or u.query or u.fragment or u.username or u.password:
+            raise no
+        text = _home(u.scheme, u.hostname or "", port, no)
+    core.set_setting("tv_address", text)
+    return {"address": text}
 
 
 @router.post("/hw/{sid}/press")
@@ -553,7 +587,7 @@ def press(sid: int, body: Press, request: Request, user=Depends(me)):
     tv._throttle(request, "hw")
     s = _set(sid, user)
     if body.key == "parlor" and s["kind"] == "webos":
-        url = _tv_screen(request)
+        url = parlor_address(request) + "/tv"
         _run(s, body.key, lambda ip: _lg(s, body.key, ip, url), TIMEOUT)
         return {"ok": True}
     _run(s, body.key, lambda ip: DRIVERS[s["kind"]](s, body.key, ip), TIMEOUT)
