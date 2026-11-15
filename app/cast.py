@@ -137,15 +137,19 @@ def _scan(ip: str) -> list:
         return [f"http://{host}:{p}/" for p in pool.map(is_open, PORTS) if p][:40]
 
 
-def _text(r) -> str:
-    # ponytail: the timeout is per read, so a device dripping bytes holds a thread up to MAX_TEXT reads; a wall-clock
-    # deadline here and in tvhw if a hostile device on the LAN is ever in scope
+def _text(r, wait: float = 0) -> str:
+    """a device's answer: at most MAX_TEXT bytes, read within `wait` seconds (a button's wait by default), so a device
+    sending it a byte at a time can't hold a thread and the set's lock for long. read1 returns what has come so far."""
+    end, body = time.monotonic() + (wait or tvhw.TIMEOUT), bytearray()
     try:
-        body = r.raw.read(MAX_TEXT + 1, decode_content=True)
+        while chunk := r.raw.read1(64 * 1024, decode_content=True):
+            body += chunk
+            if len(body) > MAX_TEXT:
+                raise ValueError("too big")
+            if time.monotonic() > end:
+                raise ValueError("too slow")  # a scan skips it like any non-answer; a press says the TV didn't answer
     finally:
         r.close()
-    if len(body) > MAX_TEXT:
-        raise ValueError("too big")
     return body.decode("utf-8", "replace")
 
 
@@ -184,7 +188,7 @@ def _soap(ctl: str, action: str, args: Optional[dict] = None, wait: Optional[flo
             f'<u:{action} xmlns:u="{AVT}"><InstanceID>0</InstanceID>{inner}</u:{action}></s:Body></s:Envelope>')
     r = tvhw._http.post(ctl, data=body.encode(), timeout=wait or tvhw.TIMEOUT, allow_redirects=False, stream=True,
                         headers={"Content-Type": 'text/xml; charset="utf-8"', "SOAPACTION": f'"{AVT}#{action}"'})
-    text = _text(r)
+    text = _text(r, wait or tvhw.TIMEOUT)
     if r.status_code != 200:
         code = re.search(r"<errorCode>\s*(\d{1,4})\s*</errorCode>", text)
         log.warning("a TV's player refused %s: HTTP %s, UPnP error %s", action, r.status_code, code[1] if code else "none")

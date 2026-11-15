@@ -588,6 +588,26 @@ class Finding(Case):
         p.RequestHandlerClass.do_GET = lambda h: h.send(200, "<root>" + "x" * (cast.MAX_TEXT + 10) + "</root>")
         self.assertEqual(self.play(sid).status_code, 502)
 
+    def test_a_device_that_drips_its_answer_is_given_up_on(self):
+        p, sid = self.player()
+
+        def drip(h):
+            h.send_response(200)
+            h.send_header("Content-Length", "100000")
+            h.end_headers()
+            for _ in range(200):  # a byte every 0.1 s: 20 s if read to the end
+                try:
+                    h.wfile.write(b"x")
+                    h.wfile.flush()
+                except OSError:
+                    return
+                time.sleep(0.1)
+
+        p.RequestHandlerClass.do_GET = drip
+        t = time.monotonic()
+        self.assertEqual(self.play(sid).status_code, 502)
+        self.assertLess(time.monotonic() - t, 8, "given up on within the wait, not after the whole drip")
+
 VID = "castvideo01"
 INFO = {"id": VID, "title": "A <talk> & more", "channel": "A channel", "channel_id": "UC" + "x" * 22, "duration": 600, "view_count": 5, "formats": [
     {"format_id": "137", "protocol": "https", "url": "https://yt.test/137", "vcodec": "avc1.64", "acodec": "none", "height": 1080, "ext": "mp4"},
