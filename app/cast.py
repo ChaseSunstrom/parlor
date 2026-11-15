@@ -528,9 +528,10 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
     at = at if body.start is None else body.start
     with _lock:
         now = time.time()
-        for old in [t for t, link in _links.items() if link["until"] < now] + ([_on[sid]] if sid in _on else []):
+        for old in [t for t, link in _links.items() if link["until"] < now]:
             _links.pop(old, None)
             _drop(old)
+        prev = _on.get(sid)  # the film the set has now: its link ends only once the TV takes this one
         if len(_links) >= MAX_LINKS:
             raise HTTPException(429, "Too many films are being sent to TVs: stop one first")
         link = _links[token] = {**source, "uid": user["id"], "sid": sid, "mime": mime, "title": title, "until": now + LIFE, "saved": 0.0,
@@ -545,8 +546,14 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
         tvhw._run(s, "", go, tvhw.TIMEOUT)
     except BaseException:
         _forget(sid, link)
+        with _lock:
+            if prev in _links and sid not in _on:  # the TV refused this one: the film it had is still its own
+                _on[sid] = prev
         _found.pop(sid, None)  # its player may have moved: look again next time
         raise
+    with _lock:
+        if prev and prev != token and _links.pop(prev, None) is not None:
+            _drop(prev)
     return {"ok": True, "title": title, "note": source.get("note", "")}
 
 

@@ -387,6 +387,18 @@ class Link(Case):
         cast._recalled = False
         self.assertEqual(client().get(path).status_code, 404, "a stopped film's link stays ended after a restart")
 
+    def test_a_second_film_the_tv_refuses_leaves_the_first_one_playing(self):
+        p, sid = self.player(code=714)  # 714: a refusal that isn't "still loading" (701)
+        self.play(sid)
+        first = p.uri.split("192.168.1.20:8800", 1)[1]
+        p.refuses.append("SetAVTransportURI")
+        self.assertNotEqual(self.play(sid, SHOW).status_code, 200)
+        self.assertEqual(client().get(first, headers={"Range": "bytes=0-9"}).status_code, 206, "the first film's link still serves")
+        self.assertEqual(self.now(sid)["title"], "Stalker <1979> & co", "and the remote still shows it")
+        self.assertEqual(self.play(sid, SHOW).status_code, 200)  # the TV takes this one
+        self.assertEqual(client().get(first).status_code, 404, "now the first link ends")
+        self.assertEqual(len([t for t, x in cast._links.items() if x["sid"] == sid]), 1)
+
     def test_a_film_that_froze_is_sent_again_from_where_it_was(self):
         """On a real LG a film an hour in froze after Parlor restarted: it said playing but its time stood still. The
         remote's poll nudges it back from that spot by itself."""
