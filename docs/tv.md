@@ -97,12 +97,21 @@ A **Watch** video plays one of two ways:
 
 Where a Watch video got to is saved to your Watch history.
 
+### Films a TV can't play as they are
+
+A TV's own player is pickier than a browser. When a Library film's sound or picture is a kind TVs commonly can't play, Jellyfin converts it as the TV reads it, and Parlor says so when it starts:
+
+- **Sound** (Dolby TrueHD, DTS, FLAC): the film's other sound track is played when it has one a TV plays (Dolby Digital, AAC), copied as it is. With no such track, the sound is made Dolby Digital 5.1. The picture is copied untouched either way, so 4K and HDR stay.
+- **Picture** (AV1, or Dolby Vision with no plain picture under it, which shows black): the picture is converted to H.264 at up to 1080p. This uses the Jellyfin server's processor or graphics card.
+- **Skipping** in a converted film starts its stream again at the new place, which takes a few seconds. Pause and play are as usual.
+- A converted film carries no subtitles.
+- A film TVs play goes as it is, as before.
+
 Limits, on purpose for now:
 
 - A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. A TV may still stop if Parlor is away for longer than it waits: press **On TV** again and it carries on from where it was.
-- The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
 - No choice of subtitles or audio track: the TV's own remote picks from what is in the file.
-- The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, kept only in memory, never shown in a page or a log, gone when you press **Stop**, when the remote sees the film end, after 12 hours at most, or when Parlor restarts.
+- The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, never shown in a page or a log, gone when you press **Stop**, when the remote sees the film end, or after 12 hours at most.
 - Only an LG is listed. It has played a film on a real LG (an OLED C6), with pause, skip and resume from the phone; other models are untested. If yours refuses, the message says what the TV answered.
 
 With more than one set you pick which goes with the TV, and the phone remembers.

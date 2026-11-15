@@ -56,8 +56,15 @@ SAVE_EVERY = 10  # seconds between saves of where the film got to
 MAX_LINKS = 200
 MAX_TEXT = 512 * 1024  # a description or an answer bigger than this isn't one
 MIME = {"mkv": "video/x-matroska", "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime", "avi": "video/x-msvideo",
-        "ts": "video/mp2t", "m2ts": "video/mp2t", "mpg": "video/mpeg", "mpeg": "video/mpeg", "webm": "video/webm", "wmv": "video/x-ms-wmv"}
+        "ts": "video/mpeg", "m2ts": "video/mpeg", "mpg": "video/mpeg", "mpeg": "video/mpeg", "webm": "video/webm", "wmv": "video/x-ms-wmv"}
 DLNA = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"  # seek by bytes, the file as it is, streamed
+CONVERTED = "DLNA.ORG_OP=00;DLNA.ORG_CI=1;DLNA.ORG_FLAGS=01700000000000000000000000000000"  # no seeking in it, converted, streamed
+SOUND = {"aac", "ac3", "eac3", "mp3", "mp2"}  # sound a TV's own player plays; TrueHD, DTS and FLAC play silent on many (an LG C6)
+PICTURE = {"h264", "hevc", "mpeg2video", "mpeg4", "vc1"}  # AV1 is newer than many TVs
+NO_PICTURE = {"DOVI", "DOVIInvalid"}  # Dolby Vision with no plain picture under it: black in a TV's network player (an LG C6)
+AS = "ts"  # what a converted film is sent as: a real LG reads a few seconds of a growing Matroska and gives up
+JOBS = 3  # conversions one link may have running at once
+PICTURE_AS = {"videoCodec": "h264", "allowVideoStreamCopy": "false", "maxWidth": 1920, "maxHeight": 1080, "videoBitRate": 12_000_000}
 NO_PLAYER = ("The TV didn't answer as a network player. It must be on, and the server must be able to reach it "
              "(UDP port 1900 or TCP ports 1024-9999, then the port the TV names)")
 NOTHING = "Nothing from Parlor is playing on that TV"
@@ -219,9 +226,14 @@ def _recall():
         db.execute("CREATE TABLE IF NOT EXISTS cast_links(token TEXT PRIMARY KEY, link TEXT NOT NULL, until REAL NOT NULL)")
         db.execute("DELETE FROM cast_links WHERE until < ?", (time.time(),))
         for r in core.rows("SELECT token, link FROM cast_links"):
-            link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+            try:
+                link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+                sid = link["sid"]
+            except (ValueError, KeyError, TypeError):  # one bad row mustn't stop every film
+                _drop(r["token"])
+                continue
             if _links.setdefault(r["token"], link) is link:
-                _on.setdefault(link["sid"], r["token"])
+                _on.setdefault(sid, r["token"])
         _recalled = True
 
 
@@ -247,6 +259,7 @@ def _link(token: str) -> dict:
 
 def _forget(sid: int, link: dict):
     """end this link; a newer film sent to the same set keeps its own"""
+    _stop_jobs(link)
     with _lock:
         if _links.get(_on.get(sid, "")) is link:
             _drop(_on[sid])
@@ -288,12 +301,85 @@ def _save(link: dict, at: float, length: float, ended: bool = False):
         log.warning("couldn't save where a film on a TV got to: %s", e.detail)
 
 
+def _convert(src: dict) -> Optional[dict]:
+    """how Jellyfin must change a film for a TV's player, or None when it plays as it is (or Jellyfin doesn't say
+    what is in it): another sound track the file has when the first isn't one TVs play, else that sound made Dolby
+    Digital; the picture is copied unless it is the trouble"""
+    streams = src.get("MediaStreams") or []
+    video = next((x for x in streams if x.get("Type") == "Video"), None)
+    sounds = [x for x in streams if x.get("Type") == "Audio"]
+    first = next((x for x in sounds if x.get("Index") == src.get("DefaultAudioStreamIndex")), sounds[0] if sounds else None)
+    kind = lambda x: str(x.get("Codec") or "").lower()  # noqa: E731
+    sound = first
+    if first and kind(first) not in SOUND:
+        # an untagged track may be a commentary: only one that says it is the same language stands in
+        sound = next((x for x in sounds if kind(x) in SOUND and first.get("Language") and x.get("Language") == first["Language"]), first)
+    picture = bool(video) and (kind(video) not in PICTURE | {""} or video.get("VideoRangeType") in NO_PICTURE)
+    if not picture and (not first or kind(first) in SOUND):
+        return None
+    encode = bool(sound) and kind(sound) not in SOUND
+    said = (["its picture is converted"] if picture else []) + (
+        ["its sound is converted to Dolby Digital"] if encode else [f"it plays the {kind(sound).upper()} sound track"] if sound is not first else [])
+    return {"picture": picture, "video": kind(video) if video else "", "sound": sound.get("Index") if sound else None,
+            "audio": "ac3" if encode or not sound else kind(sound), "encode": encode,
+            "note": f"For this TV {' and '.join(said)}; skipping takes a few seconds"}
+
+
+def _stop_jobs(link: dict):
+    """Jellyfin stops converting for this link: a conversion left running holds its graphics card. Best effort:
+    Jellyfin ends one itself a while after the TV stops reading."""
+    jobs, link["jobs"] = link.get("jobs") or [], []
+    _stop(link["sid"], jobs)
+
+
+def _stop(sid: int, jobs: list):
+    for job in jobs:
+        try:
+            jf.fetch("DELETE", "/Videos/ActiveEncodings", params={"deviceId": f"parlor-tv-{sid}", "playSessionId": job},
+                     device=f"parlor-tv-{sid}").close()
+        except HTTPException:
+            pass
+
+
+def _converted(link: dict, name: str, request: Request):
+    """a film Jellyfin converts as the TV reads it, from the second its name says: one long answer with no length
+    and no byte ranges, so a skip is a new address (control)"""
+    m = re.fullmatch(rf"from([0-9]{{1,7}})\.{AS}", name)
+    if not m:
+        raise HTTPException(404, "No such film")
+    out = {"Cache-Control": "no-store", "transferMode.dlna.org": "Streaming", "contentFeatures.dlna.org": CONVERTED}
+    if request.method == "HEAD":
+        return StreamingResponse(iter(()), media_type=MIME[AS], headers=out)  # no length: a Response would say 0
+    c, job, device = link["conv"], secrets.token_hex(16), f"parlor-tv-{link['sid']}"
+    params = {"mediaSourceId": link["source"], "static": "false", "playSessionId": job, "deviceId": device, "startTimeTicks": int(m[1]) * jf.T,
+              "audioCodec": c["audio"], "allowAudioStreamCopy": "false" if c["encode"] else "true", "audioBitRate": 640_000, "maxAudioChannels": 6,
+              **(PICTURE_AS if c["picture"] else {"videoCodec": c["video"] or "h264", "allowVideoStreamCopy": "true"})}
+    if c["sound"] is not None:
+        params["audioStreamIndex"] = c["sound"]
+    r = jf.need(jf.fetch("GET", f"/Videos/{link['iid']}/stream.{AS}", params=params, headers={"Accept-Encoding": "identity"}, stream=True, device=device))
+    jobs = link.setdefault("jobs", [])
+    jobs.append(job)
+    _stop(link["sid"], [jobs.pop(0) for _ in jobs[JOBS:]])  # a TV may read twice; a link fetched over and over can't pile them up
+    if _links.get(token := link["home"].rsplit("/", 1)[1]) is link:
+        _keep(token, link)  # so Stop after a restart of Parlor still ends them
+
+    def body():
+        try:
+            yield from r.iter_content(64 * 1024)
+        finally:
+            r.close()
+
+    return StreamingResponse(body(), media_type=MIME[AS], headers=out)
+
+
 @links.api_route("/cast/{token}/{name}", methods=["GET", "HEAD"], include_in_schema=False)
 def film(token: str, name: str, request: Request):
     """the film a link stands for, with byte ranges, for a TV's player: no sign-in, so the link's name is the leave"""
     link = _link(token)
     if link.get("yt"):
         return _video(link, request)
+    if link.get("conv"):
+        return _converted(link, name, request)
     headers = {"Accept-Encoding": "identity"}
     if request.headers.get("range"):
         headers["Range"] = request.headers["range"]
@@ -419,6 +505,8 @@ def _library(body: Play, user: dict):
     ext = str(src.get("Container") or "").split(",")[0].lower()
     ext = ext if re.fullmatch(r"[a-z0-9]{1,5}", ext) else "mp4"
     source = {"iid": body.id, "source": src["Id"], "jf": who, "runtime": jf.secs(src.get("RunTimeTicks") or i.get("RunTimeTicks"))}
+    if conv := _convert(src):
+        source, ext = {**source, "conv": conv, "note": conv["note"]}, AS
     return source, ext, MIME.get(ext, "video/mp4"), _title(i), jf.secs((i.get("UserData") or {}).get("PlaybackPositionTicks"))
 
 
@@ -454,6 +542,30 @@ def _watch(body: Play, user: dict):
     return {**source, "fmt": f["format_id"], "note": note}, ext, MIME.get(ext, "video/mp4"), title, at
 
 
+def _send(ctl: str, link: dict, url: str):
+    """give the TV's player the link and start it"""
+    features = CONVERTED if link.get("conv") else DLNA
+    didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">'
+            f'<dc:title>{html.escape(link["title"])}</dc:title><upnp:class>object.item.videoItem</upnp:class>'
+            f'<res protocolInfo="http-get:*:{link["mime"]}:{features}">{html.escape(url)}</res></item></DIDL-Lite>')
+    send = lambda: _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)  # noqa: E731
+    try:  # the TV fetches the link before it answers: longer than a button's wait
+        try:
+            send()
+        except Failed as e:
+            if "701" not in str(e.detail):
+                raise
+            _soap(ctl, "Stop", wait=STOP_WAIT)  # still loading the last thing it was sent (a real LG, for minutes): end that
+            send()
+    except Failed as e:
+        if "716" not in str(e.detail):
+            raise
+        raise Failed(f"The TV couldn't fetch it from {url.split('/cast/')[0]}: set the address TVs reach Parlor at "
+                     "(Settings → TVs), and let the TV through any firewall to it") from None
+    _soap(ctl, "Play", {"Speed": 1}, wait=SET_WAIT)  # a real LG reads the start of the file before it answers
+
+
 @router.post("/hw/{sid}/play")
 def play(sid: int, body: Play, request: Request, user=Depends(me)):
     tv._throttle(request, "hw")
@@ -461,42 +573,28 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
     source, ext, mime, title, at = (_watch if body.kind == "yt" else _library)(body, user)
     _recall()
     token = secrets.token_urlsafe(32)
-    url = f"{tvhw.parlor_address(request)}/cast/{token}/video.{ext}"
     at = at if body.start is None else body.start
-    didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" '
-            'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">'
-            f'<dc:title>{html.escape(title)}</dc:title><upnp:class>object.item.videoItem</upnp:class>'
-            f'<res protocolInfo="http-get:*:{mime}:{DLNA}">{html.escape(url)}</res></item></DIDL-Lite>')
+    conv, home = source.get("conv"), f"{tvhw.parlor_address(request)}/cast/{token}"
+    base = int(at) if conv and at > 5 else 0  # a converted film can't be skipped in: its stream starts where you left off
+    gone = []
     with _lock:
         now = time.time()
         for old in [t for t, link in _links.items() if link["until"] < now] + ([_on[sid]] if sid in _on else []):
-            _links.pop(old, None)
+            gone.append(_links.pop(old, None))
             _drop(old)
         if len(_links) >= MAX_LINKS:
             raise HTTPException(429, "Too many films are being sent to TVs: stop one first")
         link = _links[token] = {**source, "uid": user["id"], "sid": sid, "mime": mime, "title": title, "until": now + LIFE, "saved": 0.0,
-                                "seen": False, "sent": time.monotonic()}
+                                "seen": False, "sent": time.monotonic(), "home": home, "base": base}
         _on[sid] = token
         _keep(token, link)
+    for old in filter(None, gone):  # the film before this one stops converting
+        _stop_jobs(old)
 
     def go(ip):
         ctl = _player(sid, ip)
-        send = lambda: _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)  # noqa: E731
-        try:  # the TV fetches the link before it answers: longer than a button's wait
-            try:
-                send()
-            except Failed as e:
-                if "701" not in str(e.detail):
-                    raise
-                _soap(ctl, "Stop", wait=STOP_WAIT)  # still loading the last thing it was sent (a real LG, for minutes): end that
-                send()
-        except Failed as e:
-            if "716" not in str(e.detail):
-                raise
-            raise Failed(f"The TV couldn't fetch it from {url.split('/cast/')[0]}: set the address TVs reach Parlor at "
-                         "(Settings → TVs), and let the TV through any firewall to it") from None
-        _soap(ctl, "Play", {"Speed": 1}, wait=SET_WAIT)  # a real LG reads the start of the file before it answers
-        for n in range(SEEK_TRIES if at > 5 else 0):  # from where you left off, once the TV lets it
+        _send(ctl, link, f"{home}/from{base}.{AS}" if conv else f"{home}/video.{ext}")
+        for n in range(SEEK_TRIES if at > 5 and not conv else 0):  # from where you left off, once the TV lets it
             time.sleep(SEEK_WAIT)
             try:
                 return _soap(ctl, "Seek", {"Unit": "REL_TIME", "Target": _clock(at)})
@@ -532,6 +630,8 @@ def playing(sid: int, user=Depends(me)):
         _found.pop(sid, None)
         raise
     at, length = _secs(_tag(pos, "RelTime")), _secs(_tag(pos, "TrackDuration")) or link["runtime"]
+    if link.get("conv"):  # the TV counts from where this stream began, and can't know how long the film is
+        at, length = link["base"] + at, link["runtime"]
     state = STATES.get(state, "stopped")
     if state == "stopped":
         if link["seen"]:  # it ended, or someone stopped it at the TV
@@ -560,8 +660,15 @@ def control(sid: int, body: Do, request: Request, user=Depends(me)):
                 rel = _tag(_soap(ctl, "GetPositionInfo"), "RelTime")
                 if ":" not in rel:  # NOT_IMPLEMENTED: skipping from 0:00 would rewind the film
                     raise Failed("The TV doesn't say where the film has got to: press along the line instead")
-                to = _secs(rel) + (body.by or 0)
-            _soap(ctl, "Seek", {"Unit": "REL_TIME", "Target": _clock(to)})
+                to = (link["base"] if link.get("conv") else 0) + _secs(rel) + (body.by or 0)
+            if not link.get("conv"):
+                return _soap(ctl, "Seek", {"Unit": "REL_TIME", "Target": _clock(to)})
+            to = int(max(0, min(to, link["runtime"] - 5) if link["runtime"] else to))  # a converted film: a new stream from there
+            link["seen"], link["sent"] = False, time.monotonic()  # stopped while the new stream loads isn't the film's end
+            _stop_jobs(link)  # before the new one starts: two at once can be more than the graphics card holds
+            _send(ctl, link, f"{link['home']}/from{to}.{AS}")
+            link["base"], link["at"] = to, to
+            _keep(link["home"].rsplit("/", 1)[1], link)
         else:
             _soap(ctl, body.do.capitalize(), {"Speed": 1} if body.do == "play" else None)
 

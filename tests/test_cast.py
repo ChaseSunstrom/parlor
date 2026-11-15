@@ -29,6 +29,15 @@ import yt
 
 LOCAL = {ipaddress.ip_network("127.0.0.1/32")}
 FILM, SHOW, SONG = "a" * 32, "b" * 32, "c" * 32
+LOUD, DTS, AV1, DOLBY = "1" * 32, "2" * 32, "3" * 32, "4" * 32  # films a TV can't play as they are
+
+
+def _streams(video="hevc", look="HDR10", sounds=("truehd", "ac3")):
+    return [{"Type": "Video", "Index": 0, "Codec": video, "VideoRangeType": look}] + [
+        {"Type": "Audio", "Index": n + 1, "Codec": c, "Language": "eng"} for n, c in enumerate(sounds)] + [{"Type": "Subtitle", "Index": 9, "Codec": "subrip"}]
+
+
+HARD = {LOUD: _streams(), DTS: _streams(sounds=("dts",)), AV1: _streams("av1", "SDR", ("eac3",)), DOLBY: _streams(look="DOVIInvalid", sounds=("aac",))}
 KEY = "jellyfin-key-9c1f"
 BODY = bytes(range(256)) * 40  # the "film": 10240 bytes
 AVT = "urn:schemas-upnp-org:service:AVTransport:1"
@@ -139,6 +148,14 @@ class Jellyfin:
         if path == f"Items/{FILM}":
             return Answer(data={"Id": FILM, "Name": "Stalker <1979> & co", "Type": "Movie", "MediaType": "Video", "RunTimeTicks": 6000 * jf.T,
                                 "UserData": {"PlaybackPositionTicks": 600 * jf.T}, "MediaSources": [{"Id": FILM, "Container": "mkv,webm"}]})
+        if path.startswith("Items/") and path[6:] in HARD:
+            return Answer(data={"Id": path[6:], "Name": "Loud", "Type": "Movie", "MediaType": "Video", "RunTimeTicks": 6000 * jf.T,
+                                "UserData": {"PlaybackPositionTicks": 600 * jf.T},
+                                "MediaSources": [{"Id": path[6:], "Container": "mkv", "DefaultAudioStreamIndex": 1, "MediaStreams": HARD[path[6:]]}]})
+        if path.endswith("/stream.mkv"):
+            return Answer(200, b"converted", {"Content-Type": "video/x-matroska"})
+        if path == "Videos/ActiveEncodings":
+            return Answer(204)
         if path == f"Items/{SHOW}":
             return Answer(data={"Id": SHOW, "Name": "Pilot", "Type": "Episode", "MediaType": "Video", "SeriesName": "Twin Peaks", "ParentIndexNumber": 1,
                                 "IndexNumber": 1, "UserData": {}, "MediaSources": [{"Id": SHOW, "Container": "mp4"}]})
@@ -334,6 +351,99 @@ class Plays(Case):
         self.assertEqual(self.play(sid, who=self.member).status_code, 403)
 
 
+class Converted(Case):
+    """A film the TV can't play as it is: Jellyfin converts it on the way (a real LG C6 plays TrueHD silent and
+    Dolby Vision without a plain picture black; 53 of one library's 66 films)."""
+
+    def sent(self, iid, **body):
+        p, sid = self.player()
+        r = self.play(sid, iid, **body)
+        self.assertEqual(r.status_code, 200, r.text)
+        return p, sid, r.json(), p.uri.split("192.168.1.20:8800", 1)[1]
+
+    def asked(self):
+        return next(c for c in reversed(self.jf.calls) if c["path"].endswith("/stream.mkv"))["params"]
+
+    def test_a_film_with_sound_tvs_cant_play_gets_its_other_track_and_starts_where_it_was_left(self):
+        p, sid, said, path = self.sent(LOUD)
+        self.assertRegex(path, r"^/cast/[\w-]{40,}/from600\.mkv$", "the stream starts where the film was left")
+        self.assertNotIn("Seek", p.did(), "nothing to skip in: there are no byte ranges")
+        self.assertIn("AC3 sound track", said["note"])
+        self.assertIn("DLNA.ORG_OP=00;DLNA.ORG_CI=1", unescape(p.meta), "the TV is told it can't seek in it and that it's converted")
+        tvset = client()
+        r = tvset.get(path)
+        self.assertEqual((r.status_code, r.content, r.headers["content-type"]), (200, b"converted", "video/x-matroska"))
+        self.assertNotIn("accept-ranges", r.headers)
+        q = self.asked()
+        self.assertEqual((q["audioStreamIndex"], q["audioCodec"], q["allowAudioStreamCopy"], q["videoCodec"], q["allowVideoStreamCopy"], q["startTimeTicks"]),
+                         (2, "ac3", "true", "hevc", "true", 600 * jf.T), "the AC3 track and the picture, both copied")
+        self.assertEqual(tvset.head(path).status_code, 200)
+        self.assertEqual(tvset.get(path.replace("from600.mkv", "video.mkv")).status_code, 404)
+
+    def test_sound_with_no_other_track_is_made_dolby_digital(self):
+        _, _, said, path = self.sent(DTS, start=0)
+        self.assertTrue(path.endswith("/from0.mkv"))
+        client().get(path)
+        q = self.asked()
+        self.assertEqual((q["audioStreamIndex"], q["audioCodec"], q["allowAudioStreamCopy"], q["allowVideoStreamCopy"]), (1, "ac3", "false", "true"))
+        self.assertIn("converted to Dolby Digital", said["note"])
+
+    def test_a_picture_tvs_cant_show_is_converted_and_good_sound_is_kept(self):
+        for iid in (AV1, DOLBY):
+            _, _, said, path = self.sent(iid, start=0)
+            client().get(path)
+            q = self.asked()
+            self.assertEqual((q["videoCodec"], q["allowVideoStreamCopy"], q["maxWidth"], q["allowAudioStreamCopy"]), ("h264", "false", 1920, "true"), iid)
+            self.assertIn("picture is converted", said["note"])
+
+    def test_a_film_tvs_play_goes_as_it_is(self):
+        p, sid, said, path = self.sent(FILM)
+        self.assertTrue(path.endswith("/video.mkv"))
+        self.assertEqual(said["note"], "")
+        self.assertIsNone(cast._convert({"MediaStreams": _streams(sounds=("eac3", "truehd")), "DefaultAudioStreamIndex": 1}))
+
+    def test_the_film_before_stops_converting_and_a_link_cant_pile_conversions_up(self):
+        p, sid, _, path = self.sent(LOUD)
+        tvset = client()
+        self.assertNotIn("content-length", tvset.head(path).headers, "a length of 0 would say the film is empty")
+        ended = lambda: len([c for c in self.jf.calls if c["path"] == "Videos/ActiveEncodings"])  # noqa: E731
+        for _ in range(cast.JOBS):
+            tvset.get(path)
+        self.assertEqual(ended(), 0)
+        tvset.get(path)
+        self.assertEqual(ended(), 1, "one more than a TV needs ends the oldest")
+        self.assertEqual(self.play(sid, FILM).status_code, 200)
+        self.assertEqual(ended(), 1 + cast.JOBS, "another film on the set ends the first one's conversions")
+        untagged = [{**x, "Language": None} for x in _streams(sounds=("truehd", "aac"))]
+        c = cast._convert({"MediaStreams": untagged, "DefaultAudioStreamIndex": 1})
+        self.assertEqual((c["sound"], c["encode"]), (1, True), "an untagged other track may be a commentary: the film's own sound is converted")
+        self.assertIsNone(cast._convert({"MediaStreams": [{"Type": "Video", "Index": 0}, {"Type": "Audio", "Index": 1, "Codec": "aac"}]}),
+                          "a picture Jellyfin doesn't name is left alone")
+
+    def test_skipping_restarts_the_stream_there_and_the_remote_shows_the_films_own_place(self):
+        p, sid, _, path = self.sent(LOUD)
+        client().get(path)
+        p.state, p.at = "PLAYING", 30  # the TV counts from where the stream began
+        now = self.now(sid)
+        self.assertEqual((now["at"], now["length"]), (630, 6000), "its place in the film, and the film's length, not the stream's")
+        self.assertEqual(self.do(sid, do="seek", by=30).status_code, 200)
+        self.assertTrue(p.uri.endswith("/from660.mkv"), p.uri)
+        self.assertEqual(p.did()[-2:], ["SetAVTransportURI", "Play"])
+        stop = next(c for c in reversed(self.jf.calls) if c["path"] == "Videos/ActiveEncodings")
+        self.assertEqual((stop["method"], stop["params"]["deviceId"]), ("DELETE", f"parlor-tv-{sid}"), "the old conversion is ended first")
+        p.state, p.at = "PLAYING", 4
+        self.assertEqual(self.now(sid)["at"], 664)
+        self.do(sid, do="seek", to=99999)
+        self.assertTrue(p.uri.endswith("/from5995.mkv"), "never past the end")
+        self.do(sid, do="seek", to=1200)
+        client().get(p.uri.split("192.168.1.20:8800", 1)[1])
+        self.assertEqual(self.asked()["startTimeTicks"], 1200 * jf.T)
+        n = len([c for c in self.jf.calls if c["path"] == "Videos/ActiveEncodings"])
+        self.do(sid, do="stop")
+        self.assertGreater(len([c for c in self.jf.calls if c["path"] == "Videos/ActiveEncodings"]), n, "Stop ends the conversion too")
+        self.assertEqual(self.jf.saves[-1][2], {"PlaybackPositionTicks": 1200 * jf.T}, "where it got to is the film's place, not the stream's")
+
+
 class Link(Case):
     """what the TV fetches the film by"""
 
@@ -347,7 +457,9 @@ class Link(Case):
         p, sid, path = self.link()
         cast._links.clear(), cast._on.clear()  # the restart: memory is gone
         cast._recalled = False
+        core.db().execute("INSERT INTO cast_links(token, link, until) VALUES ('bad', '{not json', ?)", (time.time() + 60,))  # one bad row
         self.assertEqual(client().get(path, headers={"Range": "bytes=100-199"}).content, BODY[100:200], "the TV's next fetch still works")
+        self.assertIsNone(core.one("SELECT 1 FROM cast_links WHERE token = 'bad'"), "and the bad row is gone, not in every film's way")
         self.assertEqual(self.now(sid)["title"], "Stalker <1979> & co", "and the remote still finds it")
         self.do(sid, do="stop")
         cast._links.clear(), cast._on.clear()
