@@ -66,9 +66,13 @@ document.addEventListener("change", (e) => {
   if (!s) return;
   go(s.value);
   // the page is drawn again with a new menu: the arrow keys change a closed menu, so the focus goes back on it
-  const o = new MutationObserver(() => { if (document.activeElement === document.body) $(`select[aria-label="${s.getAttribute("aria-label")}"]`)?.focus(); });
-  o.observe(stage, { childList: true });
-  setTimeout(() => o.disconnect(), 4000);
+  // (it waits as long as a slow list may take: four seconds lost the focus on a busy server)
+  const o = new MutationObserver(() => {
+    const menu = document.activeElement === document.body && $(`select[aria-label="${s.getAttribute("aria-label")}"]`);
+    if (menu && menu !== s) { menu.focus(); o.disconnect(); }
+  });
+  o.observe(stage, { childList: true, subtree: true });
+  setTimeout(() => o.disconnect(), 30000);
 });
 
 /* ---------- home: carry on, then what's new in each library ---------- */

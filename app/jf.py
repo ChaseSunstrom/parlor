@@ -88,7 +88,8 @@ def who(user) -> dict:
     for u in users:
         if u["Id"].replace("-", "").lower() == want or u["Name"].lower() == link.lower():
             return {"id": u["Id"], "name": u["Name"], "via": via}
-    raise HTTPException(404, f"Jellyfin has no user called {link}")
+    where = "Settings → Jellyfin and signing in" if via == "default" else "Settings → People"
+    raise HTTPException(404, f"Jellyfin has no user called {link}" + ("" if via == "signin" else f"; an admin changes it in {where}"))
 
 
 ID = re.compile(r"[0-9a-fA-F]{32}")

@@ -49,6 +49,8 @@ The Jellyfin that comes with Parlor needs nothing: setup makes its API key. To p
 2. **Jellyfin API key**: make one in Jellyfin under **Dashboard → API Keys**, and paste it. Parlor never shows it back; leave the field empty to keep the saved one.
 3. **Jellyfin user to play as**: the Jellyfin user whose library people get when their account isn't linked to one of their own.
 
+An account can play as a different Jellyfin user: type the name under that person in **Settings → People**, or empty the field to go back to the default. Setup links the first admin to the Jellyfin user of the same name, so with another Jellyfin, change or empty that one first.
+
 ## The Jellyfin key
 
 - **The Jellyfin key stays on the server.** Streams, pictures and books go through Parlor, which adds the key itself and checks each one against what your Jellyfin user may see.

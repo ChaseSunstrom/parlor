@@ -316,7 +316,8 @@ async function adminPanels(t) {
   const userRow = (u) => `<tr data-user="${u.id}">
     <td><strong>${esc(u.name)}</strong><br><small class="dim">${u.admin ? "Admin" : "Member"}${u.jellyfin ? " · Jellyfin" : ""}${u.seen ? ` · seen ${since(u.seen)}` : ""}${!u.admin && limits(u) ? ` · ${esc(limits(u))}` : ""}</small></td>
     <td>${status.connected ? `<select class="input" data-seerr aria-label="Seerr user for ${esc(u.name)}"><option value="">${u.jellyfin ? "Same Jellyfin account" : "Not linked"}</option>${seerrUsers.map((x) => option(x, u.seerr_id)).join("")}</select>
-      ${!u.seerr_id && seerr.suggested[u.id] ? `<br><small class="dim">Same name in Seerr: ${esc(seerrUsers.find((x) => x.id === seerr.suggested[u.id])?.name || "")}. Pick it if it's them.</small>` : ""}` : `<small class="dim">Seerr not connected</small>`}</td>
+      ${!u.seerr_id && seerr.suggested[u.id] ? `<br><small class="dim">Same name in Seerr: ${esc(seerrUsers.find((x) => x.id === seerr.suggested[u.id])?.name || "")}. Pick it if it's them.</small>` : ""}` : `<small class="dim">Seerr not connected</small>`}
+      ${u.jellyfin ? "" : `<br><input class="input" data-jf value="${esc(u.jf_user || "")}" placeholder="Jellyfin user: the default" autocomplete="off" aria-label="Jellyfin user ${esc(u.name)} plays as">`}</td>
     <td><div class="acts">
       ${u.admin ? "" : `<button class="ghost" data-access aria-expanded="false">Access</button>`}
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
@@ -415,6 +416,8 @@ async function adminPanels(t) {
       .then(() => { toast("Account added"); keepScroll = true; route(); }, (err) => toast(err.message));
   });
   $("#adminSide").addEventListener("change", (e) => {
+    const jf = e.target.closest("[data-jf]");  // empty: back to the default user (Jellyfin and signing in)
+    if (jf) return patch(`/api/users/${jf.closest("[data-user]").dataset.user}`, { jf_user: jf.value.trim() }).then(() => toast("Saved"), (err) => toast(err.message));
     const sel = e.target.closest("[data-seerr]");
     if (!sel) return;
     const id = sel.closest("[data-user]").dataset.user;

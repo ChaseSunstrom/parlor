@@ -208,6 +208,21 @@ with sync_playwright() as p:
         boss.click("#signinForm button")
         boss.wait_for_function("document.querySelector('#jfKey').value === ''", timeout=10000)
         checks["an admin sets Jellyfin's API key and who plays, and the key is never shown back"] = kept and bool(same) and core.setting("jellyfin_key") == "k" * 20 and "kkkk" not in boss.content()
+
+        # which Jellyfin user an account plays as: set, then cleared (setup links the first admin by name, wrong for another Jellyfin)
+        link = lambda: core.one("SELECT jf_user FROM users WHERE id = ?", ids["viewer"])["jf_user"]  # noqa: E731
+        field = f"tr[data-user='{ids['viewer']}'] [data-jf]"
+        boss.fill(field, "alice")
+        boss.press(field, "Enter")
+        boss.wait_for_function("document.querySelector('#toast, .toast')?.textContent.includes('Saved')", timeout=10000)
+        linked = link()
+        boss.fill(field, "")
+        boss.press(field, "Tab")
+        for _ in range(50):
+            if link() is None:
+                break
+            time.sleep(0.1)
+        checks["an admin sets and clears the Jellyfin user an account plays as"] = linked == "alice" and link() is None
     except Exception:
         report_failure(page)
         raise
@@ -220,6 +235,6 @@ print("page errors:", errors or "none")
 print("failed requests:", missing or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == 16 and all(checks.values()) and not errors and len(shots) == 9
+ok = len(checks) == 17 and all(checks.values()) and not errors and len(shots) == 9
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
