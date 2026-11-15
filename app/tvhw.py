@@ -43,6 +43,7 @@ LAN = [ipaddress.ip_network(n.strip(), strict=False) for n in os.environ.get("LA
 ROUTES, ROUTES6, INSIDE = "/proc/net/route", "/proc/net/if_inet6", "/.dockerenv"
 ALSO: set = set()  # for the tests only: their fake TVs listen on 127.0.0.1. Nothing else adds to it, and no setting does
 PORTS = {"roku": 8060, "webos": 3001, "tizen": 8002, "adb": 5555}  # each protocol's own port, fixed
+OWN = False  # for the tests only: "Open Parlor" with a Parlor on 127.0.0.1, which no real TV could open
 TLS = True  # LG and Samsung take wss only; the tests' fakes speak plain ws
 TIMEOUT = 5  # seconds a TV has to answer a button
 PAIR_WAIT = 30  # seconds someone has to press Accept on the TV
@@ -58,16 +59,17 @@ NO_CEC = "cec-client isn't installed on the server (Parlor's own image has it)"
 HDMI = "1234"
 ROKU = {"power": "Power", "volup": "VolumeUp", "voldown": "VolumeDown", "mute": "VolumeMute", **{f"hdmi{n}": f"InputHDMI{n}" for n in HDMI}}
 LG = {"power": "ssap://system/turnOff", "volup": "ssap://audio/volumeUp", "voldown": "ssap://audio/volumeDown", "mute": "ssap://audio/setMute",
-      **{f"hdmi{n}": "ssap://tv/switchInput" for n in HDMI}}
+      **{f"hdmi{n}": "ssap://tv/switchInput" for n in HDMI},
+      "parlor": "ssap://system.launcher/open"}  # its browser, at this Parlor's TV screen (press() says which address)
 LG_ASKS = {"forcePairing": False, "pairingType": "PROMPT", "manifest": {
-    "manifestVersion": 1, "permissions": ["CONTROL_POWER", "CONTROL_AUDIO", "CONTROL_INPUT_TV", "READ_INPUT_DEVICE_LIST"]}}
+    "manifestVersion": 1, "permissions": ["CONTROL_POWER", "CONTROL_AUDIO", "CONTROL_INPUT_TV", "READ_INPUT_DEVICE_LIST", "LAUNCH"]}}
 TIZEN = {"power": "KEY_POWER", "volup": "KEY_VOLUP", "voldown": "KEY_VOLDOWN", "mute": "KEY_MUTE", "input": "KEY_SOURCE",
          **{f"hdmi{n}": f"KEY_HDMI{n}" for n in HDMI}}
 ANDROID = {"power": 26, "volup": 24, "voldown": 25, "mute": 164, "input": 178, **{f"hdmi{n}": 242 + int(n) for n in HDMI}}  # KeyEvent's numbers
 CEC_LINES = {"power": "", "volup": "volup", "voldown": "voldown", "mute": "mute",  # power asks the TV's state first (_cec)
              **{f"hdmi{n}": f"tx 1F:82:{n}0:00" for n in HDMI}}  # "active source" from HDMI n
 KEYMAPS = {"roku": ROKU, "webos": LG, "tizen": TIZEN, "adb": ANDROID, "cec": CEC_LINES}
-Key = Literal["power", "volup", "voldown", "mute", "input", "hdmi1", "hdmi2", "hdmi3", "hdmi4"]
+Key = Literal["power", "volup", "voldown", "mute", "input", "hdmi1", "hdmi2", "hdmi3", "hdmi4", "parlor"]
 
 _busy: dict = defaultdict(threading.Lock)  # one press at a time on a set
 _http = requests.Session()
@@ -244,7 +246,7 @@ def _lg_ask(ws, uri, payload=None):
     return _heard(ws, TIMEOUT, answer)
 
 
-def _lg(s, key, ip):
+def _lg(s, key, ip, url=""):
     if not s["secret"]:
         raise Unpaired()
     try:
@@ -256,6 +258,11 @@ def _lg(s, key, ip):
             _keep(s, secret)
         if key == "mute":
             _lg_ask(ws, LG[key], {"mute": not _lg_ask(ws, "ssap://audio/getStatus").get("mute")})
+        elif key == "parlor":
+            try:
+                _lg_ask(ws, LG[key], {"target": url})
+            except Failed:  # a pairing from before this button has no leave to open anything
+                raise Failed("The TV wouldn't open Parlor. If it was paired a while ago, remove it in Settings → TVs and add it again") from None
         else:
             _lg_ask(ws, LG[key], {"inputId": f"HDMI_{key[4:]}"} if key.startswith("hdmi") else None)
 
@@ -523,9 +530,31 @@ def my_sets(user=Depends(me)):
                                                 WHERE a.user_id = ? ORDER BY s.name, s.id""", user["id"])]}
 
 
+def _tv_screen(request: Request) -> str:
+    """this Parlor's TV screen, at the address the person pressing reached it by. That address comes from the request,
+    which a member can write as they like, so it must be on the home network like a TV's own (checked_ip), is built
+    again from its name and port alone, and is never one only this computer has: a TV would open nothing there.
+    ponytail: a Parlor reached only by a public name is refused; add a setting for its address if someone needs that"""
+    no = HTTPException(409, "Open Parlor by the server's address on your network (like http://192.168.1.20:8800, not localhost "
+                            "or a public name), then press this again: the TV opens the same address")
+    host = request.url.hostname or ""
+    try:
+        own = ipaddress.ip_address(checked_ip(host)).is_loopback
+        port = request.url.port
+    except (HTTPException, ValueError):
+        raise no from None
+    if (own and not OWN) or request.url.scheme not in ("http", "https"):
+        raise no
+    return f"{request.url.scheme}://{f'[{host}]' if ':' in host else host}{f':{port}' if port else ''}/tv"
+
+
 @router.post("/hw/{sid}/press")
 def press(sid: int, body: Press, request: Request, user=Depends(me)):
     tv._throttle(request, "hw")
     s = _set(sid, user)
+    if body.key == "parlor" and s["kind"] == "webos":
+        url = _tv_screen(request)
+        _run(s, body.key, lambda ip: _lg(s, body.key, ip, url), TIMEOUT)
+        return {"ok": True}
     _run(s, body.key, lambda ip: DRIVERS[s["kind"]](s, body.key, ip), TIMEOUT)
     return {"ok": True}

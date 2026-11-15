@@ -230,7 +230,9 @@ async function showTvs(t, [id, all] = []) {
         <div><a href="#/tvs/${x.id}"><b>${esc(x.name)}</b></a><small class="dim">${x.online ? (x.state?.title ? `Playing ${esc(x.state.title)}` : "On") : "Off, or not showing Parlor"}</small></div>
         <a class="ghost" href="#/tvs/${x.id}">${ICON.tv}Remote</a><button class="ghost danger" data-tv-drop="${x.id}">Unpair</button></li>`).join("")}</ul>`
         : `<div class="empty-state"><strong>No TVs yet</strong>Pair one above.</div>`}
+      <div class="rhw" id="rHw" hidden></div>
     </div>`);
+  api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(0, sets), () => {});  // the sets themselves need no paired screen
   $("#tvAdd").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -312,7 +314,7 @@ async function showRemote(t, id, everyone) {
 
 /** the TV set's own buttons on the remote (tvhw.py): power, input and its volume, for the sets an admin gave this account.
     Which set goes with which paired TV is remembered on this device. */
-const HW = { power: "Power", input: "Input", voldown: "Vol −", mute: "Mute", volup: "Vol +", hdmi1: "HDMI 1", hdmi2: "HDMI 2", hdmi3: "HDMI 3", hdmi4: "HDMI 4" };
+const HW = { power: "Power", input: "Input", voldown: "Vol −", mute: "Mute", volup: "Vol +", hdmi1: "HDMI 1", hdmi2: "HDMI 2", hdmi3: "HDMI 3", hdmi4: "HDMI 4", parlor: "Open Parlor on it" };
 function drawHw(tvId, sets) {
   const box = byId("rHw");
   if (!box || !sets.length) return;
@@ -321,7 +323,7 @@ function drawHw(tvId, sets) {
   box.hidden = false;
   box.dataset.set = set.id;
   box.innerHTML = `<div class="rrow"><b>The TV set</b>${sets.length > 1 ? `<select id="rHwSet" aria-label="Which TV set">${sets.map((s) => `<option value="${s.id}"${s === set ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select>` : `<span class="dim">${esc(set.name)}</span>`}</div>
-    ${row(["power", "input", "voldown", "mute", "volup"])}${row(["hdmi1", "hdmi2", "hdmi3", "hdmi4"])}`;
+    ${row(["power", "input", "voldown", "mute", "volup"])}${row(["hdmi1", "hdmi2", "hdmi3", "hdmi4"])}${row(["parlor"])}`;
   byId("rHwSet")?.addEventListener("change", (e) => { setPref(`hw${tvId}`, +e.target.value); drawHw(tvId, sets); });
 }
 document.addEventListener("click", (e) => {

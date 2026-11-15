@@ -256,6 +256,8 @@ class RokuAndTheRules(Case):
 
     def test_the_buttons_reach_a_roku(self):
         sid = self.add("roku")
+        self.assertNotIn("parlor", self.admin.get("/api/tv/hw").json()["sets"][0]["keys"])  # only an LG opens Parlor
+        self.assertEqual(self.press(sid, "parlor").status_code, 400)
         for key in ("power", "volup", "voldown", "mute", "hdmi2"):
             self.assertEqual(self.press(sid, key).status_code, 200, key)
         self.assertEqual(self.roku.seen, ["/keypress/Power", "/keypress/VolumeUp", "/keypress/VolumeDown", "/keypress/VolumeMute", "/keypress/InputHDMI2"])
@@ -392,6 +394,22 @@ class LgWebos(Case):
         self.assertEqual(self.lg.seen, [("ssap://audio/volumeUp", None), ("ssap://audio/volumeDown", None), ("ssap://audio/getStatus", None),
                                         ("ssap://audio/setMute", {"mute": True}), ("ssap://tv/switchInput", {"inputId": "HDMI_2"}),
                                         ("ssap://system/turnOff", None)])
+
+    def test_open_parlor_asks_the_lg_to_open_this_parlors_tv_screen(self):
+        sid = self.start()
+        self.pair(sid)
+        self.assertIn("parlor", self.admin.get("/api/tv/hw").json()["sets"][0]["keys"])
+        self.assertEqual(self.admin.post(f"/api/tv/hw/{sid}/press", json={"key": "parlor"}, headers={**H, "Host": "192.168.1.20:8800"}).status_code, 200)
+        self.assertEqual(self.lg.seen, [("ssap://system.launcher/open", {"target": "http://192.168.1.20:8800/tv"})])
+        # an address only this computer has (the TV would open nothing), and ones a member could write to send the TV elsewhere
+        for host in ("localhost:8800", "127.0.0.1:8800", "127.1:8800", "[::1]:8800", "0.0.0.0:8800", "93.184.216.34", "evil.example.test"):
+            r = self.admin.post(f"/api/tv/hw/{sid}/press", json={"key": "parlor"}, headers={**H, "Host": host})
+            self.assertEqual(r.status_code, 409, host)
+            self.assertIn("address on your network", r.json()["detail"])
+        self.assertEqual(len(self.lg.seen), 1)
+        for host in ("evil.example.test\\@192.168.1.20", "user@192.168.1.20"):  # a name smuggled in front: only the checked host is sent
+            self.admin.post(f"/api/tv/hw/{sid}/press", json={"key": "parlor"}, headers={**H, "Host": host})
+        self.assertEqual({p["target"] for _, p in self.lg.seen}, {"http://192.168.1.20:8800/tv", "http://192.168.1.20/tv"})
 
     def test_nobody_accepting_on_the_tv_ends_the_wait(self):
         sid = self.start(accepts=False)

@@ -16,7 +16,7 @@ Parlor on a TV is made for a remote, and your phone can be the remote. This page
 
 ## Pairing a TV
 
-1. Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the Android app on an Android TV: it's in the TV's launcher and opens this way by itself). The TV shows an 8-character code.
+1. Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the Android app on an Android TV: it's in the TV's launcher and opens this way by itself; an LG added as a [TV set](#the-tv-set-itself-power-input-and-volume) opens it from **Open Parlor on it**). The TV shows an 8-character code.
 2. On your phone open **You → TVs**, type the code and a name under **Add a TV**, then press **Pair**.
 3. The TV signs itself in to your account.
 
@@ -68,7 +68,15 @@ An admin adds the set in **Settings → TVs → TV sets**:
 3. Press **Pair** or **Test**.
 4. The admin ticks which accounts may use it (admins always can).
 
-The remote then has a row with the set's own **Power**, **Input**, **Vol −**, **Mute**, **Vol +** and **HDMI 1–4**, whichever that type has. With more than one set you pick which goes with the TV, and the phone remembers.
+**You → TVs** and the remote then have a row with the set's own **Power**, **Input**, **Vol −**, **Mute**, **Vol +** and **HDMI 1–4**, whichever that type has. The row is there with no TV paired yet.
+
+An LG also has **Open Parlor on it**: the TV opens its own browser at this Parlor's TV screen, so nobody types an address with the TV's remote. It shows the pairing code the first time; pair it as above and the TV stays signed in. Three things to know:
+
+- The TV opens the address you are using Parlor by, so use the server's address on your network (`http://192.168.1.20:8800`), not `localhost` and not a public name: Parlor only sends a TV to an address on your home network.
+- An LG paired before this button existed has no leave to open anything: remove it in **Settings → TVs** and add it again.
+- An LG always starts in webOS. Parlor can't replace that; after switching on, press **Open Parlor on it**. This button has only been tested against a stand-in, not a real LG, and an old TV's browser may not show the page.
+
+With more than one set you pick which goes with the TV, and the phone remembers.
 
 | Type | On the TV, once | Good to know |
 |---|---|---|

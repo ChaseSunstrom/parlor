@@ -130,6 +130,13 @@ with sync_playwright() as pw:
     phone = signed_in(b, "family", 390)
     phone.goto(BASE + "/#/tvs")
     phone.wait_for_selector("#tvAdd", timeout=30000)
+    # with no TV paired yet, the sets are already here, and the LG opens Parlor's TV screen by itself
+    phone.wait_for_selector("#rHw [data-hw='parlor']", timeout=30000)
+    tvhw.OWN = True  # this test's Parlor is on 127.0.0.1, an address a real TV couldn't open
+    phone.click("#rHw [data-hw='parlor']")
+    checks["with no TV paired, You → TVs works the set, and an LG opens Parlor's TV screen"] = until(lambda: lg.seen == [("ssap://system.launcher/open", {"target": BASE + "/tv"})])
+    lg.seen.clear()
+    phone.screenshot(path=str(OUT / "tvs-sets-phone.png"))
     phone.fill("#tvAddCode", code)
     phone.fill("#tvAddName", "Den")
     phone.click("#tvAdd .primary")
@@ -188,6 +195,6 @@ print("page errors:", errors or "none")
 if not all(checks.values()):
     print("presses:", answers, "\nthe LG heard:", lg.seen, "prompts", lg.prompts, "\nthe Roku heard:", roku.seen)
 print("screenshots:", ", ".join(sorted(x.name for x in OUT.glob("*.png"))), "in", OUT)
-ok = len(checks) == 15 and all(checks.values()) and not errors
+ok = len(checks) == 16 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
