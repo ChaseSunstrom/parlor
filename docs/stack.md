@@ -41,6 +41,43 @@ Once you have an account, Parlor, in the background:
 
 **Settings → Services** shows each app, whether it answers, and what setup did, step by step. **Set up again** re-checks everything and puts back anything that went missing. It only ever adds what's missing and never touches a login you set yourself. On later restarts Parlor re-checks what it can without your password.
 
+## Jellyfin on a graphics card
+
+Jellyfin converts a film on the fly when a device can't play it as it is. A graphics card does that far faster than the processor. Parlor doesn't pass one in or switch it on for you: a wrong setting breaks every conversion, so it is yours to set, in three steps.
+
+1. **Give Jellyfin the card.** Make a `docker-compose.override.yml` next to `docker-compose.yml` (`docker compose` reads both, and an update leaves it alone). For an Intel or AMD card:
+
+   ```yaml
+   services:
+     jellyfin:
+       devices: ["/dev/dri:/dev/dri"]
+   ```
+
+   For an NVIDIA card, install the NVIDIA driver and the NVIDIA Container Toolkit on the server first, then:
+
+   ```yaml
+   services:
+     jellyfin:
+       runtime: nvidia
+       environment:
+         NVIDIA_VISIBLE_DEVICES: all
+         NVIDIA_DRIVER_CAPABILITIES: all
+       deploy:
+         resources:
+           reservations:
+             devices:
+               - driver: nvidia
+                 count: all
+                 capabilities: [gpu]
+   ```
+
+2. **Restart Jellyfin**: `docker compose up -d jellyfin`.
+3. **Switch it on in Jellyfin**: Dashboard → Playback → Transcoding → **Hardware acceleration**: *Video Acceleration API (VAAPI)* or *Intel QuickSync (QSV)* for Intel and AMD, *NVIDIA NVENC* for NVIDIA. Untick the formats your card can't decode, and save.
+
+You should see: while a film is being converted (Dashboard → Active devices shows it), the processor stays quiet and the card does the work.
+
+**A Jellyfin you already run** works too, card and all: put its address in **Settings → Jellyfin and signing in → Jellyfin address**, with its API key (or `JELLYFIN_URL`), and Parlor plays from it instead of the one in this stack.
+
 ## Torrents
 
 **Torrents** shows qBittorrent's torrents live: progress, speeds, time left, ratio. It is for admins; the link is in the Downloads drawer and next to qBittorrent in Services.

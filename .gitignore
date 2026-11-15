@@ -30,3 +30,6 @@ __pycache__/
 /desktop/www/
 /desktop/node_modules/
 /desktop/out/
+
+# your own additions to the compose, such as a graphics card for Jellyfin (docs/stack.md)
+docker-compose.override.yml

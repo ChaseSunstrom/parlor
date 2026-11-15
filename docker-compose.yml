@@ -201,7 +201,7 @@ services:
       - ${MUSIC:-${DATA:-/data}}:/data${MUSIC:+/music}
       - ${YOUTUBE:-${DATA:-/data}}:/data${YOUTUBE:+/youtube}
       - ${BOOKS:-${DATA:-/data}}:/data${BOOKS:+/books}
-    # for hardware transcoding, pass your GPU through, e.g. devices: ["/dev/dri:/dev/dri"]
+    # for hardware transcoding, pass your GPU in with a docker-compose.override.yml: docs/stack.md#jellyfin-on-a-graphics-card
 
   seerr:
     image: ghcr.io/seerr-team/seerr:latest
