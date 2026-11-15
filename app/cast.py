@@ -65,6 +65,7 @@ NO_PLAYER = ("The TV didn't answer as a network player. It must be on, and the s
              "(UDP port 1900 or TCP ports 1024-9999, then the port the TV names)")
 NOTHING = "Nothing from Parlor is playing on that TV"
 STATES = {"PLAYING": "playing", "PAUSED_PLAYBACK": "paused", "TRANSITIONING": "starting"}  # anything else: stopped
+STALL = 25  # seconds a film may say it's playing without its time moving before Parlor sends it again (the stream was cut)
 
 _links: dict = {}  # a link's name -> the film it stands for
 _on: dict = {}  # a set's id -> the name of the link it is playing
@@ -223,7 +224,7 @@ def _recall():
         db.execute("DELETE FROM cast_links WHERE until < ?", (time.time(),))
         for r in core.rows("SELECT token, link FROM cast_links"):
             try:
-                link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+                link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic(), "moved": time.monotonic(), "woke": 0.0}
                 sid = link["sid"]
             except (ValueError, KeyError, TypeError):  # one bad row mustn't stop every film
                 _drop(r["token"])
@@ -235,7 +236,7 @@ def _recall():
 
 def _keep(token: str, link: dict):
     core.db().execute("INSERT OR REPLACE INTO cast_links(token, link, until) VALUES (?, ?, ?)",
-                      (token, json.dumps({k: v for k, v in link.items() if k not in ("saved", "sent")}), link["until"]))
+                      (token, json.dumps({k: v for k, v in link.items() if k not in ("saved", "sent", "moved", "woke")}), link["until"]))
 
 
 def _drop(*tokens):
@@ -484,6 +485,38 @@ def _watch(body: Play, user: dict):
     return {**source, "fmt": f["format_id"], "note": note}, ext, MIME.get(ext, "video/mp4"), title, at
 
 
+def _send(ctl: str, link: dict, seek: float = 0):
+    """(re)start the film on the TV's own player from its link, and seek to `seek` seconds once it lets us. Used to
+    start a film and to send it again when it froze (the stream was cut by a restart)."""
+    url = link["url"]
+    didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" '
+            'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">'
+            f'<dc:title>{html.escape(link["title"])}</dc:title><upnp:class>object.item.videoItem</upnp:class>'
+            f'<res protocolInfo="http-get:*:{link["mime"]}:{DLNA}">{html.escape(url)}</res></item></DIDL-Lite>')
+    send = lambda: _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)  # noqa: E731
+    try:  # the TV fetches the link before it answers: longer than a button's wait
+        try:
+            send()
+        except Failed as e:
+            if "701" not in str(e.detail):
+                raise
+            _soap(ctl, "Stop", wait=STOP_WAIT)  # still loading the last thing it was sent (a real LG, for minutes): end that
+            send()
+    except Failed as e:
+        if "716" not in str(e.detail):
+            raise
+        raise Failed(f"The TV couldn't fetch it from {url.split('/cast/')[0]}: set the address TVs reach Parlor at "
+                     "(Settings → TVs), and let the TV through any firewall to it") from None
+    _soap(ctl, "Play", {"Speed": 1}, wait=SET_WAIT)  # a real LG reads the start of the file before it answers
+    for n in range(SEEK_TRIES if seek > 5 else 0):  # from where you left off, once the TV lets it
+        time.sleep(SEEK_WAIT)
+        try:
+            return _soap(ctl, "Seek", {"Unit": "REL_TIME", "Target": _clock(seek)})
+        except Failed:
+            if n == SEEK_TRIES - 1:
+                log.warning("TV set %s wouldn't seek to where the film was left: it plays from the start", link["sid"])
+
+
 @router.post("/hw/{sid}/play")
 def play(sid: int, body: Play, request: Request, user=Depends(me)):
     tv._throttle(request, "hw")
@@ -493,10 +526,6 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
     token = secrets.token_urlsafe(32)
     url = f"{tvhw.parlor_address(request)}/cast/{token}/video.{ext}"
     at = at if body.start is None else body.start
-    didl = ('<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" '
-            'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1">'
-            f'<dc:title>{html.escape(title)}</dc:title><upnp:class>object.item.videoItem</upnp:class>'
-            f'<res protocolInfo="http-get:*:{mime}:{DLNA}">{html.escape(url)}</res></item></DIDL-Lite>')
     with _lock:
         now = time.time()
         for old in [t for t, link in _links.items() if link["until"] < now] + ([_on[sid]] if sid in _on else []):
@@ -505,34 +534,12 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
         if len(_links) >= MAX_LINKS:
             raise HTTPException(429, "Too many films are being sent to TVs: stop one first")
         link = _links[token] = {**source, "uid": user["id"], "sid": sid, "mime": mime, "title": title, "until": now + LIFE, "saved": 0.0,
-                                "seen": False, "sent": time.monotonic()}
+                                "seen": False, "sent": time.monotonic(), "url": url, "moved": time.monotonic(), "woke": 0.0}
         _on[sid] = token
         _keep(token, link)
 
     def go(ip):
-        ctl = _player(sid, ip)
-        send = lambda: _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)  # noqa: E731
-        try:  # the TV fetches the link before it answers: longer than a button's wait
-            try:
-                send()
-            except Failed as e:
-                if "701" not in str(e.detail):
-                    raise
-                _soap(ctl, "Stop", wait=STOP_WAIT)  # still loading the last thing it was sent (a real LG, for minutes): end that
-                send()
-        except Failed as e:
-            if "716" not in str(e.detail):
-                raise
-            raise Failed(f"The TV couldn't fetch it from {url.split('/cast/')[0]}: set the address TVs reach Parlor at "
-                         "(Settings → TVs), and let the TV through any firewall to it") from None
-        _soap(ctl, "Play", {"Speed": 1}, wait=SET_WAIT)  # a real LG reads the start of the file before it answers
-        for n in range(SEEK_TRIES if at > 5 else 0):  # from where you left off, once the TV lets it
-            time.sleep(SEEK_WAIT)
-            try:
-                return _soap(ctl, "Seek", {"Unit": "REL_TIME", "Target": _clock(at)})
-            except Failed:
-                if n == SEEK_TRIES - 1:
-                    log.warning("TV set %s wouldn't seek to where the film was left: it plays from the start", sid)
+        return _send(_player(sid, ip), link, seek=at)
 
     try:
         tvhw._run(s, "", go, tvhw.TIMEOUT)
@@ -561,7 +568,8 @@ def playing(sid: int, user=Depends(me)):
     except BaseException:
         _found.pop(sid, None)
         raise
-    at, length = _secs(_tag(pos, "RelTime")), _secs(_tag(pos, "TrackDuration")) or link["runtime"]
+    rel = _tag(pos, "RelTime")
+    at, length = _secs(rel), _secs(_tag(pos, "TrackDuration")) or link["runtime"]
     state = STATES.get(state, "stopped")
     if state == "stopped":
         if link["seen"]:  # it ended, or someone stopped it at the TV
@@ -572,8 +580,26 @@ def playing(sid: int, user=Depends(me)):
             _forget(sid, link)
             return {"playing": None, "said": "The TV didn't start the film: it may not play this kind of file"}
     else:
+        now = time.monotonic()
+        if state != "playing" or at != link.get("at"):  # paused/starting, or the time moved (even a seek): not frozen
+            link["moved"] = now
         link["seen"], link["at"] = True, at
         _save(link, at, length)
+        # it says playing, gave a real time that stood still, isn't near the end, and the link can be re-sent:
+        # the stream was cut (a restart). Send it back from there. HTTPException covers a busy set (429) too.
+        if (state == "playing" and ":" in rel and at < length - 5 and link.get("url")
+                and now - link.get("moved", now) > STALL and now - link.get("woke", 0) > STALL):
+            link["woke"] = now
+
+            def resend(ip):
+                if _links.get(_on.get(sid, "")) is not link:  # a newer film took the set while we waited
+                    return None
+                return _send(_player(sid, ip), link, seek=at)
+
+            try:
+                tvhw._run(s, "", resend, tvhw.TIMEOUT)
+            except HTTPException:
+                log.warning("TV set %s: a frozen film wouldn't take being sent again", sid)
     return {"playing": {"title": link["title"], "state": state, "at": round(at), "length": round(length)}}
 
 

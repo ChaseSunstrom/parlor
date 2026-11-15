@@ -99,7 +99,7 @@ Where a Watch video got to is saved to your Watch history.
 
 Limits, on purpose for now:
 
-- A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. A TV may still stop if Parlor is away for longer than it waits: press **On TV** again and it carries on from where it was.
+- A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. If the TV froze while Parlor was away (it says playing but its time has stopped), the remote sends the film back to it from that spot by itself within a few seconds; if it doesn't catch, press **On TV** again.
 - The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
 - No choice of subtitles or audio track from the phone: the TV's own remote picks from what is in the file.
 - A TV's own player is pickier than a browser. When a film's first sound track is one many TVs play silent (Dolby TrueHD, DTS, FLAC), or its picture is one they can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film, with the way out: usually, choose the film's other sound track with the TV's remote. The film is sent as it is. Converting it on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.

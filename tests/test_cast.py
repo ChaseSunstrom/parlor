@@ -39,6 +39,7 @@ class Player(http.server.ThreadingHTTPServer):
 
     def __init__(self, location=None, control="/ctl/avt", answers=True, refuses=(), root=False, code=701):
         self.actions, self.state, self.at, self.uri, self.meta, self.refuses, self.searches = [], "NO_MEDIA_PRESENT", 0, "", "", list(refuses), []
+        self.reltime = None  # set to e.g. "NOT_IMPLEMENTED" to mimic a TV that won't say where it is
         me = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -80,7 +81,7 @@ class Player(http.server.ThreadingHTTPServer):
                 elif action == "GetTransportInfo":
                     out = f"<CurrentTransportState>{me.state}</CurrentTransportState>"
                 elif action == "GetPositionInfo":
-                    out = f"<TrackDuration>1:40:00</TrackDuration><RelTime>{cast._clock(me.at)}</RelTime>"
+                    out = f"<TrackDuration>1:40:00</TrackDuration><RelTime>{me.reltime or cast._clock(me.at)}</RelTime>"
                 h.send(200, f'<s:Envelope><s:Body><u:{action}Response xmlns:u="{AVT}">{out}</u:{action}Response></s:Body></s:Envelope>')
 
             def log_message(h, *a):
@@ -385,6 +386,41 @@ class Link(Case):
         cast._links.clear(), cast._on.clear()
         cast._recalled = False
         self.assertEqual(client().get(path).status_code, 404, "a stopped film's link stays ended after a restart")
+
+    def test_a_film_that_froze_is_sent_again_from_where_it_was(self):
+        """On a real LG a film an hour in froze after Parlor restarted: it said playing but its time stood still. The
+        remote's poll nudges it back from that spot by itself."""
+        p, sid = self.player()
+        self.play(sid)  # from 10:00 (its saved place)
+        token = next(iter(cast._links))
+        self.assertTrue(cast._links[token].get("url"), "the link keeps the url it resumes by")
+        self.assertEqual((self.now(sid)["state"], p.at), ("playing", 600))  # advancing: 0 -> 600
+        sends = lambda: p.did().count("SetAVTransportURI")  # noqa: E731
+        n = sends()
+        self.assertEqual(self.now(sid)["state"], "playing")  # still at 600: stalled, but not yet for STALL
+        self.assertEqual(sends(), n, "a film barely stalled is left alone")
+        with mock.patch.object(cast, "STALL", 0):
+            self.now(sid)  # the time hasn't moved: send it again
+        self.assertEqual((sends(), p.state, p.at), (n + 1, "PLAYING", 600), "re-sent, playing, from where it was")
+        p.at = 640  # it is moving again
+        with mock.patch.object(cast, "STALL", 0):
+            self.now(sid)
+        self.assertEqual(sends(), n + 1, "a film that is advancing is not re-sent")
+        self.do(sid, do="pause")
+        self.assertEqual(self.now(sid)["state"], "paused")  # a paused poll keeps the clock fresh
+        self.assertEqual(self.do(sid, do="play").status_code, 200)
+        self.assertEqual(self.now(sid)["state"], "playing")  # back to playing, time not moved yet but the clock was just fresh
+        self.assertEqual(sends(), n + 1, "neither a pause nor the resume straight after it re-sends")
+        p.reltime = "NOT_IMPLEMENTED"  # a TV that won't say where it is: never judged stalled
+        with mock.patch.object(cast, "STALL", 0):
+            self.now(sid), self.now(sid)
+        self.assertEqual(sends(), n + 1, "a TV that gives no time is not re-sent in a loop")
+        # a recalled link (after a restart) still carries the url, so it can resume
+        cast._links.clear(), cast._on.clear()
+        cast._recalled = False
+        self.assertTrue(cast._links.get(token) is None)
+        self.now(sid)  # triggers recall
+        self.assertTrue(cast._links[token].get("url"), "the url survives a restart")
 
     def test_it_serves_the_film_with_no_sign_in_and_byte_ranges(self):
         p, sid, path = self.link()
