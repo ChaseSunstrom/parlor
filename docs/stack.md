@@ -11,6 +11,8 @@ Once you have an account, Parlor, in the background:
 - reads every app's API key from its config folder;
 - turns off logins **on your home network** in Sonarr, Radarr, Lidarr, Prowlarr, qBittorrent and Cleanuparr (from outside, the others take your Parlor name and password; qBittorrent keeps its own, which it prints in its log the first time);
 - gives Sonarr, Radarr and Lidarr their folders (`/data/shows`, `/data/movies`, `/data/music`) and qBittorrent as their download client, each with its own category, saving to `/data/downloads`;
+- holds qBittorrent to the VPN's network interface (`tun0`), since it shares Gluetun's network and would otherwise also talk out of the one the VPN's firewall drops, so nothing connects; turning the VPN off in Parlor frees it, and turning it on holds it again;
+- once, raises qBittorrent's queue from 3 downloads at a time to 10, stops counting stalled ones against that, and adds a public tracker list to magnets (yours to change in qBittorrent afterwards);
 - connects Prowlarr to all three, adds FlareSolverr for sites behind Cloudflare, and adds public indexers, keeping only the ones that answer (tried again on every run);
 - **keeps the indexer list fresh by itself**:
   - twice a day it tries more of the public torrent sites Prowlarr knows (Prowlarr updates its own list of them);

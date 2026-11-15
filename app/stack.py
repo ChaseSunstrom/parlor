@@ -339,16 +339,57 @@ def refresh_indexers(now: Optional[float] = None) -> Optional[dict]:
 
 # --- qBittorrent -----------------------------------------------------------------------------
 
+VPN_INTERFACE = "tun0"  # Gluetun's
+# qBittorrent's own defaults start 3 downloads at a time and count a dead one as one of the 3, so three magnets
+# with nobody sharing them hold a whole queue; the tracker list finds people for magnets that name none
+QBIT_TUNE = {"max_active_downloads": 10, "max_active_uploads": 5, "max_active_torrents": 20, "dont_count_slow_torrents": True,
+             "add_trackers_from_url_enabled": True,
+             "add_trackers_url": "https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"}
+
+
+def qbit_interface() -> str:
+    """The network interface qBittorrent is held to. Sharing Gluetun's network it sees two, and left to itself it
+    also talks out of the one the VPN's firewall drops: nothing connects and nothing downloads. With the VPN turned
+    off in Parlor there is no tunnel, so it's left free."""
+    return "" if (gluetun_dir() / OFF_FLAG).exists() else VPN_INTERFACE
+
+
+def qbit_ours() -> bool:
+    return urlsplit(qbit()).hostname == "gluetun"
+
+
+def qbit_follow_vpn():
+    """After the VPN is switched on or off: move qBittorrent to the interface that now works. Setup does the same at
+    every start, so a qBittorrent that doesn't answer now is put right then."""
+    if not qbit_ours():
+        return
+    try:
+        http("POST", f"{qbit()}/api/v2/app/setPreferences", data={"json": json.dumps({"current_network_interface": qbit_interface()})}, timeout=10)
+    except requests.RequestException:
+        pass
+
+
 def qbit_folders():
     base = qbit()
     r = http("GET", f"{base}/api/v2/app/preferences", timeout=15)
     if r.status_code in (401, 403):
         raise Fail("qBittorrent asks for a login. Restart the stack (docker compose up -d) so its setup step "
                    "opens it to the home network")
-    prefs, changed = need(r, "qBittorrent").json(), []
+    prefs, changed, want = need(r, "qBittorrent").json(), [], {}
     if (prefs.get("save_path") or "").rstrip("/") != "/data/downloads":
-        need(http("POST", f"{base}/api/v2/app/setPreferences", data={"json": json.dumps({"save_path": "/data/downloads"})}), "qBittorrent")
+        want["save_path"] = "/data/downloads"
         changed.append("saves to /data/downloads")
+    mine, via = qbit_ours(), qbit_interface()  # a qBittorrent of your own elsewhere has no Gluetun: its network is left alone
+    if mine and "current_network_interface" in prefs and prefs["current_network_interface"] != via:
+        want["current_network_interface"] = via
+        changed.append("uses only the VPN" if via else "uses the plain connection (the VPN is off)")
+    if mine and not core.setting("qbit_tuned"):  # once: after that the numbers are yours to change in qBittorrent
+        want.update(QBIT_TUNE)
+        changed.append("more downloads at once, slow ones not counted, public trackers added")
+    if want:
+        need(http("POST", f"{base}/api/v2/app/setPreferences", data={"json": json.dumps(want)}), "qBittorrent")
+        if mine:
+            core.set_setting("qbit_tuned", "1")
     cats = need(http("GET", f"{base}/api/v2/torrents/categories"), "qBittorrent").json()
     for app in ("sonarr", "radarr", "lidarr"):
         cat = arr.APPS[app]["category"][1]
@@ -1299,7 +1340,9 @@ def put_vpn_off(body: VpnOff, _=Depends(admin)):
     _vpn_ready()
     if body.off and not body.confirm:
         raise HTTPException(400, "Turning the VPN off sends qBittorrent's traffic out directly: confirm it")
-    return vpn_off(body.off)
+    state = vpn_off(body.off)
+    qbit_follow_vpn()
+    return state
 
 
 # --- the Services page ---------------------------------------------------------------------

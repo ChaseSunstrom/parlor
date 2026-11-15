@@ -48,7 +48,7 @@ class FakeStack:
         self.status = []  # Prowlarr's /indexerstatus: indexers that are failing
         self.commands = []
         self.broken, self.needs_fs = set(broken_indexers), set(needs_flaresolverr)
-        self.qbit = {"open": qbit_open, "save_path": "/downloads/", "categories": {}}
+        self.qbit = {"open": qbit_open, "save_path": "/downloads/", "categories": {}, "current_network_interface": "", "max_active_downloads": 3}
         self.jf = {"wizard": False, "user": None, "keys": [], "libs": []}
         self.seerr = {"initialized": False, "key": "SEERRKEY", "libs": [{"id": "m1", "name": "Movies", "enabled": False}], "radarr": [], "sonarr": []}
         self.bazarr = {"use_sonarr": False, "use_radarr": False, "sonarr_key": "", "radarr_key": ""}
@@ -190,7 +190,7 @@ class FakeStack:
         if not self.qbit["open"]:
             return Resp(403, text="Forbidden")
         if path == "/api/v2/app/preferences":
-            return Resp(200, {"save_path": self.qbit["save_path"]})
+            return Resp(200, {k: v for k, v in self.qbit.items() if k not in ("open", "categories")})
         if path == "/api/v2/app/setPreferences":
             self.qbit.update(json.loads(form["json"]))
             return Resp(200, text="")
@@ -420,7 +420,7 @@ def stack_dir():
 class Base(unittest.TestCase):
     def setUp(self):
         self.fake = FakeStack(**getattr(self, "fake_args", {}))
-        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "checkrr_report_only", "checkrr_url", "questarr_key", "questarr_password", "questarr_url", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report"):
+        for k in ("jellyfin_url", "jellyfin_key", "seerr_url", "seerr_key", "cleanuparr_key", "checkrr_report_only", "checkrr_url", "questarr_key", "questarr_password", "questarr_url", "indexers_added", "cleanuparr_added", "quality", "quality_before", "quality_recheck", "indexers_refreshed", "indexers_off", "indexers_report", "qbit_tuned"):
             core.db().execute("DELETE FROM settings WHERE key = ?", (k,))
         patches = [mock.patch.object(stack.requests, "request", self.fake), mock.patch.object(arr.requests, "request", self.fake),
                    mock.patch.object(arr, "STACK", stack_dir()), mock.patch.object(stack, "STACK", stack_dir()),
@@ -451,6 +451,19 @@ class Everything(Base):
         client = f.clients["radarr"][0]
         self.assertEqual({x["name"]: x["value"] for x in client["fields"]}, {"host": "gluetun", "port": 8080, "useSsl": False, "movieCategory": "radarr"})
         self.assertEqual(f.qbit["save_path"], "/data/downloads")
+        # qBittorrent shares Gluetun's network: unbound, it also talks out of the interface the VPN's firewall drops,
+        # and nothing downloads (a real box: 0 DHT nodes, 364 queued behind 3 dead magnets)
+        self.assertEqual(f.qbit["current_network_interface"], "tun0", "held to the VPN's interface")
+        self.assertEqual((f.qbit["max_active_downloads"], f.qbit["dont_count_slow_torrents"], f.qbit["add_trackers_from_url_enabled"]), (10, True, True))
+        f.qbit["max_active_downloads"] = 4  # yours to change afterwards
+        (stack.gluetun_dir() / stack.OFF_FLAG).parent.mkdir(parents=True, exist_ok=True)
+        (stack.gluetun_dir() / stack.OFF_FLAG).write_text("off")
+        self.addCleanup((stack.gluetun_dir() / stack.OFF_FLAG).unlink, missing_ok=True)
+        self.assertEqual(stack.qbit_folders()[0], "done")
+        self.assertEqual((f.qbit["current_network_interface"], f.qbit["max_active_downloads"]), ("", 4), "VPN off: no tunnel to hold it to; the numbers aren't set twice")
+        (stack.gluetun_dir() / stack.OFF_FLAG).unlink()
+        stack.qbit_follow_vpn()
+        self.assertEqual(f.qbit["current_network_interface"], "tun0", "switched back on: held to the VPN again at once")
         self.assertEqual(set(f.qbit["categories"]), {"tv-sonarr", "radarr", "lidarr"})
         self.assertEqual({a["implementation"]: next(x["value"] for x in a["fields"] if x["name"] == "baseUrl") for a in f.apps},
                          {"Sonarr": "http://sonarr:8989", "Radarr": "http://radarr:7878", "Lidarr": "http://lidarr:8686"})
