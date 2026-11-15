@@ -41,6 +41,14 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 - **More books**: **Request → Books** finds a book and fetches it into this library: [Books](stack.md#books).
 - **Needs**: reading needs your Jellyfin user to be allowed to download.
 
+## A Jellyfin of your own
+
+The Jellyfin that comes with Parlor needs nothing: setup makes its API key. To play from another Jellyfin, an admin fills three fields in **Settings → Jellyfin and signing in**:
+
+1. **Jellyfin address**, as the server reaches it (`http://media.example.test:8096`).
+2. **Jellyfin API key**: make one in Jellyfin under **Dashboard → API Keys**, and paste it. Parlor never shows it back; leave the field empty to keep the saved one.
+3. **Jellyfin user to play as**: the Jellyfin user whose library people get when their account isn't linked to one of their own.
+
 ## The Jellyfin key
 
 - **The Jellyfin key stays on the server.** Streams, pictures and books go through Parlor, which adds the key itself and checks each one against what your Jellyfin user may see.

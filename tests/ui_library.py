@@ -194,6 +194,20 @@ with sync_playwright() as p:
         closed.wait_for_selector("main .home, main .note", timeout=30000)
         status = closed.evaluate("fetch('/api/jf/views').then((r) => r.status)")
         checks["a member without Library is refused"] = status == 403 and closed.locator("#side [data-g=library]").count() == 0 and "isn't open to your account" in closed.inner_text("main")
+
+        # an admin gives Parlor a Jellyfin of their own: its API key and who plays
+        actx, boss = session(b, "uiadmin", {"width": 1366, "height": 900})
+        boss.goto(BASE + "/#/settings")
+        boss.wait_for_selector("#jfKey", timeout=30000)
+        kept = boss.get_attribute("#jfKey", "type") == "password" and boss.input_value("#jfKey") == "" and "saved" in boss.get_attribute("#jfKey", "placeholder")
+        boss.fill("#jfUser", "alice")
+        boss.click("#signinForm button")
+        boss.wait_for_function("fetch('/api/settings').then((r) => r.json()).then((s) => s.jellyfin_user === 'alice')", timeout=10000)
+        same = core.setting("jellyfin_key")  # left empty: the saved key stays
+        boss.fill("#jfKey", "k" * 20)
+        boss.click("#signinForm button")
+        boss.wait_for_function("document.querySelector('#jfKey').value === ''", timeout=10000)
+        checks["an admin sets Jellyfin's API key and who plays, and the key is never shown back"] = kept and bool(same) and core.setting("jellyfin_key") == "k" * 20 and "kkkk" not in boss.content()
     except Exception:
         report_failure(page)
         raise
@@ -206,6 +220,6 @@ print("page errors:", errors or "none")
 print("failed requests:", missing or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == 15 and all(checks.values()) and not errors and len(shots) == 9
+ok = len(checks) == 16 and all(checks.values()) and not errors and len(shots) == 9
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

@@ -330,9 +330,11 @@ async function adminPanels(t) {
         <label class="field"><span>API key</span><input id="seerrKey" type="password" autocomplete="off" placeholder="${s.seerr_key_set ? `saved (${esc(s.seerr_key_hint)}); leave empty to keep it` : "Seerr → Settings → General → API Key"}"></label>
         <div class="actions"><button class="primary small">Save and test</button></div></form>
     </section>
-    <section class="panel"><h3>Signing in</h3>
+    <section class="panel"><h3>Jellyfin and signing in</h3>
       <form id="signinForm">
         <label class="field"><span>Jellyfin address</span><input id="jfUrl" value="${esc(s.jellyfin_url)}" placeholder="http://localhost:8096"><small>When set, people can sign in with their Jellyfin account; Jellyfin admins are admins here.</small></label>
+        <label class="field"><span>Jellyfin API key</span><input id="jfKey" type="password" autocomplete="off" placeholder="${s.jellyfin_key_set ? "saved; leave empty to keep it" : "Jellyfin → Dashboard → API Keys"}"><small>The Library plays through it. Setup makes one for the Jellyfin that came with Parlor; a Jellyfin of your own needs its key here.</small></label>
+        <label class="field"><span>Jellyfin user to play as</span><input id="jfUser" value="${esc(s.jellyfin_user)}" autocomplete="off"><small>Whose library and watched marks people get when their account isn't linked to a Jellyfin user of their own.</small></label>
         <label class="check"><input type="checkbox" id="openSignup"${s.open_signup ? " checked" : ""}><span>Anyone who can reach this page can create an account</span></label>
         <div class="actions"><button class="primary small">Save</button></div></form>
     </section>
@@ -377,7 +379,11 @@ async function adminPanels(t) {
   });
   $("#signinForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), open_signup: $("#openSignup").checked }).then(() => toast("Saved"), (err) => toast(err.message));
+    const key = $("#jfKey").value.trim();  // empty keeps the saved key: it is never sent back, so the field starts empty
+    put("/api/settings", { jellyfin_url: $("#jfUrl").value.trim(), jellyfin_user: $("#jfUser").value.trim(), open_signup: $("#openSignup").checked, ...(key && { jellyfin_key: key }) }).then(() => {
+      if (key) Object.assign($("#jfKey"), { value: "", placeholder: "saved; leave empty to keep it" });
+      toast("Saved");
+    }, (err) => toast(err.message));
   });
   // what new music downloads are saved as (music-fndr's choice); songs already there are never fetched again
   api("/music/api/quality").then((q) => {
