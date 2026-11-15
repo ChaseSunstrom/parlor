@@ -101,7 +101,8 @@ Limits, on purpose for now:
 
 - A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. A TV may still stop if Parlor is away for longer than it waits: press **On TV** again and it carries on from where it was.
 - The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
-- No choice of subtitles or audio track: the TV's own remote picks from what is in the file.
+- No choice of subtitles or audio track from the phone: the TV's own remote picks from what is in the file.
+- A TV's own player is pickier than a browser. When a film's first sound track is one many TVs play silent (Dolby TrueHD, DTS, FLAC), or its picture is one they can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film, with the way out: usually, choose the film's other sound track with the TV's remote. The film is sent as it is. Converting it on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.
 - The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, kept only in memory, never shown in a page or a log, gone when you press **Stop**, when the remote sees the film end, after 12 hours at most, or when Parlor restarts.
 - Only an LG is listed. It has played a film on a real LG (an OLED C6), with pause, skip and resume from the phone; other models are untested. If yours refuses, the message says what the TV answered.
 

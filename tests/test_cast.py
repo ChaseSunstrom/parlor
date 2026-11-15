@@ -334,6 +334,36 @@ class Plays(Case):
         self.assertEqual(self.play(sid, who=self.member).status_code, 403)
 
 
+class Hard(Case):
+    """A TV's own player is pickier than a browser: a real LG plays TrueHD silent and Dolby Vision with no plain
+    picture under it black. The film still goes as it is (the TV plays files, and its remote picks the track)."""
+
+    @staticmethod
+    def film(video="hevc", look="HDR10", sounds=("truehd", "ac3"), first=1):
+        return {"DefaultAudioStreamIndex": first, "MediaStreams": [{"Type": "Video", "Index": 0, "Codec": video, "VideoRangeType": look}] + [
+            {"Type": "Audio", "Index": n + 1, "Codec": c} for n, c in enumerate(sounds)] + [{"Type": "Subtitle", "Index": 9, "Codec": "subrip"}]}
+
+    def test_a_film_a_tv_commonly_cant_play_says_so_with_the_way_out(self):
+        said = cast._hard(self.film())
+        self.assertIn("TRUEHD", said)
+        self.assertIn("choose the AC3 track with the TV's own remote", said)
+        self.assertIn("no other", cast._hard(self.film(sounds=("dts",))))
+        self.assertIn("Dolby Vision", cast._hard(self.film(look="DOVIInvalid", sounds=("aac",))))
+        self.assertIn("AV1", cast._hard(self.film("av1", "SDR", ("eac3",))))
+        for fine in (self.film(sounds=("eac3", "truehd")), self.film(sounds=("truehd", "ac3"), first=2), {}, {"MediaStreams": [{"Type": "Video"}, {"Type": "Audio"}]}):
+            self.assertEqual(cast._hard(fine), "", fine)
+
+    def test_the_note_comes_back_when_the_film_is_sent_and_the_film_goes_as_it_is(self):
+        p, sid = self.player()
+        item = {"Id": FILM, "Name": "Loud", "Type": "Movie", "MediaType": "Video", "UserData": {}, "MediaSources": [{"Id": FILM, "Container": "mkv", **self.film()}]}
+        with mock.patch.object(jf, "get_item", lambda *a, **k: item):
+            r = self.play(sid)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertIn("TV's own remote", r.json()["note"])
+        self.assertTrue(p.uri.endswith("/video.mkv"))
+        self.assertEqual(self.play(sid).json()["note"], "", "a film TVs play says nothing")
+
+
 class Link(Case):
     """what the TV fetches the film by"""
 
@@ -347,7 +377,9 @@ class Link(Case):
         p, sid, path = self.link()
         cast._links.clear(), cast._on.clear()  # the restart: memory is gone
         cast._recalled = False
+        core.db().execute("INSERT INTO cast_links(token, link, until) VALUES ('bad', '{not json', ?)", (time.time() + 60,))  # one bad row
         self.assertEqual(client().get(path, headers={"Range": "bytes=100-199"}).content, BODY[100:200], "the TV's next fetch still works")
+        self.assertIsNone(core.one("SELECT 1 FROM cast_links WHERE token = 'bad'"), "and the bad row is gone, not in every film's way")
         self.assertEqual(self.now(sid)["title"], "Stalker <1979> & co", "and the remote still finds it")
         self.do(sid, do="stop")
         cast._links.clear(), cast._on.clear()

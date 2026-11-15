@@ -54,6 +54,9 @@ LIFE = 12 * 3600  # seconds a link lasts: a long film, paused for dinner
 KNOWN = 600  # seconds a player's address is remembered
 SAVE_EVERY = 10  # seconds between saves of where the film got to
 MAX_LINKS = 200
+SOUND = {"aac", "ac3", "eac3", "mp3", "mp2"}  # sound a TV's own player plays; TrueHD, DTS and FLAC play silent on many (a real LG)
+PICTURE = {"h264", "hevc", "mpeg2video", "mpeg4", "vc1"}  # AV1 is newer than many TVs
+NO_PICTURE = {"DOVI", "DOVIInvalid"}  # Dolby Vision with no plain picture under it: black in a TV's network player (a real LG)
 MAX_TEXT = 512 * 1024  # a description or an answer bigger than this isn't one
 MIME = {"mkv": "video/x-matroska", "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime", "avi": "video/x-msvideo",
         "ts": "video/mp2t", "m2ts": "video/mp2t", "mpg": "video/mpeg", "mpeg": "video/mpeg", "webm": "video/webm", "wmv": "video/x-ms-wmv"}
@@ -219,9 +222,14 @@ def _recall():
         db.execute("CREATE TABLE IF NOT EXISTS cast_links(token TEXT PRIMARY KEY, link TEXT NOT NULL, until REAL NOT NULL)")
         db.execute("DELETE FROM cast_links WHERE until < ?", (time.time(),))
         for r in core.rows("SELECT token, link FROM cast_links"):
-            link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+            try:
+                link = {**json.loads(r["link"]), "saved": 0.0, "sent": time.monotonic()}
+                sid = link["sid"]
+            except (ValueError, KeyError, TypeError):  # one bad row mustn't stop every film
+                _drop(r["token"])
+                continue
             if _links.setdefault(r["token"], link) is link:
-                _on.setdefault(link["sid"], r["token"])
+                _on.setdefault(sid, r["token"])
         _recalled = True
 
 
@@ -405,6 +413,27 @@ def _set(sid: int, user: dict) -> dict:
     return s
 
 
+def _hard(src: dict) -> str:
+    """what to say when a film is sent whose sound or picture TVs' own players commonly can't play; '' when it is
+    fine or Jellyfin doesn't say what is in it. The film still goes as it is: a TV plays files, and its remote picks
+    the track (a stream converted on the way wouldn't start on a real LG)"""
+    streams = src.get("MediaStreams") or []
+    kind = lambda x: str(x.get("Codec") or "").lower()  # noqa: E731
+    video = next((x for x in streams if x.get("Type") == "Video"), {})
+    sounds = [x for x in streams if x.get("Type") == "Audio"]
+    first = next((x for x in sounds if x.get("Index") == src.get("DefaultAudioStreamIndex")), sounds[0] if sounds else {})
+    said = []
+    if kind(first) and kind(first) not in SOUND:
+        other = next((kind(x).upper() for x in sounds if kind(x) in SOUND), "")
+        said.append(f"Its first sound track is {kind(first).upper()}, which many TVs play silent: "
+                    + (f"choose the {other} track with the TV's own remote" if other else "it has no other, so it may play without sound"))
+    if video.get("VideoRangeType") in NO_PICTURE:
+        said.append("Its picture is Dolby Vision only, which many TVs' own players show black")
+    elif kind(video) and kind(video) not in PICTURE:
+        said.append(f"Its picture is {kind(video).upper()}, which many TVs' own players can't show")
+    return ". ".join(said)
+
+
 def _library(body: Play, user: dict):
     """a film, an episode or a video in the Jellyfin library: what its link needs, and where it was left"""
     if lacking := acl.allowed(user, "/api/jf/items"):  # a person kept out of the Library can't play it on a TV either
@@ -418,7 +447,8 @@ def _library(body: Play, user: dict):
         raise HTTPException(409, "Only a film, an episode or a video plays on a TV set")
     ext = str(src.get("Container") or "").split(",")[0].lower()
     ext = ext if re.fullmatch(r"[a-z0-9]{1,5}", ext) else "mp4"
-    source = {"iid": body.id, "source": src["Id"], "jf": who, "runtime": jf.secs(src.get("RunTimeTicks") or i.get("RunTimeTicks"))}
+    source = {"iid": body.id, "source": src["Id"], "jf": who, "runtime": jf.secs(src.get("RunTimeTicks") or i.get("RunTimeTicks")),
+              "note": _hard(src)}
     return source, ext, MIME.get(ext, "video/mp4"), _title(i), jf.secs((i.get("UserData") or {}).get("PlaybackPositionTicks"))
 
 
