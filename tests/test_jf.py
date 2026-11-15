@@ -98,6 +98,7 @@ class FakeJellyfin:
             ("GET", "/Items", lambda m, q, b, h: {"Items": {"Audio": [TRACK_JSON], "MusicAlbum": [ITEMS[ALBUM]]}.get(
                 q.get("includeitemtypes"), [MOVIE_JSON, EP_JSON]), "TotalRecordCount": 7}),
             ("GET", "/Items/Latest", lambda *a: [MOVIE_JSON]),
+            ("DELETE", "/Videos/ActiveEncodings", lambda *a: Resp(204)),
             ("GET", uid + "/Items/Latest", lambda *a: [MOVIE_JSON]),
             ("GET", "/UserItems/Resume", listing([MOVIE_JSON])),
             ("GET", uid + "/Items/Resume", listing([MOVIE_JSON])),
@@ -356,6 +357,18 @@ class Playback(Base):
         forced = self.play(MOVIE, transcode=True)
         self.assertEqual(forced.status_code, 409, "forcing a transcode where Jellyfin offers none is an error, not a direct play")
         self.assertFalse(self.fake.last(f"/Items/{MOVIE}/PlaybackInfo")["json"]["EnableDirectPlay"])
+
+    def test_leaving_the_player_stops_jellyfins_conversion(self):
+        """A conversion left running holds the server's graphics memory, and the next film's can't start (a real
+        Jellyfin on an NVIDIA card: CUDA_ERROR_OUT_OF_MEMORY, a 500 on the first piece)."""
+        me = self.admin.get("/api/me").json()["id"]
+        r = self.admin.post("/api/jf/stopped", json={"play_session": "ps2"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        c = self.fake.last("/Videos/ActiveEncodings")
+        self.assertEqual((c["method"], c["q"]), ("DELETE", {"deviceid": f"parlor-{me}", "playsessionid": "ps2"}), "only this person's, only that play")
+        self.assertEqual(self.admin.post("/api/jf/stopped", json={"play_session": "a b&deviceId=x"}, headers=H).status_code, 422)
+        with mock.patch.object(jf.requests, "request", lambda *a, **k: Resp(500)):
+            self.assertEqual(self.admin.post("/api/jf/stopped", json={"play_session": "ps2"}, headers=H).status_code, 200, "nothing to tell the person: Jellyfin stops it itself in a minute")
 
     def test_nothing_playable_and_bad_ids(self):
         r = self.play(EP2)

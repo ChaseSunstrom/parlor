@@ -23,6 +23,7 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 ## Playback
 
 - **Direct play**: Jellyfin sends the file as it is when the browser can play it (H.264 or HEVC in MP4, VP9 or AV1 in WebM), and converts it otherwise.
+- **Conversions end when you leave**: closing the player, opening another film or picking another quality tells Jellyfin to stop converting the last one, so a server with one graphics card isn't still busy with it when the next film starts.
 - **Quality**: the quality menu asks for a lower bitrate when you're away from home.
 - **Menus**: audio tracks, subtitles and chapters have menus.
 - **Keys**: Space or K, J and L or ← and → for 10 s, F for full screen, M to mute, Shift+N for the next episode.

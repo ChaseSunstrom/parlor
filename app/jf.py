@@ -329,6 +329,22 @@ def progress(body: Progress, user=Depends(me)):
     return {"ok": True}
 
 
+class Stopped(BaseModel):
+    play_session: str = Field(pattern=r"^[\w-]{1,64}$")
+
+
+@router.post("/stopped")
+def stopped(body: Stopped, user=Depends(me)):
+    """The player closed or loaded again: Jellyfin stops converting for that play. Left running, a conversion holds
+    the server's graphics memory until Jellyfin gives up on it a minute later, and the next film's can't start."""
+    device = f"parlor-{user['id']}"  # theirs only: the device is never the browser's to name
+    try:
+        fetch("DELETE", "/Videos/ActiveEncodings", params={"deviceId": device, "playSessionId": body.play_session}, device=device).close()
+    except HTTPException:
+        pass  # Jellyfin stops it itself in a minute
+    return {"ok": True}
+
+
 # --- the stream proxy ----------------------------------------------------------------------
 
 _I = r"[0-9a-fA-F]{32}"

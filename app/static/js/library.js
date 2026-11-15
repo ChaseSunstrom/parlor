@@ -303,6 +303,12 @@ async function jfFlush() {
 }
 
 let jfp = null;
+let jfStopping = null; // the last conversion being stopped: the next film waits for it, or a graphics card out of memory refuses the new one
+/** tell Jellyfin to stop converting for a play that's over (it holds the server's graphics memory until it's told, or a minute passes) */
+function jfStop(p) {
+  if (p?.method !== "transcode" || !p.play_session) return;
+  const mine = (jfStopping = post("/api/jf/stopped", { play_session: p.play_session }).catch(() => {}).finally(() => { if (jfStopping === mine) jfStopping = null; }));
+}
 function stopJf() {
   if (!jfp) return;
   const s = jfp;
@@ -315,7 +321,8 @@ function stopJf() {
   s.hls?.destroy();
   s.video.pause();
   s.video.removeAttribute("src");
-  s.video.load(); // stops the download, and tells Jellyfin to stop converting
+  s.video.load(); // stops the download
+  jfStop(s.p);
   dockKeys();
 }
 addEventListener("hashchange", () => { if (!location.hash.startsWith("#/jf/play/")) stopJf(); });
@@ -395,6 +402,7 @@ async function showJfPlay(t, [id, from]) {
     if (s !== jfp) return;
     if (s.p?.local && !s.failedLocal) { s.failedLocal = true; return load({ start: video.currentTime || s.p.position }); } // the device's copy won't play: ask Jellyfin
     if (s.p?.method === "direct" && !s.tried) { s.tried = true; return load({ transcode: true, start: video.currentTime || s.p.position }); } // the browser couldn't play the file: let Jellyfin convert it
+    if (s.p?.method === "transcode" && /^(frag|level|manifest)/.test(why)) why = "Jellyfin couldn't convert it just now: it may be busy converting something else. Try again in a moment."; // hls.js's own word (fragLoadError) says nothing to a person
     overlay(`<p><strong>This won't play</strong><br>${esc(why)}</p><button class="ghost" onclick="route()">Try again</button>`);
   };
   /** playback info made from the saved copy: the film, its subtitle files and where it got to (what's kept for Jellyfin, else what Jellyfin last said) */
@@ -412,6 +420,9 @@ async function showJfPlay(t, [id, from]) {
   async function load(opts = {}) {
     let p = !opts.transcode && saved && !s.failedLocal ? await local(opts.start ?? (from === "start" && !s.p ? 0 : undefined)) : null;
     if (!p) {
+      if (s.p) { s.hls?.destroy(); s.hls = null; jfStop(s.p); } // another quality or sound track: end the old conversion before asking for the new one
+      await Promise.race([jfStopping, new Promise((r) => setTimeout(r, 3000))]); // a Jellyfin that's slow to answer doesn't hold the next film up
+      if (s !== jfp) return;
       try {
         p = await post(`/api/jf/playback/${encodeURIComponent(id)}`, { hevc, ...opts, ...(opts.start === undefined && from === "start" && !s.p ? { start: 0 } : {}) });
       } catch (err) { return s === jfp && overlay(`<p><strong>Jellyfin can't play this here</strong><br>${esc(err.message)}</p>`); }
@@ -486,7 +497,7 @@ async function showJfPlay(t, [id, from]) {
     if (act && !(e.key === " " && document.activeElement === video)) { e.preventDefault(); act(); }
   };
   document.addEventListener("keydown", s.keys);
-  addEventListener("pagehide", (s.onHide = () => s.save()));
+  addEventListener("pagehide", (s.onHide = () => { s.save(); jfStop(s.p); }));
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title, artist: x.type === "Episode" ? x.name : x.year ? String(x.year) : "",
       artwork: x.image ? [{ src: new URL(x.image, location.href).href, sizes: "600x900" }] : [] });
