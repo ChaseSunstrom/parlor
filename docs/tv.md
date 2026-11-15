@@ -100,9 +100,14 @@ Where a Watch video got to is saved to your Watch history.
 Limits, on purpose for now:
 
 - A film that is playing keeps its link through a restart or an update of Parlor, so the TV can fetch the rest when Parlor is back, and the remote still shows it. If the TV froze while Parlor was away (it says playing but its time has stopped), the remote sends the film back to it from that spot by itself within a few seconds; if it doesn't catch, press **On TV** again.
-- The TV gets the file as it is. Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
-- No choice of subtitles or audio track from the phone: the TV's own remote picks from what is in the file.
-- A TV's own player is pickier than a browser. When a film's first sound track is one many TVs play silent (Dolby TrueHD, DTS, FLAC), or its picture is one they can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film, with the way out: usually, choose the film's other sound track with the TV's remote. The film is sent as it is. Converting it on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.
+- The TV gets the file as it is, but for its list of tracks (below). Parlor doesn't convert it, so a file the TV can't play is refused by the TV, and a sound format it lacks plays silent. Most MP4 and MKV films with H.264 or HEVC video play.
+- No choice of subtitles or sound track from the phone: the TV's own remote picks from what is in the file.
+- A TV's own player is pickier than a browser, and starts the sound and subtitle tracks a file marks as default. So Parlor rewrites an MKV film's list of tracks as it sends it (the film on disk and its pictures and sound stay as they are):
+  - a sound track TVs play (AC3, E-AC3, AAC) in the same language, not a commentary, goes ahead of a Dolby TrueHD or DTS one and is the default;
+  - subtitles are off, unless the file marks them forced (the ones for foreign lines);
+  - the TV's remote still lists every track.
+
+  If a film still plays silent, choose its other sound track with the TV's remote. When it has none, or its picture is one many TVs can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film. The rewritten files were checked with ffprobe, not yet listened to on a real TV. Converting a film on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.
 - The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, never shown in a page or a log, and gone when you press **Stop**, when the remote sees the film end, or after 12 hours at most. It is kept in Parlor's database, so it outlives a restart (above).
 - Only an LG is listed. It has played a film on a real LG (an OLED C6), with pause, skip and resume from the phone; other models are untested. If yours refuses, the message says what the TV answered.
 

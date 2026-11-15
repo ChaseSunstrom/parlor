@@ -365,6 +365,98 @@ class Hard(Case):
         self.assertEqual(self.play(sid).json()["note"], "", "a film TVs play says nothing")
 
 
+def el(eid: int, data: bytes) -> bytes:
+    """one Matroska (EBML) element"""
+    size = bytes([0x80 | len(data)]) if len(data) < 127 else (0x4000 | len(data)).to_bytes(2, "big")
+    return eid.to_bytes((eid.bit_length() + 7) // 8, "big") + size + data
+
+
+def track(n, kind, codec, *more):
+    return el(0xAE, el(0xD7, bytes([n])) + el(0x83, bytes([kind])) + el(0x86, codec.encode()) + b"".join(more))
+
+
+def mkv(*tracks, size=10240):
+    """the start of a Matroska film as mkvmerge writes it (a Void after the track list), then the rest of the film"""
+    head = (el(0x1A45DFA3, el(0x4282, b"matroska")) + bytes.fromhex("18538067 01ffffffffffffff") + el(0x114D9B74, b"\0" * 40)
+            + el(0x1549A966, el(0x2AD7B1, b"\x0f\x42\x40")) + el(0x1654AE6B, b"".join(tracks)) + el(0xEC, b"\0" * 60) + el(0x1F43B675, b"\0" * 20))
+    return head + (bytes(range(256)) * 64)[:size - len(head)]
+
+
+DEF, FORCED, LACING, LANG, NAME = 0x88, 0x55AA, 0x9C, 0x22B59C, 0x536E
+ENGLISH, FRENCH = el(LANG, b"eng"), el(LANG, b"fre")
+OFF, ON = b"\0", b"\1"
+LOUD = mkv(track(1, 1, "V_MPEGH/ISO/HEVC", el(LACING, OFF)),
+           track(2, 2, "A_TRUEHD", ENGLISH),                                         # first, default by leaving it out: silent on a TV
+           track(3, 2, "A_AC3", el(DEF, OFF), ENGLISH, el(NAME, b"Director's commentary")),
+           track(4, 2, "A_AC3", el(DEF, OFF), FRENCH),
+           track(5, 2, "A_AC3", el(DEF, OFF), ENGLISH),                               # the one the TV should play
+           track(6, 17, "S_TEXT/UTF8", el(LACING, OFF)),                              # default by leaving it out: shown on a TV
+           track(7, 17, "S_HDMV/PGS", el(FORCED, ON), el(LACING, OFF)),               # forced: for the foreign lines, left alone
+           track(8, 17, "S_TEXT/UTF8", el(DEF, ON), el(LACING, OFF)))
+
+
+def tracks_of(film: bytes) -> list:
+    """(number, kind, default, forced) of each track, read from a film's header the way a player reads it"""
+    seg = list(cast._kids(film, 0, len(film)))[1]
+    tracks = next(x for x in cast._kids(film, seg[2], seg[3]) if x[0] == 0x1654AE6B)
+    out = []
+    for _, _, d, e in cast._kids(film, tracks[2], tracks[3]):
+        f = {k: film[a:b] for k, _, a, b in cast._kids(film, d, e)}
+        out.append((f[0xD7][0], f[0x83][0], f[DEF][0] if DEF in f else 1, f[FORCED][0] if FORCED in f else 0))
+    return out
+
+
+class Tracks(Case):
+    """A TV's own player starts with the first default sound and subtitle tracks in a Matroska film's header. On a real
+    LG most films' first sound is TrueHD (played silent), and many have a subtitle that is default by leaving the flag
+    out (shown). Parlor serves the file as it is with its track list rearranged: same length, every other byte the same."""
+
+    def serve(self, film, item=None):
+        p, sid = self.player()
+        with mock.patch(f"{__name__}.BODY", film):
+            r = self.play(sid)
+            self.assertEqual(r.status_code, 200, r.text)
+            path = p.uri.split("192.168.1.20:8800", 1)[1]
+            tvset = client()
+            whole = tvset.get(path).content
+            pieces = b"".join(tvset.get(path, headers={"Range": f"bytes={a}-{a + 49}"}).content for a in range(0, len(film), 50))
+        self.assertEqual(whole, pieces, "the TV gets the same bytes however it cuts its ranges")
+        return r.json(), whole
+
+    def test_a_film_starts_with_sound_the_tv_plays_and_no_subtitles(self):
+        said, served = self.serve(LOUD)
+        self.assertEqual(len(served), len(LOUD))
+        self.assertEqual(tracks_of(served), [(1, 1, 1, 0), (5, 2, 1, 0), (2, 2, 1, 0), (3, 2, 0, 0), (4, 2, 0, 0), (6, 17, 0, 0), (7, 17, 1, 1), (8, 17, 0, 0)],
+                         "the English AC3 track (not the commentary, not the French) is first and default; subtitles aren't, but the forced one is left")
+        start, end = next((i for i in range(len(LOUD)) if served[i] != LOUD[i])), max(i for i in range(len(LOUD)) if served[i] != LOUD[i])
+        tracks = LOUD.index(bytes.fromhex("1654ae6b"))
+        self.assertTrue(tracks < start <= end < LOUD.index(bytes.fromhex("1f43b675")), "only the track list changed")
+        quiet = mkv(track(1, 2, "A_DTS", el(DEF, OFF)), track(2, 2, "A_EAC3", el(DEF, OFF)))  # no sound track says it is default
+        patch, moved = cast._patch(quiet)
+        self.assertEqual((tracks_of(b"".join(cast._over([quiet], 0, patch))), moved), ([(2, 2, 1, 0), (1, 2, 0, 0)], "EAC3"), "one the TV plays is made the default")
+        alone = mkv(track(1, 1, "V_MPEG4/ISO/AVC"), track(2, 2, "A_EAC3", el(DEF, OFF)))  # the only sound track, said not default (a real show)
+        patch, _ = cast._patch(alone)
+        self.assertEqual(tracks_of(b"".join(cast._over([alone], 0, patch))), [(1, 1, 1, 0), (2, 2, 1, 0)])
+
+    def test_a_film_that_needs_nothing_goes_byte_for_byte(self):
+        fine = mkv(track(1, 1, "V_MPEG4/ISO/AVC"), track(2, 2, "A_EAC3"), track(3, 2, "A_TRUEHD", el(DEF, OFF)), track(4, 17, "S_TEXT/UTF8", el(DEF, OFF), el(LACING, OFF)))
+        self.assertEqual(self.serve(fine)[1], fine)
+        no_match = mkv(track(1, 2, "A_DTS", ENGLISH), track(2, 2, "A_AC3", el(DEF, OFF), FRENCH))  # only another language plays: left for the remote
+        self.assertEqual(self.serve(no_match)[1], no_match)
+        at = LOUD.index(bytes.fromhex("1654ae6b")) + 7  # the first track's size (after the list's id and 2-byte size, and its own id)
+        overrun = LOUD[:at] + bytes([0xFD]) + LOUD[at + 1:]  # 125: its last element runs past it
+        empty_flag = mkv(track(1, 2, "A_TRUEHD"), track(2, 2, "A_AC3", bytes.fromhex("8880")))  # a FlagDefault with no value
+        unknown = mkv(track(1, 2, "A_TRUEHD", el(LANG, b"und")), track(2, 2, "A_AC3", el(DEF, OFF), FRENCH))  # not said to be French
+        for junk in (BODY, LOUD[:200], b"", overrun, empty_flag, unknown):  # not Matroska, cut short, not what it says, or no match
+            self.assertEqual(cast._patch(junk), ([], ""))
+
+    def test_the_note_says_parlor_put_the_playable_track_first(self):
+        item = {"Id": FILM, "Name": "Loud", "Type": "Movie", "MediaType": "Video", "UserData": {}, "MediaSources": [{"Id": FILM, "Container": "mkv", **Hard.film()}]}
+        with mock.patch.object(jf, "get_item", lambda *a, **k: item):
+            said, _ = self.serve(LOUD)
+        self.assertIn("Parlor sends its AC3 track first", said["note"])
+
+
 class Link(Case):
     """what the TV fetches the film by"""
 

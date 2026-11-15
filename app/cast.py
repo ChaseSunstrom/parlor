@@ -58,6 +58,10 @@ SOUND = {"aac", "ac3", "eac3", "mp3", "mp2"}  # sound a TV's own player plays; T
 PICTURE = {"h264", "hevc", "mpeg2video", "mpeg4", "vc1"}  # AV1 is newer than many TVs
 NO_PICTURE = {"DOVI", "DOVIInvalid"}  # Dolby Vision with no plain picture under it: black in a TV's network player (a real LG)
 MAX_TEXT = 512 * 1024  # a description or an answer bigger than this isn't one
+HEAD = 256 * 1024  # bytes of a Matroska film read for its track list (a few KB in, after its SeekHead and Info)
+PLAYS = ("A_AAC", "A_AC3", "A_EAC3", "A_MPEG/L2", "A_MPEG/L3")  # Matroska's names for SOUND
+EBML, SEGMENT, TRACKS, ENTRY, CLUSTER, CRC = 0x1A45DFA3, 0x18538067, 0x1654AE6B, 0xAE, 0x1F43B675, 0xBF
+KIND, CODEC, DEFAULT, FORCED, LACING, LANG, LANG47, NAME, COMMENTARY = 0x83, 0x86, 0x88, 0x55AA, 0x9C, 0x22B59C, 0x22B59D, 0x536E, 0x55AF
 MIME = {"mkv": "video/x-matroska", "mp4": "video/mp4", "m4v": "video/mp4", "mov": "video/quicktime", "avi": "video/x-msvideo",
         "ts": "video/mp2t", "m2ts": "video/mp2t", "mpg": "video/mpeg", "mpeg": "video/mpeg", "webm": "video/webm", "wmv": "video/x-ms-wmv"}
 DLNA = "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"  # seek by bytes, the file as it is, streamed
@@ -322,8 +326,12 @@ def film(token: str, name: str, request: Request):
     if request.method == "HEAD":
         r.close()
         return Response(status_code=r.status_code, media_type=link["mime"], headers=out)
-    return StreamingResponse(r.iter_content(64 * 1024), status_code=r.status_code, media_type=link["mime"], headers=out,
-                             background=BackgroundTask(r.close))
+    body = r.iter_content(64 * 1024)
+    if link.get("patch"):  # its track list, rearranged for a TV (_patch)
+        m = re.match(r"bytes (\d+)-", r.headers.get("Content-Range", ""))
+        if r.status_code == 200 or m:
+            body = _over(body, int(m[1]) if m else 0, link["patch"])
+    return StreamingResponse(body, status_code=r.status_code, media_type=link["mime"], headers=out, background=BackgroundTask(r.close))
 
 
 def _video(link: dict, request: Request):
@@ -418,7 +426,7 @@ def _set(sid: int, user: dict) -> dict:
     return s
 
 
-def _hard(src: dict) -> str:
+def _hard(src: dict, moved: str = "") -> str:
     """what to say when a film is sent whose sound or picture TVs' own players commonly can't play; '' when it is
     fine or Jellyfin doesn't say what is in it. The film still goes as it is: a TV plays files, and its remote picks
     the track (a stream converted on the way wouldn't start on a real LG)"""
@@ -430,13 +438,155 @@ def _hard(src: dict) -> str:
     said = []
     if kind(first) and kind(first) not in SOUND:
         other = next((kind(x).upper() for x in sounds if kind(x) in SOUND), "")
-        said.append(f"Its first sound track is {kind(first).upper()}, which many TVs play silent: "
-                    + (f"choose the {other} track with the TV's own remote" if other else "it has no other, so it may play without sound"))
+        said.append(f"Its first sound track is {kind(first).upper()}, which many TVs play silent: " + (
+            f"Parlor sends its {moved} track first instead; if the TV is still silent, choose that track with the TV's own remote" if moved
+            else f"choose the {other} track with the TV's own remote" if other else "it has no other, so it may play without sound"))
     if video.get("VideoRangeType") in NO_PICTURE:
         said.append("Its picture is Dolby Vision only, which many TVs' own players show black")
     elif kind(video) and kind(video) not in PICTURE:
         said.append(f"Its picture is {kind(video).upper()}, which many TVs' own players can't show")
     return ". ".join(said)
+
+
+def _vint(b: bytes, i: int, marker: bool = False) -> tuple:
+    """a Matroska (EBML) number at b[i]: its value and its length; an id keeps its length marker"""
+    n = 9 - b[i].bit_length()
+    if not 1 <= n <= 8 or i + n > len(b):
+        raise ValueError("not EBML")
+    v = b[i] if marker else b[i] & (0xFF >> n)
+    for x in b[i + 1:i + n]:
+        v = v << 8 | x
+    return v, n
+
+
+def _kids(b: bytes, start: int, end: int):
+    """(id, start, data start, end) of each element in b[start:end]; one of unknown size runs to `end`"""
+    while start < end:
+        eid, n = _vint(b, start, True)
+        size, m = _vint(b, start + n)
+        data = start + n + m
+        stop = end if size == (1 << 7 * m) - 1 else data + size
+        yield eid, start, data, stop
+        start = stop
+
+
+def _patch(head: bytes) -> tuple:
+    """([[offset, hex]] to lay over a Matroska film as it is served, the sound track moved first) so a TV's own
+    player, which starts the first default tracks, starts sound it can play and no subtitles. The first playable
+    track (AC3, AAC…) in the same language that isn't a commentary moves ahead of a TrueHD or DTS one and is the
+    default, and subtitles that aren't forced stop being default (a FlagLacing 0 becomes a FlagDefault 0, the same
+    three bytes, when the flag was left out). Only same-size changes inside the track list: the length and every
+    other byte and offset stay as they are. ([], '') when nothing needs changing or it isn't a header this reads."""
+    try:
+        return _rearranged(head)
+    except (ValueError, IndexError, StopIteration, OverflowError):  # a header this doesn't read: the film as it is
+        return [], ""
+
+
+def _rearranged(head: bytes) -> tuple:
+    """_patch's work; raises on a header it can't read"""
+    top = _kids(head, 0, len(head))
+    if next(top)[0] != EBML or (seg := next(top))[0] != SEGMENT:
+        return [], ""
+    tracks = next((x for x in _kids(head, seg[2], seg[3]) if x[0] in (TRACKS, CLUSTER)), None)
+    if not tracks or tracks[0] != TRACKS or tracks[3] > len(head):
+        return [], ""
+
+    def tiled(start, end):  # the elements that fill b[start:end] exactly, as a player reads them
+        out = list(_kids(head, start, end))
+        if out and out[-1][3] != end:
+            raise ValueError("an element overruns its parent")
+        return out
+    kids = tiled(tracks[2], tracks[3])
+    fields = [{k: (s, d, e) for k, s, d, e in tiled(x[2], x[3])} if x[0] == ENTRY else {} for x in kids]
+    if any(x[0] == CRC for x in kids) or any(CRC in f for f in fields):  # a checksum this would break: as it is
+        return [], ""
+    pieces = [bytearray(head[x[1]:x[3]]) for x in kids]
+
+    def val(i, k, default=0):
+        s, d, e = fields[i].get(k, (0, 0, 0))
+        return int.from_bytes(head[d:e], "big") if k in fields[i] else default
+
+    def text(i, k, default=""):
+        s, d, e = fields[i].get(k, (0, 0, 0))
+        return head[d:e].rstrip(b"\0").decode("utf-8", "replace") if k in fields[i] else default
+
+    def flag(i, k, to):  # a flag that is there, set in place
+        s, d, e = fields[i][k]
+        if not 1 <= e - d <= 8:
+            raise ValueError("not a flag")
+        pieces[i][d - kids[i][1]:e - kids[i][1]] = (to).to_bytes(e - d, "big")
+
+    lang = lambda i: text(i, LANG47) or text(i, LANG, "eng")  # noqa: E731
+    plays = lambda i: text(i, CODEC).startswith(PLAYS)  # noqa: E731
+    sounds = [i for i, f in enumerate(fields) if val(i, KIND) == 2]
+    first = next((i for i in sounds if val(i, DEFAULT, 1)), None)  # None: every sound track says it isn't default
+    order, moved = list(range(len(kids))), ""
+    if sounds and (first is None or not plays(first)):
+        like = None if first is None else lang(first)  # None: no track says it's the one, any language
+        better = next((i for i in sounds if plays(i) and like in (None, lang(i)) and not val(i, COMMENTARY)
+                       and "comment" not in text(i, NAME).lower()), None)
+        if better is not None:
+            if better != sounds[0]:
+                order.remove(better)
+                order.insert(order.index(sounds[0]), better)
+            codec = text(better, CODEC)
+            moved = {"A_MPEG/L3": "MP3", "A_MPEG/L2": "MP2"}.get(codec) or codec[2:].split("/")[0]
+            for i in sounds:
+                if DEFAULT in fields[i]:
+                    flag(i, DEFAULT, int(i == better))
+    for i, f in enumerate(fields):
+        if val(i, KIND) == 17 and not val(i, FORCED) and val(i, DEFAULT, 1):
+            if DEFAULT in f:
+                flag(i, DEFAULT, 0)
+            elif LACING in f:
+                at = f[LACING][0] - kids[i][1]
+                pieces[i][at] = DEFAULT
+                flag(i, LACING, 0)
+    new, old = b"".join(pieces[i] for i in order), head[tracks[2]:tracks[3]]
+    if new == old:
+        return [], ""
+    a = next(i for i in range(len(new)) if new[i] != old[i])
+    z = max(i for i in range(len(new)) if new[i] != old[i]) + 1
+    return [[tracks[2] + a, new[a:z].hex()]], moved
+
+
+def _head(iid: str, source: str, uid: int) -> bytes:
+    """the first HEAD bytes of a film, or b'' when Jellyfin won't give them"""
+    try:
+        r = jf.fetch("GET", f"/Videos/{iid}/stream", params={"static": "true", "mediaSourceId": source}, stream=True,
+                     headers={"Range": f"bytes=0-{HEAD - 1}", "Accept-Encoding": "identity"}, device=f"parlor-{uid}")
+    except HTTPException:
+        return b""
+    try:
+        out = bytearray()
+        if r.status_code in (200, 206):
+            for chunk in r.iter_content(64 * 1024):
+                out += chunk
+                if len(out) >= HEAD:
+                    break
+        return bytes(out[:HEAD])
+    except requests.RequestException:
+        return b""
+    finally:
+        r.close()
+
+
+def _over(chunks, at: int, patch: list):
+    """the film's bytes from offset `at`, with the patch laid over the ones it covers"""
+    patch = [(off, bytes.fromhex(new)) for off, new in patch]
+    last = max((off + len(new) for off, new in patch), default=0)
+    for chunk in chunks:
+        if at >= last:
+            yield chunk
+            continue
+        end, chunk = at + len(chunk), bytearray(chunk)
+        for off, new in patch:
+            a, z = max(off, at), min(off + len(new), end)
+            if a < z:
+                chunk[a - at:z - at] = new[a - off:z - off]
+        yield bytes(chunk)
+        at = end
 
 
 def _library(body: Play, user: dict):
@@ -452,8 +602,9 @@ def _library(body: Play, user: dict):
         raise HTTPException(409, "Only a film, an episode or a video plays on a TV set")
     ext = str(src.get("Container") or "").split(",")[0].lower()
     ext = ext if re.fullmatch(r"[a-z0-9]{1,5}", ext) else "mp4"
+    patch, moved = _patch(_head(body.id, src["Id"], user["id"])) if ext == "mkv" else ([], "")
     source = {"iid": body.id, "source": src["Id"], "jf": who, "runtime": jf.secs(src.get("RunTimeTicks") or i.get("RunTimeTicks")),
-              "note": _hard(src)}
+              "note": _hard(src, moved), "patch": patch}
     return source, ext, MIME.get(ext, "video/mp4"), _title(i), jf.secs((i.get("UserData") or {}).get("PlaybackPositionTicks"))
 
 
