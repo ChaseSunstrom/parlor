@@ -450,7 +450,7 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
                 raise
             raise Failed(f"The TV couldn't fetch it from {url.split('/cast/')[0]}: set the address TVs reach Parlor at "
                          "(Settings → TVs), and let the TV through any firewall to it") from None
-        _soap(ctl, "Play", {"Speed": 1})
+        _soap(ctl, "Play", {"Speed": 1}, wait=SET_WAIT)  # a real LG reads the start of the file before it answers
         for n in range(SEEK_TRIES if at > 5 else 0):  # from where you left off, once the TV lets it
             time.sleep(SEEK_WAIT)
             try:
