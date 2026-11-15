@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/tv")
 links = APIRouter()  # /cast/<a link's name>/…: outside /api, where every call needs a session a TV has none of
 log = logging.getLogger("parlor.cast")
 PORTS = range(1024, 10000)  # where a TV that doesn't answer the search is looked for: an LG's player sits low (1326 on a C6)
+STOP_WAIT = 45  # seconds a TV stuck loading takes to answer Stop (an LG C6: over 15)
 SET_WAIT = 20  # seconds a TV gets to fetch a link and say yes (an LG C6 gives up on an address it can't reach after 5)
 SSDP_PORT = 1900  # the tests' stand-in player listens elsewhere
 AVT = "urn:schemas-upnp-org:service:AVTransport:1"
@@ -443,8 +444,15 @@ def play(sid: int, body: Play, request: Request, user=Depends(me)):
 
     def go(ip):
         ctl = _player(sid, ip)
+        send = lambda: _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)  # noqa: E731
         try:  # the TV fetches the link before it answers: longer than a button's wait
-            _soap(ctl, "SetAVTransportURI", {"CurrentURI": url, "CurrentURIMetaData": didl}, wait=SET_WAIT)
+            try:
+                send()
+            except Failed as e:
+                if "701" not in str(e.detail):
+                    raise
+                _soap(ctl, "Stop", wait=STOP_WAIT)  # still loading the last thing it was sent (a real LG, for minutes): end that
+                send()
         except Failed as e:
             if "716" not in str(e.detail):
                 raise

@@ -470,11 +470,17 @@ class Finding(Case):
         self.assertEqual(found, [])
 
     def test_a_refusal_from_the_player_is_said_with_its_number(self):
-        p, sid = self.player(refuses=["SetAVTransportURI"])
+        p, sid = self.player(refuses=["SetAVTransportURI"] * 2)
         r = self.play(sid)
         self.assertEqual(r.status_code, 502)
         self.assertIn("701", r.json()["detail"])
+        self.assertEqual(p.did(), ["SetAVTransportURI", "Stop", "SetAVTransportURI"])
         self.assertEqual(cast._links, {})
+
+    def test_a_tv_still_loading_the_last_film_is_stopped_and_sent_this_one(self):
+        p, sid = self.player(refuses=["SetAVTransportURI"])  # 701: what a real LG answers while it loads something else
+        self.assertEqual(self.play(sid, start=0).status_code, 200)
+        self.assertEqual(p.did(), ["SetAVTransportURI", "Stop", "SetAVTransportURI", "Play"])
 
     def test_a_tv_that_cant_fetch_the_link_is_told_where_it_tried(self):
         p, sid = self.player(refuses=["SetAVTransportURI"], code=716)  # what a real LG answers when a firewall is in its way
