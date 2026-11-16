@@ -108,7 +108,7 @@ Limits, on purpose for now:
   - subtitles are off, unless the file marks them forced (the ones for foreign lines);
   - the TV's remote still lists every track.
 
-  If a film still plays silent, choose its other sound track with the TV's remote. When it has none, or its picture is one many TVs can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film. The rewritten files were checked with ffprobe, not yet listened to on a real TV. Converting a film on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.
+  If a film still plays silent, choose its other sound track with the TV's remote. When it has none, or its picture is one many TVs can't show (AV1, or Dolby Vision with no plain picture under it), Parlor says so when it sends the film. On a real LG (an OLED C6), a film whose first sound track is Dolby TrueHD played with sound from its AC-3 track, with subtitles off. Converting a film on the way was tried on a real LG and the TV wouldn't start the stream reliably, so that isn't in.
 - The link the TV fetches by needs no sign-in, since a TV can't sign in. It is a long random name, made for one film, never shown in a page or a log, and gone when you press **Stop**, when the remote sees the film end, or after 12 hours at most. It is kept in Parlor's database, so it outlives a restart (above).
 - Only an LG is listed. It has played a film on a real LG (an OLED C6), with pause, skip and resume from the phone; other models are untested. If yours refuses, the message says what the TV answered.
 
