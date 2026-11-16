@@ -52,13 +52,14 @@ console.log("only Parlor's own files ok");
       return own;
     };
   };
-  const video = () => ({ currentTime: 1234.5, paused: false, pause() { this.paused = true; } });
+  const video = (readyState = 4) => ({ readyState, currentTime: readyState ? 1234.5 : 0, paused: false, pause() { this.paused = true; } });
   const jfVideo = video(), ytVideo = video();
   assert.deepStrictEqual({ ...handler({ jfVideo })({ castJf: "ab12" }) }, { kind: "jf", id: "ab12", start: 1234.5 }, "the film player: from where it is");
   assert.ok(jfVideo.paused, "and it pauses here");
   assert.deepStrictEqual({ ...handler({})({ castJf: "ab12" }) }, { kind: "jf", id: "ab12" }, "a details page: where it was left");
   assert.deepStrictEqual({ ...handler({ video: ytVideo })({ castYt: "dQw4w9WgXcQ" }) }, { kind: "yt", id: "dQw4w9WgXcQ", start: 1234.5 });
   assert.ok(ytVideo.paused);
+  assert.deepStrictEqual({ ...handler({ jfVideo: video(0) })({ castJf: "ab12" }) }, { kind: "jf", id: "ab12" }, "a player still loading: where it was left, not 0:00");
   assert.ok(grab(js("library.js"), '<div class="ptools">', "</div>").includes('tvButton("data-cast-jf", x.id)'), "the film player has the button");
   console.log("on TV from a player ok");
 }

@@ -70,11 +70,12 @@ An admin adds the set in **Settings → TVs → TV sets**:
 
 **You → TVs** and the remote then have a row with the set's own **Power**, **Input**, **Vol −**, **Mute**, **Vol +** and **HDMI 1–4**, whichever that type has. The row is there with no TV paired yet.
 
-An LG also has **Open Parlor on it**: the TV opens its own browser at this Parlor's TV screen, so nobody types an address with the TV's remote. It shows the pairing code the first time; pair it as above and the TV stays signed in. Three things to know:
+An LG also has **Open Parlor on it**: the TV opens its own browser at this Parlor's TV screen, so nobody types an address with the TV's remote. It shows the pairing code the first time; pair it as above and the TV stays signed in. Four things to know:
 
 - The TV opens the address you are using Parlor by, so use the server's address on your network (`http://192.168.1.20:8800`), not `localhost` and not a public name: Parlor only sends a TV to an address on your home network.
 - An LG paired before this button existed has no leave to open anything: remove it in **Settings → TVs** and add it again.
-- An LG always starts in webOS. Parlor can't replace that; after switching on, press **Open Parlor on it**. This button has only been tested against a stand-in, not a real LG, and an old TV's browser may not show the page.
+- An LG always starts in webOS. Parlor can't replace that; after switching on, press **Open Parlor on it**.
+- **LG's browser needs the internet to start.** On a real LG (an OLED C6) with its internet blocked, the browser showed a spinner, then "Check network connection" (error -7), and never asked Parlor for the page. It opened Parlor only when the browser was already open. On a TV kept off the internet, play films with **On TV → (its own player)** below, which needs no browser. Parlor's page itself loads only from Parlor, its font included, so a browser that does start shows it at once.
 
 ### A film in the TV's own player
 

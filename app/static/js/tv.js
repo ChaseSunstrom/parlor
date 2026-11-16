@@ -370,7 +370,8 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-hw]");
-  if (b) post(`/api/tv/hw/${b.closest("[data-set]").dataset.set}/press`, { key: b.dataset.hw }).catch((err) => toast(err.message));
+  if (b) post(`/api/tv/hw/${b.closest("[data-set]").dataset.set}/press`, { key: b.dataset.hw }).then(() => b.dataset.hw === "parlor" // an LG's browser asks LG before it opens anything (a real C6)
+    && toast("Opening Parlor. If the TV says to check its network, use On TV → (its own player)"), (err) => toast(err.message));
 });
 
 /** the remote's joystick: drag the knob for an arrow (held, it keeps going, quicker and quicker), press it for OK;
@@ -487,10 +488,10 @@ document.addEventListener("click", (e) => {
   if (!jf && !yt) return;
   e.preventDefault();
   const v = byId(jf ? "jfVideo" : "video");
-  const at = v ? v.currentTime : 0;
+  const at = v?.readyState ? v.currentTime : null; // a player still loading isn't at 0 yet: then where it was left
   if (v) v.pause();
-  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }),
-    { kind: jf ? "jf" : "yt", id: jf ? jf.dataset.castJf : yt.dataset.castYt, ...(v ? { start: at } : {}) });  // from where this player is; with none on the page, where it was left
+  tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at: at || 0 }),
+    { kind: jf ? "jf" : "yt", id: jf ? jf.dataset.castJf : yt.dataset.castYt, ...(at != null ? { start: at } : {}) });  // from where this player is; with none on the page, where it was left
 });
 // drawn hidden until this account's TVs are known (tvBoot runs alongside the first page)
 const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length || tvSets.length ? "" : " hidden"}>${ICON.tv}On TV</button>`);
