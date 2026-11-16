@@ -70,7 +70,7 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
   await w.request("/", { mode: "navigate" });
   assert.ok(w.asked.length === SHELL.length + 2 && w.asked.every((c) => c === "no-cache"), `the server is asked past the browser's kept copy, at install and on every load: ${w.asked}`);
   await w.event("activate");
-  assert.deepStrictEqual([...w.stores.keys()].sort(), ["parlor-fonts", "parlor-shell-v1", "someone-else"], "the old version goes; fonts and others' caches stay");
+  assert.deepStrictEqual([...w.stores.keys()].sort(), ["parlor-shell-v1", "someone-else"], "the old version and the old Google fonts go; others' caches stay");
   assert.ok(w.state.claimed);
 
   // your data, streams and music apps go to the server, always; so does anything but GET
@@ -104,14 +104,9 @@ function worker({ version = "v1", off = false, net = {}, caches: start = {} } = 
   assert.ok(!w.stores.get("parlor-shell-v1").has(ORIGIN + "/missing.js") && (await w.request("/missing.js")).status === 404, "errors aren't kept");
   assert.ok(!w.stores.get("parlor-shell-v1").has(ORIGIN + "/missing.js"));
 
-  // Google's fonts: kept the first time, then never asked for again
+  // another site's file isn't the worker's: the browser fetches it as it would
   w = worker();
-  const font = "https://fonts.gstatic.com/s/bricolage/v1/a.woff2";
-  w.net[font] = res("font", { type: "cors" });
-  assert.strictEqual((await w.request(font)).body, "font");
-  w.net[font] = "down";
-  assert.strictEqual((await w.request(font)).body, "font");
-  assert.strictEqual(w.fetched.filter((u) => u === font).length, 1);
+  assert.strictEqual(await w.request("https://fonts.gstatic.com/s/bricolage/v1/a.woff2"), "network");
 
   // the off switch: nothing kept, nothing answered, the worker gone and open windows reloaded
   w = worker({ off: true, caches: { "parlor-shell-v1": { [ORIGIN + "/"]: res("page") }, "parlor-fonts": {}, "someone-else": {} } });

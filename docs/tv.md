@@ -31,7 +31,7 @@ No password is typed on the TV, and the code works once, for five minutes.
 
 ## Play on TV
 
-A film's or episode's **On TV** button, a YouTube video's (it carries on from where you are), and **⋯ → Play on TV** on any album or song send it to the TV, which plays it with its own sign-in. With more than one TV on, you pick which.
+A film's or episode's **On TV** button (on its page, and under the player while it plays, where it carries on from where you are), a YouTube video's (it carries on from where you are too), and **⋯ → Play on TV** on any album or song send it to the TV, which plays it with its own sign-in. With more than one TV on, you pick which.
 
 ## The remote
 
@@ -80,7 +80,7 @@ An LG also has **Open Parlor on it**: the TV opens its own browser at this Parlo
 
 An LG can also play a film or an episode from your library, or a video from **Watch**, with no browser and no Parlor screen on the TV: the TV's built-in network player fetches the file from Parlor, and your phone is the remote.
 
-1. Open a film or an episode in the **Library**, or a video in **Watch**, and press **On TV**. Sets that can play are listed as "(its own player)".
+1. Open a film or an episode in the **Library**, or a video in **Watch**, and press **On TV**: on its page, or under the player while it plays here, which pauses and hands the TV the spot it got to. Sets that can play are listed as "(its own player)".
 2. Pick the set. The TV starts the film from where you left off, and the phone goes to **You → TVs**.
 3. Under **The TV set** you see what is playing, with **−10**, **Pause**, **+30**, **Stop** and a line to press along. Where it got to is saved to your library as it plays.
 

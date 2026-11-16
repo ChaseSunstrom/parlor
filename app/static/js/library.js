@@ -384,6 +384,7 @@ async function showJfPlay(t, [id, from]) {
       <select id="jfQuality" aria-label="Quality"><option value="">Original quality</option><option value="20000000">20 Mbps</option><option value="8000000">8 Mbps</option><option value="4000000">4 Mbps</option><option value="1500000">1.5 Mbps</option></select>
       <select id="jfChapters" aria-label="Chapters" hidden></select>
       <span class="grow"></span><span class="stat" id="jfStat"></span>
+      ${tvButton("data-cast-jf", x.id)}
       ${next ? `<a class="ghost" href="#/jf/play/${esc(next.id)}/start" title="Next episode (N)">${ICON.next}Next episode</a>` : ""}
       <button class="ghost icon" id="jfFull" title="Full screen (F)" aria-label="Full screen">${ICON.full}</button>
     </div>

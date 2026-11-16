@@ -480,16 +480,17 @@ async function tvChoose(anchor, cast, own = null) {
   m.querySelector("button")?.focus();
 }
 
-/* Play on TV buttons: films and episodes, YouTube videos (from where you are, and this one pauses) */
+/* Play on TV buttons: films and episodes, YouTube videos (from a player, from where you are, and this one pauses;
+   pausing saves a film's place, which a TV showing Parlor resumes from) */
 document.addEventListener("click", (e) => {
   const jf = e.target.closest("[data-cast-jf]"), yt = e.target.closest("[data-cast-yt]");
   if (!jf && !yt) return;
   e.preventDefault();
-  const v = byId("video");
-  const at = yt && v ? v.currentTime : 0;
-  if (yt && v) v.pause();
+  const v = byId(jf ? "jfVideo" : "video");
+  const at = v ? v.currentTime : 0;
+  if (v) v.pause();
   tvChoose(jf || yt, async () => (jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, at }),
-    jf ? { kind: "jf", id: jf.dataset.castJf } : { kind: "yt", id: yt.dataset.castYt, ...(v ? { start: at } : {}) });  // from where this player is; with none on the page, where it was left
+    { kind: jf ? "jf" : "yt", id: jf ? jf.dataset.castJf : yt.dataset.castYt, ...(v ? { start: at } : {}) });  // from where this player is; with none on the page, where it was left
 });
 // drawn hidden until this account's TVs are known (tvBoot runs alongside the first page)
 const tvButton = (attr, id) => (tvMe ? "" : `<button class="ghost ontv" ${attr}="${esc(id)}"${tvKnown.length || tvSets.length ? "" : " hidden"}>${ICON.tv}On TV</button>`);

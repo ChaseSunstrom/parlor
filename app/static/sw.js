@@ -6,7 +6,7 @@
 const VERSION = "__VERSION__";
 const SHELL = __SHELL__;
 const OFF = __OFF__; // OFFLINE=off on the server: this worker removes itself and everything it kept
-const CACHE = `parlor-shell-${VERSION}`, FONTS = "parlor-fonts";
+const CACHE = `parlor-shell-${VERSION}`;
 const NEVER = ["/api/", "/music/", "/rest/", "/hooks/", "/qbit/", "/sw.js"];
 
 self.addEventListener("install", (e) => {
@@ -15,7 +15,7 @@ self.addEventListener("install", (e) => {
 });
 
 self.addEventListener("activate", (e) => e.waitUntil((async () => {
-  for (const k of await caches.keys()) if (k.startsWith("parlor-") && (OFF || (k !== CACHE && k !== FONTS))) await caches.delete(k);
+  for (const k of await caches.keys()) if (k.startsWith("parlor-") && (OFF || k !== CACHE)) await caches.delete(k);
   if (!OFF) return self.clients.claim();
   await self.registration.unregister();
   for (const c of await self.clients.matchAll({ type: "window" })) c.navigate(c.url);
@@ -27,8 +27,6 @@ self.addEventListener("fetch", (e) => {
   if (url.origin === location.origin) {
     if (NEVER.some((p) => url.pathname.startsWith(p))) return; // your data and streams: the network, always
     e.respondWith(fresh(req, req.mode === "navigate" ? new URL("./", location.href).href : req));
-  } else if (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com") {
-    e.respondWith(font(req));
   }
 });
 
@@ -44,13 +42,4 @@ async function fresh(req, key) {
   if (!kept) return net.catch(() => Response.error());
   net.catch(() => {});
   return Promise.race([net, new Promise((r) => setTimeout(r, 3000, kept))]).catch(() => kept);
-}
-
-/** Google's fonts never change at an address: the first copy is kept */
-async function font(req) {
-  const cache = await caches.open(FONTS), kept = await cache.match(req);
-  if (kept) return kept;
-  const res = await fetch(req);
-  if (res.ok) cache.put(req, res.clone());
-  return res;
 }
