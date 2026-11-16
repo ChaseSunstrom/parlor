@@ -144,6 +144,18 @@ with sync_playwright() as pw:
         player.uri.endswith("/video.mp4") and until(lambda: phone.inner_text("#hwTitle") == "A <talk> & more"))
     checks["and says it is the small picture, with the way to the full one"] = "360p" in " ".join(phone.locator(".toast").all_inner_texts())
     press(phone, "[data-hwp='stop']")
+
+    # the set removed and added again (a new id) while this page stays open: On TV goes to the new one
+    old = core.one("SELECT id FROM tv_sets")["id"]
+    core.db().execute("INSERT INTO tv_sets(kind, name, host, mac, created) SELECT kind, name, host, mac, created FROM tv_sets WHERE id = ?", (old,))
+    core.db().execute("DELETE FROM tv_sets WHERE id = ?", (old,))
+    heard = len(player.did())
+    phone.goto(f"{BASE}/#/jf/item/{fakes.FILM}")
+    phone.wait_for_selector("[data-cast-jf]:not([hidden])", timeout=30000)
+    phone.click("[data-cast-jf]")
+    checks["a set added again since the page opened gets the film, not 'No such TV'"] = until(lambda: "SetAVTransportURI" in player.did()[heard:], 20)
+    if phone.is_visible("#hwNow"):
+        press(phone, "[data-hwp='stop']")
     b.close()
 server.should_exit = True
 for k, v in checks.items():
@@ -152,6 +164,6 @@ print("page errors:", errors or "none")
 if not all(checks.values()):
     print("the player heard:", player.actions, "state", player.state, "at", player.at)
 print("screenshots:", ", ".join(sorted(x.name for x in OUT.glob("*.png"))), "in", OUT)
-ok = len(checks) == 17 and all(checks.values()) and not errors
+ok = len(checks) == 18 and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

@@ -452,7 +452,8 @@ document.addEventListener("keydown", (e) => { // a computer's keyboard works the
     can also go to a TV set that plays it in its own player, with no Parlor on its screen: then this device is its
     remote (You → TVs). */
 async function tvChoose(anchor, cast, own = null) {
-  tvKnown = (await api("/api/tv").catch(() => ({ tvs: tvKnown }))).tvs;
+  [tvKnown, tvSets] = await Promise.all([api("/api/tv").then((r) => r.tvs, () => tvKnown),  // afresh: a set added again has a new id
+    own ? api("/api/tv/hw").then((r) => r.sets.filter((x) => x.plays), () => tvSets) : tvSets]);
   const on = [...tvKnown.filter((x) => x.online), ...(own ? tvSets.map((x) => ({ ...x, set: true })) : [])];
   if (!on.length) return toast(tvKnown.length ? "None of your TVs is showing Parlor right now" : "Pair a TV first: You → TVs");
   const send = async (x) => {
