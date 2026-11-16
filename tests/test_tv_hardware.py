@@ -77,13 +77,16 @@ class Lg:
     """LG webOS: register (a prompt on the TV, then a client-key), then ssap:// requests"""
     KEY = "lg-client-key-5f1c9e"
 
-    def __init__(self, accepts=True):
-        self.accepts, self.registered_with, self.prompts, self.seen = accepts, [], 0, []
+    def __init__(self, accepts=True, standby=False):
+        self.accepts, self.standby, self.registered_with, self.prompts, self.seen = accepts, standby, [], 0, []
         self.server = serve(self.handle, "127.0.0.1", 0)
         self.port = self.server.socket.getsockname()[1]
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def handle(self, ws):
+        if self.standby:  # a real C6 in standby with Quick Start on: it takes the connection, then closes it
+            ws.close(1008, "Try Again Later (EWS)")
+            return
         for raw in ws:
             m = json.loads(raw)
             if m["type"] == "register":
@@ -442,6 +445,20 @@ class LgWebos(Case):
                 self.assertEqual(self.press(sid, "volup").status_code, 502, "only power wakes it")
         r = self.admin.post("/api/tv/sets", json={"kind": "webos", "name": "Den", "host": "127.0.0.1", "mac": "not a mac"}, headers=H)
         self.assertEqual(r.status_code, 422)
+
+    def test_power_wakes_an_lg_in_standby_that_still_takes_connections(self):
+        lg = Lg(standby=True)
+        self.addCleanup(lg.server.shutdown)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as wol:
+            wol.bind(("127.0.0.1", 0))
+            wol.settimeout(3)
+            self.port("webos", lg.port)
+            sid = self.add("webos", mac="AA:bb:CC:00:11:22")
+            core.db().execute("UPDATE tv_sets SET secret = 'k' WHERE id = ?", (sid,))
+            with mock.patch.object(tvhw, "WOL_PORT", wol.getsockname()[1]):
+                self.assertEqual(self.press(sid, "power").status_code, 200)
+                self.assertEqual(wol.recv(200), b"\xff" * 6 + bytes.fromhex("aabbcc001122") * 16)
+                self.assertEqual(self.press(sid, "volup").status_code, 502, "only power wakes it")
 
 
 class SamsungTizen(Case):

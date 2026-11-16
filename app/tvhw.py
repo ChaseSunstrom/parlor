@@ -28,7 +28,7 @@ from urllib.parse import urlencode, urlsplit
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from websockets.exceptions import WebSocketException
+from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import connect
 
 import core
@@ -229,6 +229,9 @@ def _lg_open(s, ip, wait):
             return str(m["payload"]["client-key"])[:200] if m.get("type") == "registered" else None
 
         return ws, _heard(ws, wait, registered)
+    except ConnectionClosed:  # an LG in standby with Quick Start takes the connection, then closes it ("Try Again Later")
+        ws.close()
+        raise Off() from None
     except BaseException:
         ws.close()
         raise
