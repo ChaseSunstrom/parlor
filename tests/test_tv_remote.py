@@ -161,6 +161,10 @@ class Remote(unittest.TestCase):
         n = self.owner.post(f"/api/tv/{tid}/do", json={"cmd": "key", "key": "up"}).json()["n"]
         self.assertEqual(screen.next("do")["n"], n, "the TV gets the command's number")
         time.sleep(0.06)
+        other, _ = paired_tv(self.owner)
+        for wrong in (n, True):  # another TV can't answer this TV's command, and true is not a number
+            other.post("/api/tv/state", json={"state": {"ack": wrong}})
+            self.assertNotIn("lag", remote.next("state")["state"])
         self.assertEqual(t.post("/api/tv/state", json={"state": {"ack": n, "took": 3, "paint": 40, "frame": 33}}).status_code, 200)
         said = remote.next("state")["state"]
         self.assertTrue(60 <= said["lag"] < 1000, f"from the press to the TV's answer, on the server's clock: {said}")

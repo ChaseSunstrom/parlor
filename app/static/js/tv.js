@@ -129,7 +129,7 @@ async function tvFresh() {
 
 /** what's playing on this TV, if anything: a video on the page, else the dock */
 function tvPlayer() {
-  const v = [...document.querySelectorAll("#jfVideo, #video, #offVideo")].find(tvShown);
+  const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
   return v || (dock.queue.length ? dock.audio : null);
 }
 
@@ -203,11 +203,11 @@ function tvRefused(p) {
   $("#tvAskGo").addEventListener("click", () => { $("#tvAsk").remove(); p.play().catch(() => {}); });
   $("#tvAskGo").focus();
 }
-if (TV_MODE) {
+{
   const play = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function () { // every player on the page: a film, a video, the music dock
     const r = play.call(this);
-    r?.catch((err) => { if (err.name === "NotAllowedError") tvRefused(this); });
+    r?.catch((err) => { if (err.name === "NotAllowedError" && tvMe) tvRefused(this); }); // only on a TV (at /tv, or its session at any address)
     return r;
   };
   document.addEventListener("playing", (e) => { if (e.target === tvBlocked) { tvBlocked = null; $("#tvAsk")?.remove(); } }, true);

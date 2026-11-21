@@ -50,7 +50,35 @@ It shows what the TV is playing.
 - **Two phones** can drive the same TV; both see what it does.
 - **A computer's** arrow keys, Enter and Space work it too.
 - **Volume**: the remote's volume is Parlor's on the TV. The TV set's own power, input and volume are under it, once an admin has added the set (below).
-- **Connection**: the remote talks over server-sent events, so it works through the Android app and any reverse proxy. nginx must not buffer `/api/tv/events` (Parlor sends `X-Accel-Buffering: no`, which nginx honours).
+- **Connection**: the remote talks over server-sent events, so it works through the Android app and any reverse proxy. A proxy must not hold `/api/tv/events` back or compress it: Parlor sends `X-Accel-Buffering: no` (nginx honours it) and `Cache-Control: no-transform`.
+
+### How fast it is
+
+The remote's status line says how fast the TV answers: `On · answers in 12 ms`.
+
+- Each press gets a number. The TV answers it after the frame that shows it, and Parlor times the way there and back.
+- A press takes about 10 ms from the phone's request to the TV acting on it (measured on a living-room TV through a home reverse proxy: median 8 to 11 ms, worst 15 ms, 22 presses).
+- A held arrow waits for the last press to be sent before it sends the next, so presses never pile up on a slow link.
+- If the line says `slow to answer`, look at the TV: its page is slow to draw (its graphics chip, or a film it is decoding without help), or its link to Parlor is.
+
+What the TV page costs to draw, at 3840×2160 on a software graphics chip with the page's thread slowed four times (`tests/perf_tv.py`):
+
+| | Median frame | A press to its frame |
+|---|---|---|
+| Before: three animated blurs behind the page, a blurred bar on top | 100 ms (10 frames a second, with nothing pressed) | 152 to 171 ms |
+| Now: TV mode draws no live blur, and Home holds still until you press | 16.7 ms (60 frames a second) | 13 to 20 ms |
+
+### Sound
+
+A browser won't start sound that nobody pressed a key for, and a phone's press doesn't count as one on the TV.
+
+- Start a kiosk's Chromium with `--autoplay-policy=no-user-gesture-required`.
+- Without it, the TV shows **Press OK to play** and the remote says the TV is holding the sound back.
+- A muted TV page says so on the remote too; turning the volume up takes the mute off.
+
+### Updates
+
+A TV left on reloads itself when Parlor was updated, as soon as nothing is playing.
 
 ## Unpairing and safety
 

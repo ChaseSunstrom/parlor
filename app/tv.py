@@ -281,7 +281,7 @@ async def state(body: State, request: Request, user=Depends(me)):
         raise HTTPException(403, "Only a paired TV says what it's playing")
     if len(json.dumps(body.state)) > 4000:
         raise HTTPException(413, "Too much state")
-    sent = hub.sent[tv["id"]].pop(body.state.get("ack"), None) if isinstance(body.state.get("ack"), int) else None
+    sent = hub.sent[tv["id"]].pop(body.state.get("ack"), None) if type(body.state.get("ack")) is int else None
     hub.state[tv["id"]] = {**body.state, "seen": _now(), **({"lag": round((time.monotonic() - sent) * 1000)} if sent else {})}  # "at" is where it is in what's playing
     hub.seen[tv["id"]] = _now()
     hub.tell(tv["user_id"], {"type": "state", "tv": tv["id"], "state": hub.state[tv["id"]]})
