@@ -12,7 +12,7 @@ const body = (src, start) => { // the text of the block that opens after `start`
   for (const open = i; i < src.length; i++) { if (src[i] === "{") depth++; else if (src[i] === "}" && !--depth) return src.slice(open, i + 1); }
 };
 const keys = body(tv, 'document.addEventListener("keydown", (e) => {');
-assert.ok((keys.match(/tvDo\(/g) || []).length === 3, "arrows, Back and the media keys each call tvDo");
+assert.ok((keys.match(/tvDo\(/g) || []).length === 4, "arrows, Back, the media keys and OK each call tvDo");
 assert.ok(!/tvMove\(|tvBack\(|\.pause\(|tvPlay\(/.test(keys), "the key handler acts only through tvDo");
 const calls = (src, re) => [...src.matchAll(re)].length;
 assert.strictEqual(calls(tv.replace(body(tv, "function tvDo(m) {"), ""), /\btvBack\(\)/g), 1, "tvBack is called only inside tvDo (its own definition is the one left)");

@@ -24,10 +24,27 @@ No password is typed on the TV, and the code works once, for five minutes.
 
 ## The TV layout
 
-- **Made for a remote**: bigger, with a bright outline on what's selected.
-- **Arrows**: they move to the nearest thing in that direction.
-- **OK and Back**: OK opens it, Back goes back.
-- **The menu** on the left reaches every section, and lists a section's pages once it's open.
+Parlor on a TV is laid out for a couch and a remote: everything is bigger, there is no top bar, and nothing needs a mouse.
+
+- **Home** is one screen that never scrolls. The title the focus is on fills the top: its artwork, its name, the year, how long is left, what it's about. Under it are rows of posters: Continue watching, Next up, what's new in each library, new from your subscriptions, Watch later, and the libraries.
+- **Arrows on Home**: Left and Right walk a row, Up and Down change rows. Each row remembers where you were in it. The selected poster lifts and glows; the rows slide under it, so it is always in the same place.
+- **OK and Back**: OK opens what's selected. Back returns to the very poster you opened it from; pressed again it goes to the first poster, then to the menu.
+- **The menu** is a slim rail of icons on the left (Search, Home, Library, Watch, Music, Request, You). Left from the first poster reaches it, and its names show while the focus is in it. A section's pages are the row of links along the top of each of its pages.
+- **Other pages**: the arrows move to the nearest thing in that direction, and what's selected has a bright outline. When a page opens, the focus is already in it.
+- **A film or a video fills the screen.** A strip shows its name and where it is for a few seconds, and whenever it is paused.
+
+  | Key | What it does while a film plays |
+  |---|---|
+  | OK | Pause, play |
+  | Left, Right | Back or on 10 seconds |
+  | Down | Sound, subtitles, quality and the rest. OK on a list steps to its next choice; Up or Back returns to the film |
+  | Back | Leaves the film |
+
+  When **Skip intro** or **Up next** shows, OK presses it.
+- **A film that stutters**: the TV asks for a lighter stream by itself when it drops more than 15 in 100 frames for ten seconds, and says so. Quality in the options puts it back.
+- **Search** has a keyboard on the screen: pick letters with the arrows and OK, and what's in the library shows beside it as you go. **Search YouTube and everything else** under the keyboard takes the same words to the full search. Text typed on a phone's remote lands here too.
+- **Colour keys** on a remote that has them: red is Home, green is Search, yellow is the Library, blue is play or pause.
+- **Left alone for 5 minutes** with nothing playing on the screen, the TV goes dark and shows a dim clock (and the song, when music plays) that sits somewhere else each minute, so nothing burns in. Any key wakes it and does nothing else.
 
 ## Play on TV
 
@@ -50,7 +67,7 @@ It shows what the TV is playing.
 - **Two phones** can drive the same TV; both see what it does.
 - **A computer's** arrow keys, Enter and Space work it too.
 - **Volume**: the remote's volume is Parlor's on the TV. The TV set's own power, input and volume are under it, once an admin has added the set (below).
-- **Connection**: the remote talks over server-sent events, so it works through the Android app and any reverse proxy. A proxy must not hold `/api/tv/events` back or compress it: Parlor sends `X-Accel-Buffering: no` (nginx honours it) and `Cache-Control: no-transform`.
+- **Connection**: the remote talks over server-sent events, so it works through the Android app and any reverse proxy. A proxy must not hold `/api/tv/events` back or compress it: Parlor sends `X-Accel-Buffering: no` (nginx honours it) and `Cache-Control: no-transform`. The stream stays open for as long as the TV or the remote is: Parlor closes a connection only when nothing is being sent on it, so a TV is never deaf for a few seconds after its page loads.
 
 ### How fast it is
 
@@ -67,6 +84,9 @@ What the TV page costs to draw, at 3840×2160 on a software graphics chip with t
 |---|---|---|
 | Before: three animated blurs behind the page, a blurred bar on top | 100 ms (10 frames a second, with nothing pressed) | 152 to 171 ms |
 | Now: TV mode draws no live blur, and Home holds still until you press | 16.7 ms (60 frames a second) | 13 to 20 ms |
+| Home as a hero over rows of posters | 16.7 ms with nothing pressed; 17 to 33 ms while the focus moves | 30 ms along a row; 90 to 190 ms from one row to the next |
+
+A change of row moves every row at once, so it costs the most; the frame times stayed under 34 ms in every run (five runs, on a machine doing other work). A TV that can't keep up with the picture behind the page fading (fewer than 24 frames a second, twice in a row) stops fading it: the picture changes at once from then on.
 
 ### Sound
 

@@ -27,7 +27,9 @@ python3 tests/smoke.py http://127.0.0.1:8800                     # live check ag
 | `app/static/` | The whole UI, with no build step. |
 | `js/music.js` | music-fndr's page code (in `app/static/`). |
 | `tv.py`, `js/tv.js`, `js/remote.js` | TVs: pairing, the event stream and commands (`tv.py`); Parlor on the TV, where everything that changes it goes through `tvDo` (`tv.js`); the phone's side, where every command goes through `tvSend` (`remote.js`). `tvhw.py` and `cast.py` work the TV set itself. |
-| `tests/perf_tv.py` | Measures what the TV page costs to draw at 4K on a slow graphics chip. |
+| `js/tvhome.js` | What a TV shows: Home (the hero and the rows), the full-screen player's strip and options, search with a keyboard on the screen, and the idle clock. Each screen's keys are asked first, through `tvScreenKey`. |
+| `tests/ui_tv.py` | Drives the TV page with arrows, OK and Back in a real browser, and a phone's remote with `--remote`; saves screenshots. |
+| `tests/perf_tv.py` | Measures what the TV page costs to draw at 4K on a slow graphics chip. `PERF_CSS='…'` adds a rule for one run, to see what it costs. |
 | [DESIGN.md](../DESIGN.md) | Describes the look. |
 | `desktop/` | The desktop app (Electron). |
 | `constraints.txt` | Pins every Python package in the image except yt-dlp (which updates itself on purpose), so a rebuild gives the same ones. |

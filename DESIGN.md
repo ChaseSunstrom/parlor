@@ -36,3 +36,15 @@ One list (`NAV` in `app/static/js/nav.js`) draws all of it, so a new section or 
 - **You** holds your own lists (watch later, history, downloaded, channels) and Settings, and lists every section's pages, so anything is two taps away.
 - **Pages off the menu:** a page reached from a menu page (Request's four kinds, Collections, Recommended, Playlists, Continue watching) is listed in `UNDER` beside `NAV`: it lights its menu page and gets **Back**.
 - **Choices on a page** (a list's order, a filter) are small menus (`pick()`), never another row of chips.
+
+## On a TV
+
+A TV (`body.tv`, set by `tv.js`) is the same app laid out for a couch: a 1280×720 canvas that `zoom` scales to the screen, always dark, no top bar. `tvhome.js` and the `body.tv` rules at the end of `app.css` hold all of it.
+
+- **The rail:** the sections as icons down the left (76 px), Search first. Their names and a soft panel fade in while the focus is in it. A section's pages are its row of links (`#pages`) along the top of each page.
+- **Home:** one fixed screen. A hero (the focused title: kind in the row's colour, the name at 56 px, facts, three lines about it, one pill) over rows of posters. The title's backdrop sits top right, masked into the page; a 64-pixel copy of it stretched across the whole screen is the colour wash behind (a blur that costs nothing to draw).
+- **Focus:** on Home it is a row and a place in it, never "the nearest thing": the tile lifts (`scale(1.08)`) and a ring with a glow in the row's colour fades in. The rows slide so the focused tile is always in the same spot. Everywhere else it is the 4 px outline.
+- **Sizes for ten feet:** body text 19–21 px on the 720-line canvas (about 30 px on a 1080 screen), captions never under 15 px, row names 22 px, 48 px of margin from the screen's edge.
+- **Motion, for the slowest graphics chip in the house at 4K:** only `transform` and `opacity` animate, 0.2–0.3 s, ease. No `backdrop-filter`, no blur drawn live, no shadow that animates (the glow is drawn once and faded). A picture is decoded before it fades in. `tests/perf_tv.py` measures it; a frame over 34 ms fails it.
+- **A film:** the whole screen, with a strip (name, time, bar) that fades in on a key or a pause and out after 4 seconds.
+- **Idle:** after 5 minutes, black with a dim clock that moves each minute.

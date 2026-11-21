@@ -11,13 +11,23 @@ if (TV_MODE) { document.body.classList.add("tv"); tvFit(); addEventListener("res
 
 /* ---------- moving with the arrows: to the nearest thing in that direction ---------- */
 
-const TV_FOCUSABLE = 'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+const TV_FOCUSABLE = 'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const tvShown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden" && !el.closest("[hidden], [inert]");
 
+/** on a TV the focus is never on nothing: when a page has just painted, or what held the focus is gone, it lands on
+    the page's row of pages or the first thing in the page (the rail only when there is nothing else) */
+function tvLand(all) {
+  if (!all && (!document.body.classList.contains("tv") || $("#tvAsk") || (document.activeElement !== document.body && tvShown(document.activeElement)))) return;
+  const box = tvBox(); // a film: the keys are the player's, not a button's under it
+  if (box && !tvScope()) { box.tabIndex = -1; return box.focus({ preventScroll: true }); }
+  all ||= [...(tvScope() || document).querySelectorAll(TV_FOCUSABLE)].filter(tvShown);
+  (all.find((el) => el.matches("#pages [aria-current]") || el.closest("#view")) || all[0])?.focus({ preventScroll: true });
+}
+
 function tvMove(dir) {
-  const all = [...($("#tvAsk") || document).querySelectorAll(TV_FOCUSABLE)].filter(tvShown); // "Press OK to play" up: only it
+  const all = [...(tvScope() || document).querySelectorAll(TV_FOCUSABLE)].filter(tvShown); // a question or a player's options up: only those
   const cur = all.includes(document.activeElement) ? document.activeElement : null;
-  if (!cur) return all[0]?.focus();
+  if (!cur) return tvLand(all);
   const a = cur.getBoundingClientRect(), side = dir === "left" || dir === "right";
   let best = null, score = Infinity;
   for (const el of all) {
@@ -43,18 +53,27 @@ function tvBack() {
   else go("#/");
 }
 
+const TV_COLOURS = { ColorF0Red: () => tvDo({ cmd: "key", key: "home" }), ColorF1Green: () => go("#/tvsearch"), ColorF2Yellow: () => go("#/jf"), ColorF3Blue: () => tvDo({ cmd: "toggle" }) };
 if (TV_MODE) {
   document.addEventListener("keydown", (e) => {
     const typing = e.target.matches?.("input:not([type=range]):not([type=checkbox]), textarea"), dir = e.key.startsWith("Arrow") && e.key.slice(5).toLowerCase();
+    const mine = () => { e.preventDefault(); e.stopPropagation(); }; // a page's own shortcuts (a player's arrows) stay out of it: one path
     if (dir && !(typing && (dir === "left" || dir === "right")) && !(e.target.type === "range" && (dir === "left" || dir === "right"))) {
-      e.preventDefault();
+      mine();
       tvDo({ cmd: "key", key: dir });
     } else if (["Escape", "BrowserBack", "GoBack"].includes(e.key) || (e.key === "Backspace" && !typing)) {
-      e.preventDefault();
+      mine();
       tvDo({ cmd: "key", key: "back" });
     } else if (["MediaPlayPause", "MediaPlay", "MediaPause"].includes(e.key)) {
+      mine();
       tvDo({ cmd: e.key === "MediaPlay" ? "play" : e.key === "MediaPause" ? "pause" : "toggle" });
-    }
+    } else if (e.key === "Enter" && (e.target.tagName === "SELECT" || e.target.matches?.(".player") || $("#tvIdle"))) { // OK on a film, or on a list of choices
+      mine();
+      tvDo({ cmd: "key", key: "enter" });
+    } else if (TV_COLOURS[e.key]) { // the remote's four colour keys: Home, Search, Library, play or pause
+      mine();
+      TV_COLOURS[e.key]();
+    } else if ($("#tvIdle")) { mine(); tvAwake(); } // any other key wakes a sleeping screen
   }, true);
   addEventListener("hashchange", () => setTimeout(() => { if (!document.activeElement || document.activeElement === document.body) tvMove("down"); }, 300)); // a new page: the focus lands on it
 }
@@ -97,7 +116,7 @@ let tvPairTimer = 0;
 async function tvBoot() {
   tvMe = (await api("/api/tv/me").catch(() => ({}))).tv || null;
   if (!tvMe) return remoteBoot();
-  if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); } // a TV's session opened at another address is still a TV
+  if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); route(); tvAwake(); } // a TV's session opened at another address is still a TV
   tvListen();
 }
 
@@ -133,15 +152,24 @@ function tvPlayer() {
   return v || (dock.queue.length ? dock.audio : null);
 }
 
+/** OK: press what the focus is on. A list of choices (sound, subtitles, quality) moves to its next one: its own
+    menu wants a mouse, and a phone's press can't open it */
+function tvOk(el) {
+  if (el?.tagName !== "SELECT") return el?.click();
+  el.selectedIndex = (el.selectedIndex + 1) % el.options.length;
+  el.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
 /** the one way anything changes this TV: a key (its own remote's, or a phone's), play and pause, seeking, volume,
     typing, a cast */
 function tvDo(m) {
   const p = tvPlayer(), t0 = performance.now();
   switch (m.cmd) {
     case "key":
+      if (m.key !== "home" && tvScreenKey(m.key)) break; // a screen with its own keys: Home's rows, the player (tvhome.js)
       if (m.key === "back") tvBack();
       else if (m.key === "home") go("#/");
-      else if (m.key === "enter") document.activeElement?.click();
+      else if (m.key === "enter") tvOk(document.activeElement);
       else tvMove(m.key);
       break;
     case "toggle": if (p) p.paused ? tvPlay(p) : p.pause(); break;
@@ -154,14 +182,7 @@ function tvDo(m) {
       for (const el of new Set([p, dock.audio, dock.spare].filter(Boolean))) { el.volume = v; if (v > 0 && (m.by || 0) >= 0) el.muted = false; } // the dock's two players keep the same level; turning it up takes a mute off
       break;
     }
-    case "type": {
-      const box = document.activeElement?.matches?.("input, textarea") ? document.activeElement : $("#q");
-      box.focus();
-      box.value = m.text || "";
-      box.dispatchEvent(new Event("input", { bubbles: true }));
-      if (m.key === "enter") box.form?.requestSubmit();
-      break;
-    }
+    case "type": tvAwake(); tvType(m.text || "", m.key === "enter"); break;
     case "cast": tvCast(m.cast || {}); break;
     case "stop": p?.pause(); dockStop(); break;
   }

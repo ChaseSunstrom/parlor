@@ -284,6 +284,7 @@ async function route() {
   stage.innerHTML = `<div class="note">${SPIN}</div>`;  // the row of pages stays as it was until the page itself paints
   try {
     await entry.fn(t, parts);
+    if (t === ticket) tvLand(); // on a TV the focus is never left on nothing (tv.js)
     if (!/\/search\//.test(location.hash) && !keepScroll) scrollTo(0, 0);
   } catch (e) {
     if (t === ticket) {
@@ -299,7 +300,7 @@ function drawNav() {
   const at = navAt(location.hash, current);
   const put = (el, html) => { if (drawn[el] !== html) $(el).innerHTML = drawn[el] = html; }; // unchanged: keep focus where it is
   put(".nav", tabsHtml(at));
-  put("#side", sideHtml(at));
+  put("#side", sideHtml(at, document.body.classList.contains("tv") ? (location.hash.startsWith("#/tvsearch") ? "search" : "tv") : ""));
   put("#pages", subnavHtml(at));
   $("#back").hidden = !!(at.href && !at.under || at.own || at.group === "home" && !location.hash.startsWith("#/search")); // pages inside a section get Back
 }

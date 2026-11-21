@@ -9,6 +9,7 @@ const fill = (t, id, html) => { const el = $(`#${id}`); if (t === ticket && el) 
 const tag = (color, label) => `<span class="section-tag" style="--c:${color}"><i></i>${esc(label)}</span>`;
 
 async function showDashboard(t) {
+  if (onTv()) try { return await showTvHome(t); } catch (err) { console.error(err); } // a TV has its own home (tvhome.js); if that can't draw, the one below
   paint(t, `<section class="home">${aurora}
       <h1>${greeting()}, ${esc(ME?.name || "")}</h1>
       <p>Your videos, films, shows and music, in one place and without ads.</p>

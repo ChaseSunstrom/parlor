@@ -1,6 +1,6 @@
 """How much Parlor's TV page costs to draw on a slow TV: a real Chromium at 3840×2160 with a software GPU (SwiftShader)
 and the page's thread slowed down, a TV paired the usual way, then the frame times (the gaps between the page's
-animation frames) while it sits on Home, while the focus walks along a row, and while it walks down the rows; and how
+animation frames) while it sits on Home, while the focus walks along a row, down the rows and back up them; and how
 long a press takes from the key to the frame that shows it. A film library of 40 comes from the Jellyfin stand-in.
    cd app && ../.venv/bin/python ../tests/perf_tv.py [--cpu 4] [--size 3840x2160] [--budget MS] [OUT_DIR]
 Prints one line per scene; with --budget it fails when a scene's median frame is slower than that."""
@@ -77,6 +77,8 @@ with sync_playwright() as pw:
     assert owner.post("/api/auth/login", json={"name": "boss", "password": PASSWORD}).status_code == 200
     assert owner.post("/api/tv/pair", json={"code": code, "name": "Living room"}).status_code == 200
     screen.wait_for_function("ME && tvMe && document.body.classList.contains('tv')", timeout=30000)
+    if os.environ.get("PERF_CSS"):  # try a rule's cost without editing the stylesheet
+        screen.add_style_tag(content=os.environ["PERF_CSS"])
     screen.wait_for_timeout(4000)  # shelves and pictures in
     cdp = ctx.new_cdp_session(screen)
     cdp.send("Emulation.setCPUThrottlingRate", {"rate": CPU})
@@ -85,7 +87,8 @@ with sync_playwright() as pw:
     meds = {}
     screen.screenshot(path=str(OUT / "perf-home.png"))
     meds["Home, nothing pressed (3 s)"] = line("Home, nothing pressed (3 s)", screen.evaluate(FRAMES, 3000))
-    for scene, key, n in (("focus along a row (12 presses)", "ArrowRight", 12), ("focus down the rows (8 presses)", "ArrowDown", 8)):
+    for scene, key, n in (("focus along a row (12 presses)", "ArrowRight", 12), ("focus down the rows (8 presses)", "ArrowDown", 8),
+                           ("focus back up the rows (8 presses)", "ArrowUp", 8)):
         took, gaps = [], []
         for _ in range(n):
             took.append(screen.evaluate(PRESS, key))

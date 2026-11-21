@@ -42,8 +42,10 @@ const groupHref = (g) => g.href || g.pages[0][1];
 const lit = (on) => (on ? ' aria-current="page"' : "");
 
 /** the sidebar: every section, and the pages of the one you're in (the others' pages are a click on their name away) */
-function sideHtml(at) {
-  return NAV.map((g) => `<div class="side-group${g.key === at.group ? " on" : ""}" data-g="${g.key}">
+const tvSearchLink = (on) => `<div class="side-group${on ? " on" : ""}" data-g="search"><a class="side-head" href="#/tvsearch"${lit(on)}><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Search</span></a></div>`;
+function sideHtml(at, tv = "") { // a TV has no top bar: its search is in the rail (tv is "search" on that page, else "tv")
+  if (tv === "search") at = { ...at, group: "" };
+  return (tv ? tvSearchLink(tv === "search") : "") + NAV.map((g) => `<div class="side-group${g.key === at.group ? " on" : ""}" data-g="${g.key}">
     <a class="side-head" href="${groupHref(g)}"${lit(g.key === at.group && (!g.pages || at.own))}>${ICON[g.icon]}<span>${esc(g.label)}</span></a>
     ${(g.key === at.group ? g.pages || [] : []).map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</div>`).join("");
 }

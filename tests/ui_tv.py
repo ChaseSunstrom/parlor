@@ -1,11 +1,14 @@
 """Parlor on a TV, in a real browser at 1920×1080 driven by the keyboard alone (the remote's arrows, OK and Back):
-/tv shows a pairing code; a phone signed in enters it and the TV signs itself in; every page of Library, Watch,
-Music and Request is reachable with the arrows from the menu, focus always shows, nothing traps it, Back goes back.
+/tv shows a pairing code; a phone signed in enters it and the TV signs itself in; Home is a hero and rows of posters
+where the focus is never lost and Back returns to the tile a title was opened from; every page of Library, Watch,
+Music and Request is reachable with the arrows (a section from the menu, its pages from the row along its top), focus
+always shows, nothing traps it, Back goes back; search has a keyboard on the screen; an idle TV goes dark.
 With --remote, the phone's remote works the TV: arrows move the TV's focus (key to TV p95 measured, under 300 ms),
 an album and a film are cast from the phone and play on the TV, play/pause, seek, volume and typing act on it, a
 second remote sees the same state, and a TV that drops off says so on the remote and comes back by itself.
 Media comes from a Jellyfin stand-in and the music folder; screenshots at 1920×1080 and phone width:
    python tests/ui_tv.py [--remote] [OUT_DIR]   (needs Playwright, its Chromium and ffmpeg)"""
+import os
 import socket
 import subprocess
 import sys
@@ -14,7 +17,8 @@ import threading
 import time
 from pathlib import Path
 
-import yeerr_test_env as env  # noqa: F401  (a throwaway data folder, then the app)
+os.environ.setdefault("JF_STANDIN_FILMS", "24")  # rows long enough to slide
+import yeerr_test_env as env  # noqa: E402,F401  (a throwaway data folder, then the app)
 
 import auth
 import core
@@ -49,8 +53,9 @@ BASE = f"http://127.0.0.1:{PORT}"
 SHELL = next(iter(sorted(Path.home().glob(".cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell"))), None)
 errors, checks = [], {}
 TARGETS = ["#/jf", "#/jf/movies", "#/jf/shows", "#/jf/music", "#/jf/books", "#/games", "#/yt/home", "#/yt/subs", "#/live",
-           "#/music", "#/library", "#/request", "#/requests"]  # every page of Library, Watch, Music and Request in the menu:
-# a section's own entry first, since the menu lists a section's pages only once it is open
+           "#/music", "#/library", "#/request", "#/requests"]  # every page of Library, Watch, Music and Request
+SECTION = lambda t: "#/jf" if t.startswith("#/jf") or t == "#/games" else "#/yt/home" if t in ("#/yt/subs", "#/live") else "#/music" if t == "#/library" else "#/request" if t == "#/requests" else t  # noqa: E731
+# a TV's menu is a rail of sections; a section's pages are the row of links along the top of each of its pages
 
 
 def signed_in_phone(b, width=390):
@@ -110,27 +115,116 @@ with sync_playwright() as pw:
     screen.wait_for_function("ME && ME.name === 'family' && tvMe && tvMe.name === 'Living room' && document.body.classList.contains('tv')", timeout=30000)
     checks["/tv shows a code; a phone enters it and the TV signs itself in"] = len(code) == 8
 
-    # the arrows reach every page of Library, Watch, Music and Request from the menu; Enter opens it; focus shows
+    # Home on a TV: a hero that follows the focused title over rows of posters; no top bar; the menu is a slim rail
+    screen.wait_for_selector("#tvh .tvt:focus", timeout=30000)
+    screen.wait_for_timeout(700)  # the hero waits a moment for the focus to settle
+    home = screen.evaluate("""(() => { const t = document.activeElement, box = t.getBoundingClientRect();
+      return { hero: document.querySelector('#tvhHero h1')?.textContent, tile: t.getAttribute('aria-label'), rows: document.querySelectorAll('.tvh-row').length,
+        bar: getComputedStyle(document.querySelector('.bar')).display, rail: document.querySelector('#side').getBoundingClientRect().width, lifted: getComputedStyle(t).transform !== 'none',
+        scroll: getComputedStyle(document.documentElement).overflowY === 'hidden', onScreen: box.left >= 0 && box.right <= innerWidth + 2, clock: document.querySelector('#tvhClock')?.textContent }; })()""")
+    print("home:", home)
+    screen.screenshot(path=str(OUT / "tv-home.png"))
+    checks["Home on a TV is a hero from the focused title over rows of posters, with no top bar"] = bool(home["hero"]) and home["hero"] == home["tile"] and home["rows"] >= 3 \
+        and home["bar"] == "none" and home["rail"] < 200 and home["lifted"] and home["scroll"] and bool(home["clock"])
+    # mash the arrows: after every press the focus is on a tile in sight or on the menu, and the hero ends on the tile
+    lost, walk = 0, ["ArrowRight"] * 7 + ["ArrowDown"] * 3 + ["ArrowRight"] * 30 + ["ArrowUp"] * 5 + ["ArrowLeft"] * 9 + ["ArrowDown"] * 9 + ["ArrowLeft"] * 3 + ["ArrowRight", "ArrowUp", "ArrowRight", "ArrowDown"] * 4
+    in_sight = """(() => { const a = document.activeElement, b = a.getBoundingClientRect();
+      return a.matches('#tvh .tvt, #side a') && b.width > 0 && b.left >= 0 && b.right <= innerWidth && b.top >= 0 && b.bottom <= innerHeight && scrollY === 0; })()"""
+    for n, key in enumerate(walk):
+        screen.keyboard.press(key)
+        lost += not screen.evaluate("document.activeElement.matches('#tvh .tvt, #side a')")  # at once: the focus is on a tile or the menu
+        if n % 6 == 5:  # and when the slide has come to rest, that tile is whole on the screen
+            screen.wait_for_timeout(450)
+            lost += not screen.evaluate(in_sight)
+    for end, away in (("ArrowDown", "ArrowUp"), ("ArrowUp", "ArrowDown")):  # past the last row and the first, the focus stays on its tile
+        press(screen, end, 10)
+        press(screen, "ArrowRight", 2)
+        at = screen.evaluate("document.activeElement.getAttribute('href') + document.activeElement.dataset.i")
+        press(screen, end)
+        lost += screen.evaluate("document.activeElement.getAttribute('href') + document.activeElement.dataset.i") != at or not at.endswith("2")
+    screen.wait_for_timeout(1100)  # the slide and the hero settle
+    lost += not screen.evaluate(in_sight) or not screen.evaluate("document.activeElement.matches('#tvh .tvt') && document.querySelector('#tvhHero h1').textContent === document.activeElement.getAttribute('aria-label')")
+    screen.screenshot(path=str(OUT / "tv-home-walked.png"))
+    print(f"focus lost or out of sight on {lost} of {len(walk) + len(walk) // 6 + 3} looks")
+    checks["on Home the focus is never lost or out of sight, however the arrows are pressed"] = lost == 0
+    # OK opens the title; Back returns to the very tile (from a row of films: a title that was just played moves within Continue watching)
+    press(screen, "ArrowDown", 2)
+    press(screen, "ArrowRight", 3)
+    tile = screen.evaluate("[document.activeElement.getAttribute('href'), document.activeElement.closest('.tvh-row').dataset.r]")
+    press(screen, "Enter")
+    screen.wait_for_function("!document.querySelector('#tvh')", timeout=10000)
+    screen.wait_for_timeout(600)
+    press(screen, "Escape")
+    screen.wait_for_selector("#tvh .tvt:focus", timeout=10000)
+    checks["Back from a title returns to the tile it was opened from"] = screen.evaluate("[document.activeElement.getAttribute('href'), document.activeElement.closest('.tvh-row').dataset.r]") == tile
+    # nobody presses anything: the screen goes dark with a clock; the first key only wakes it
+    screen.evaluate("tvIdleAfter = 400; tvAwake()")
+    screen.wait_for_selector("#tvIdle", timeout=5000)
+    screen.wait_for_timeout(1300)
+    screen.screenshot(path=str(OUT / "tv-idle.png"))
+    press(screen, "ArrowRight")
+    woke = screen.evaluate("!document.querySelector('#tvIdle') && [document.activeElement.getAttribute('href'), document.activeElement.closest('.tvh-row')?.dataset.r]")
+    screen.evaluate("tvIdleAfter = 5 * 60e3; tvAwake()")
+    checks["an idle TV goes dark with a clock, and the first key only wakes it"] = woke == tile
+    # search: the remote's green key opens a keyboard on the screen; letters with the arrows and OK find a film; Right reaches it
+    screen.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF1Green', bubbles: true }))")
+    screen.wait_for_selector("#tvSearch [data-k]:focus", timeout=10000)
+    for letter in "night":
+        screen.evaluate(f"document.querySelector('#tvSearch [data-k=\"{letter}\"]').focus()")
+        press(screen, "Enter")
+    screen.wait_for_selector("#tvFound a[href]", timeout=10000)
+    screen.wait_for_timeout(300)
+    screen.screenshot(path=str(OUT / "tv-search.png"))
+    press(screen, "ArrowUp", 8)  # the top row of the keyboard: straight across from what was found
+    for _ in range(8):
+        if screen.evaluate("!!document.activeElement.closest('#tvFound')"):
+            break
+        press(screen, "ArrowRight")
+    checks["search on a TV: a keyboard on the screen finds a film, and the arrows reach it"] = screen.evaluate("document.querySelector('#tvq').textContent") == "night" \
+        and "Night Train" in screen.inner_text("#tvFound") and screen.evaluate("!!document.activeElement.closest('#tvFound')")
+
+    # the arrows reach every page of Library, Watch, Music and Request: its section from the rail, then the row of
+    # the section's pages along the top; Enter opens it; focus shows
     reached = []
     for target in TARGETS:
-        for _ in range(8):  # left, until the menu
+        for _ in range(12):  # left, until the menu
             if (focused(screen) or ["", ""])[0] == "side":
                 break
             press(screen, "ArrowLeft")
-        press(screen, "ArrowUp", 30)
-        for _ in range(45):
-            if (focused(screen) or ["", ""])[1] == target:
+        press(screen, "ArrowUp", 10)
+        for _ in range(10):
+            if (focused(screen) or ["", ""])[1] == SECTION(target):
                 break
             press(screen, "ArrowDown")
-        if (focused(screen) or ["", ""])[1] == target:
-            press(screen, "Enter")
-            screen.wait_for_timeout(400)
-            if screen.evaluate("location.hash") == target:
-                reached.append(target)
+        if (focused(screen) or ["", ""])[1] != SECTION(target):
+            continue
+        press(screen, "Enter")
+        screen.wait_for_timeout(400)
+        if target != SECTION(target):  # into the page, up to its top row, along it
+            press(screen, "ArrowRight")
+            for _ in range(12):
+                if screen.evaluate("!!document.activeElement.closest('.subnav')"):
+                    break
+                press(screen, "ArrowUp")
+            press(screen, "ArrowLeft", 8)
+            for _ in range(8):
+                if (focused(screen) or ["", ""])[1] == target:
+                    break
+                press(screen, "ArrowRight")
+            if (focused(screen) or ["", ""])[1] == target:
+                press(screen, "Enter")
+                screen.wait_for_timeout(400)
+        if screen.evaluate("location.hash") == target:
+            reached.append(target)
+        if target == "#/jf/movies":
+            screen.wait_for_timeout(600)
+            screen.screenshot(path=str(OUT / "tv-films.png"))
     print("reached with the arrows:", len(reached), "of", len(TARGETS), [t for t in TARGETS if t not in reached])
     checks["every page of Library, Watch, Music and Request is reachable with the arrows and OK"] = reached == TARGETS
+    press(screen, "ArrowRight")
+    press(screen, "ArrowDown")
     outline = screen.evaluate("parseFloat(getComputedStyle(document.activeElement).outlineWidth)")
-    checks["focus always shows"] = outline >= 3
+    checks["focus always shows"] = outline >= 3 and focused(screen)[0] == "main"
 
     # into a page's content and back out to the menu: nothing traps the focus; Back goes back
     screen.goto(BASE + "/tv#/library/The%20Gulls/Harbor")
@@ -149,8 +243,7 @@ with sync_playwright() as pw:
     screen.wait_for_timeout(500)
     checks["Back goes back"] = screen.evaluate("location.hash") == "#/library/The%20Gulls/Harbor"
     screen.evaluate("location.hash = '#/'")
-    screen.wait_for_timeout(1200)
-    screen.screenshot(path=str(OUT / "tv-home.png"))
+    screen.wait_for_selector("#tvh .tvt:focus", timeout=10000)
     # a TV is left on: when a newer Parlor answers, it reloads itself (nothing is playing)
     screen.wait_for_function("tvVersion", timeout=10000)
     screen.evaluate("window.oldPage = true; tvVersion = '000000000000'; tvFresh()")
@@ -232,9 +325,31 @@ with sync_playwright() as pw:
         phone.wait_for_function("document.querySelector('#rTitle').textContent.includes('Night Train')", timeout=10000)
         phone.click("[data-r='seek:-10']")
         screen.wait_for_function("document.querySelector('#jfVideo').currentTime < 2.5", timeout=5000)
-        screen.wait_for_timeout(500)
-        screen.screenshot(path=str(OUT / "tv-film.png"))
         checks["a film cast from its page plays on the TV, and the remote seeks it"] = True
+        # the film fills the screen; OK pauses with a strip over it; Down opens its options, where OK steps a list on; Up returns
+        press(screen, "Enter")
+        screen.wait_for_function("document.querySelector('#jfVideo').paused && document.querySelector('.player.osd')", timeout=5000)
+        screen.wait_for_timeout(400)
+        screen.screenshot(path=str(OUT / "tv-film.png"))
+        film = screen.evaluate("""(() => { const b = document.querySelector('#jfBox').getBoundingClientRect(), v = document.querySelector('#jfVideo');
+          return { full: b.left === 0 && b.top === 0 && Math.abs(b.width - innerWidth) < 2 && Math.abs(b.height - innerHeight) < 2, bare: !v.controls,
+            title: document.querySelector('.tvosd-top').textContent.trim(), at: document.querySelector('.tvosd-at').textContent, tools: getComputedStyle(document.querySelector('#view .ptools')).display }; })()""")
+        press(screen, "ArrowDown")
+        screen.wait_for_function("document.body.classList.contains('tvopts') && document.activeElement.closest('.ptools')", timeout=5000)
+        screen.evaluate("document.querySelector('#jfSubs').focus()")
+        subs = screen.evaluate("[document.querySelector('#jfSubs').selectedIndex, document.querySelector('#jfSubs').options.length]")
+        press(screen, "Enter")
+        stepped = screen.evaluate("document.querySelector('#jfSubs').selectedIndex") == (subs[0] + 1) % subs[1]
+        screen.screenshot(path=str(OUT / "tv-film-options.png"))
+        press(screen, "ArrowUp", 4)
+        film["out"] = screen.evaluate("!document.body.classList.contains('tvopts') && document.activeElement === document.querySelector('#jfBox')")
+        t0 = screen.evaluate("document.querySelector('#jfVideo').currentTime")
+        press(screen, "ArrowRight")
+        film["seek"] = screen.evaluate("document.querySelector('#jfVideo').currentTime") - t0
+        print("film:", film, "subtitle list", subs, "stepped", stepped)
+        checks["a film fills the TV: OK pauses under a strip, Down opens its options, OK steps a list, Up returns, the arrows seek"] = film["full"] and film["bare"] and "Night Train" in film["title"] \
+            and film["tools"] == "none" and stepped and film["out"] and 9 < film["seek"] < 11
+        press(screen, "Enter")  # playing again
         # a TV that blocks playing without a press asks for OK: the arrows stay on it, Back closes it and stays put
         was = screen.evaluate("location.hash")
         screen.evaluate("tvPlay({ paused: true, play: () => Promise.reject(new Error('blocked')) })")
@@ -277,6 +392,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (17 if REMOTE else 6) and all(checks.values()) and not errors
+ok = len(checks) == (23 if REMOTE else 11) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
