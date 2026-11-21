@@ -33,20 +33,22 @@ function tvhFromYoutube(v) {
 
 async function tvhLoad() {
   const watch = !closedTo("watch"), quiet = (p) => p.catch(() => null);
-  const [jf, cont, feed, later] = await Promise.all([
+  const [jf, cont, feed, later, mine] = await Promise.all([
     libraryOpen() ? quiet(jfHomeLoad()) : null,
     watch ? quiet(api("/api/me/history?unfinished=true&limit=12")) : null,
     watch ? quiet(api("/api/yt/feed?limit=24")) : null,
     watch ? quiet(api("/api/me/later")) : null,
+    libraryOpen() ? quiet(api("/api/jf/items?filters=IsFavorite&types=Movie,Series&sort=SortName&limit=24")) : null, // the hearts: this person's list
   ]);
-  return { jf, cont: cont?.items || [], feed: feed?.channels ? hideShorts(feed.items).slice(0, 16) : [], later: (later?.items || []).slice(0, 16) };
+  return { jf, cont: cont?.items || [], feed: feed?.channels ? hideShorts(feed.items).slice(0, 16) : [], later: (later?.items || []).slice(0, 16), mine: mine?.items || [] };
 }
 
-function tvhRows({ jf, cont = [], feed = [], later = [] }) {
+function tvhRows({ jf, cont = [], feed = [], later = [], mine = [] }) {
   const rows = [], lib = "var(--sky)", yt = "var(--coral)";
   const add = (key, title, accent, shape, items) => { if (items.length) rows.push({ key, title, accent, shape, items }); };
   add("continue", "Continue watching", "var(--amber)", "wide", [...(jf?.resume || []).map((x) => tvhFromLibrary(x, true)), ...cont.map(tvhFromYoutube)]);
   add("next", "Next up", lib, "wide", (jf?.next || []).map((x) => tvhFromLibrary(x, true)));
+  add("mine", "My list", "var(--coral)", "tall", mine.map((x) => tvhFromLibrary(x, false)));
   jfShelves(jf?.views || []).forEach((v, n) => add(`new:${v.id}`, `New in ${v.name}`, v.collection === "music" ? "var(--amber)" : lib,
     v.collection === "music" ? "square" : "tall", (jf.latest[n] || []).map((x) => tvhFromLibrary(x, false))));
   add("subs", "New from your subscriptions", yt, "wide", feed.map(tvhFromYoutube));
@@ -168,7 +170,7 @@ const tvhRail = () => ($("#side a[aria-current]") || $("#side a"))?.focus({ prev
 function tvhKey(key) {
   if (!$("#tvh") || $("#tvAsk")) return false;
   const rows = TVH.rows, r = TVH.r, i = TVH.at[rows[r]?.key] || 0, rail = $("#side").contains(document.activeElement);
-  if (rail) return (key === "right" || key === "back") && rows.length ? (tvhFocus(r, i), true) : false; // up and down walk the menu itself
+  if (rail) return key === "left" || ((key === "right" || key === "back") && rows.length ? (tvhFocus(r, i), true) : false); // nothing is left of the menu (a tile slid off the screen isn't); up and down walk the menu itself
   if (!rows.length) return key === "left" ? (tvhRail(), true) : false;
   if (!$("#tvhStack").contains(document.activeElement)) tvhFocus(r, i); // wherever the focus went, it is back on its tile
   if (key === "left") i > 0 ? tvhFocus(r, i - 1) : tvhRail();
@@ -178,6 +180,12 @@ function tvhKey(key) {
   else return false;
   return true;
 }
+
+// a tile that takes the focus any other way (the browser's own Tab, a screen reader) is slid into the frame like any other
+document.addEventListener("focusin", (e) => {
+  const tile = e.target.closest?.("#tvhStack a.tvt"), r = +tile?.closest(".tvh-row").dataset.r;
+  if (tile && (r !== TVH.r || +tile.dataset.i !== TVH.at[TVH.key])) tvhFocus(r, +tile.dataset.i, false);
+});
 
 /* ---------- a film or a video on a TV: the whole screen, with a strip that shows itself and goes ---------- */
 
@@ -357,3 +365,51 @@ function tvRailKey(key) {
 function tvScreenKey(key) {
   return tvAwake() || tvPlayerKey(key) || tvRailKey(key) || tvhKey(key);
 }
+
+/* ---------- Who's watching: the people this TV can act as (tv.py); picked, the TV starts again as them ---------- */
+
+async function showWho(t) {
+  const p = tvMe && await api(`/api/tv/${tvMe.id}/people`).catch(() => null);
+  if (t !== ticket) return;
+  if (!p || p.people.length < 2) return go("#/");
+  tvPeople = p;
+  try { sessionStorage.setItem("parlor:who", "1"); } catch { /* no storage */ } // asked: the restart after a pick doesn't ask again
+  const now = p.viewer ?? p.people.find((x) => x.owner)?.id;
+  paint(t, `<div class="tvwho" id="tvWho"><h1>Who's watching?</h1>
+    <div class="tvwho-people" id="tvWhoPeople">${p.people.map((x) => `<button data-who="${x.id}"${x.id === now ? ' aria-current="true"' : ""}>${avatar(x.name)}<b>${esc(x.name)}</b><small>${x.pin ? `${ICON.lock}PIN` : "&nbsp;"}</small></button>`).join("")}</div>
+    <div class="tvwho-pin" id="tvWhoPin" hidden><p id="tvWhoFor"></p><div class="tvwho-dots" id="tvWhoDots" aria-live="polite"></div>
+      <div class="tvwho-keys">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-d="${d}">${d}</button>`).join("")}<button data-d="del" aria-label="Delete">⌫</button><button data-d="0">0</button><button data-d="ok" class="primary">OK</button></div>
+      <p class="tvwho-said" id="tvWhoSaid" role="alert"></p></div></div>`);
+  let chosen = null, pin = "";
+  const dots = () => { $("#tvWhoDots").textContent = "•".repeat(pin.length) || "····"; $("#tvWhoDots").classList.toggle("empty", !pin); };
+  const pick = async (id, withPin) => {
+    try {
+      await post(`/api/tv/${tvMe.id}/viewer`, { user_id: id, ...(withPin ? { pin: withPin } : {}) });
+      tvRestart(); // as them, at Home
+    } catch (err) {
+      pin = "";
+      if (err.status === 403 && !withPin) { // they have a PIN: its pad
+        chosen = id;
+        $("#tvWhoPeople").hidden = true;
+        $("#tvWhoPin").hidden = false;
+        $("#tvWhoFor").textContent = `${p.people.find((x) => x.id === id).name}'s PIN`;
+        $("#tvWhoPin [data-d='5']").focus({ preventScroll: true });
+      } else $("#tvWhoSaid").textContent = err.message;
+      dots();
+    }
+  };
+  const key = (d) => {
+    if (d === "ok") return pin.length >= 4 ? pick(chosen, pin) : ($("#tvWhoSaid").textContent = "A PIN is 4 to 8 digits");
+    pin = d === "del" ? pin.slice(0, -1) : (pin + d).slice(0, 8);
+    $("#tvWhoSaid").textContent = "";
+    dots();
+  };
+  $("#tvWho").addEventListener("click", (e) => {
+    const who = e.target.closest("[data-who]"), d = e.target.closest("[data-d]");
+    if (who) pick(+who.dataset.who);
+    else if (d) key(d.dataset.d);
+  });
+  $("#tvWho").addEventListener("keydown", (e) => { if (!$("#tvWhoPin").hidden && /^[0-9]$/.test(e.key)) key(e.key); }); // a keyboard's digits, or a remote with number keys
+  ($("#tvWho [aria-current]") || $("#tvWho [data-who]")).focus({ preventScroll: true });
+}
+page("who", showWho, "home");

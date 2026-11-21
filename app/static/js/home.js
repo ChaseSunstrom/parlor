@@ -247,7 +247,7 @@ async function showSettings(t) {
         <p>Parts of videos the SponsorBlock community has marked. You can always undo a skip.</p>
         ${SB_CHOICES.map(([k, l]) => check(`sb-${k}`, l, pref("skip").includes(k))).join("")}
       </section>
-      <section class="panel"><h3>Your YouTube account</h3>
+      <section class="panel" id="cookies"><h3>Your YouTube account</h3>
         <p>Optional. Add your YouTube cookies to see YouTube's own recommendations, your YouTube subscriptions feed and watch later, and to play videos that need a sign-in.
           Export them with a "cookies.txt" browser extension while signed in to youtube.com. Only this server sees them. YouTube can flag accounts used like this, so a spare account is safer.</p>
         <p><strong>${me.youtube_cookies ? "Cookies added." : "No cookies added."}</strong></p>
@@ -277,7 +277,14 @@ async function showSettings(t) {
       </section>
       <section class="panel" id="devicePanel"></section>
       <section class="panel" id="privatePanel"></section>
-      <section class="panel"><h3>Your account</h3>
+      ${me.household ? `<section class="panel" id="pinPanel"><h3>Your PIN for TVs</h3>
+        <p>A TV in the house can be switched to you: your rows, your place in films, your limits. With a PIN it asks for it first. ${me.has_pin ? "<strong>You have a PIN.</strong>" : "<strong>You have no PIN:</strong> anyone at the TV can pick you."}</p>
+        <form id="pinForm"><label class="field"><span>${me.has_pin ? "New PIN" : "PIN"} (4 to 8 digits)</span><input type="password" id="pinNew" inputmode="numeric" pattern="[0-9]{4,8}" maxlength="8" autocomplete="off" required></label>
+          <label class="field"><span>Your password</span><input type="password" id="pinPw" autocomplete="current-password" required></label>
+          <div class="actions"><button class="primary small">${me.has_pin ? "Change PIN" : "Set PIN"}</button>${me.has_pin ? `<button type="button" class="ghost" id="pinDrop">Remove PIN</button>` : ""}</div></form>
+      </section>` : ""}
+      ${tvMe ? `<section class="panel"><h3>Your account</h3><p>Passwords, PINs, keys and other devices are managed from your own phone or computer, not from a TV.</p></section>` : ""}
+      <section class="panel" id="account"><h3>Your account</h3>
         ${me.local ? `<form id="pwForm"><label class="field"><span>Current password</span><input type="password" id="pwOld" autocomplete="current-password" required></label>
           <label class="field"><span>New password</span><input type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
           <div class="actions"><button class="primary small">Change password</button></div></form>`
@@ -324,6 +331,10 @@ async function showSettings(t) {
     e.preventDefault();
     post("/api/me/password", { old: $("#pwOld").value, new: $("#pwNew").value }).then(() => { toast("Password changed. Other devices have to sign in again."); e.target.reset(); }, (err) => toast(err.message));
   });
+  const setPin = (pin) => put("/api/me/pin", { pin, password: $("#pinPw").value }).then(async () => { toast(pin ? "PIN set: TVs ask for it before they switch to you" : "PIN removed"); ME = await api("/api/me"); keepScroll = true; route(); },
+    (err) => { toast(err.message); if (!$("#pinPw").value) $("#pinPw").focus(); });
+  $("#pinForm")?.addEventListener("submit", (e) => { e.preventDefault(); setPin($("#pinNew").value); });
+  $("#pinDrop")?.addEventListener("click", () => ($("#pinPw").value ? setPin(null) : (toast("Enter your password to remove the PIN"), $("#pinPw").focus())));
   $("#everywhere").addEventListener("click", () => confirm("Sign out on every device, this one too?") && post("/api/auth/logout-everywhere").finally(() => location.reload()));
   if (me.admin) adminPanels(t);
 }
@@ -335,14 +346,16 @@ async function adminPanels(t) {
   if (t !== ticket) return;
   const option = (u, sel) => `<option value="${u.id}"${sel === u.id ? " selected" : ""}>${esc(u.name)}${u.jellyfin ? ` (Jellyfin: ${esc(u.jellyfin)})` : ""}</option>`;
   const limits = (u) => [u.blocked.length && `no ${u.blocked.map((s) => SECTION_NAMES[s][0].toLowerCase()).join(", ")}`,
-    u.libraries && `${u.libraries.length} ${u.libraries.length === 1 ? "library" : "libraries"}`].filter(Boolean).join(" · ");
+    u.libraries && `${u.libraries.length} ${u.libraries.length === 1 ? "library" : "libraries"}`, u.max_rating != null && "an age limit"].filter(Boolean).join(" · ");
   const userRow = (u) => `<tr data-user="${u.id}">
-    <td><strong>${esc(u.name)}</strong><br><small class="dim">${u.admin ? "Admin" : "Member"}${u.jellyfin ? " · Jellyfin" : ""}${u.seen ? ` · seen ${since(u.seen)}` : ""}${!u.admin && limits(u) ? ` · ${esc(limits(u))}` : ""}</small></td>
+    <td><strong>${esc(u.name)}</strong><br><small class="dim">${u.admin ? "Admin" : "Member"}${u.jellyfin ? " · Jellyfin" : ""}${u.household ? ` · in the household${u.has_pin ? ", with a PIN" : ""}` : ""}${u.seen ? ` · seen ${since(u.seen)}` : ""}${!u.admin && limits(u) ? ` · ${esc(limits(u))}` : ""}</small></td>
     <td>${status.connected ? `<select class="input" data-seerr aria-label="Seerr user for ${esc(u.name)}"><option value="">${u.jellyfin ? "Same Jellyfin account" : "Not linked"}</option>${seerrUsers.map((x) => option(x, u.seerr_id)).join("")}</select>
       ${!u.seerr_id && seerr.suggested[u.id] ? `<br><small class="dim">Same name in Seerr: ${esc(seerrUsers.find((x) => x.id === seerr.suggested[u.id])?.name || "")}. Pick it if it's them.</small>` : ""}` : `<small class="dim">Seerr not connected</small>`}
       ${u.jellyfin ? "" : `<br><input class="input" data-jf value="${esc(u.jf_user || "")}" placeholder="Jellyfin user: the default" autocomplete="off" aria-label="Jellyfin user ${esc(u.name)} plays as">`}</td>
     <td><div class="acts">
       ${u.admin ? "" : `<button class="ghost" data-access aria-expanded="false">Access</button>`}
+      <button class="ghost" data-household="${u.household ? 0 : 1}" title="The household's people can be picked on its TVs (Who's watching) and work them from their phones">${u.household ? "Out of the household" : "Into the household"}</button>
+      ${u.has_pin ? `<button class="ghost" data-clear-pin title="They forgot it: they set a new one in their Settings">Clear PIN</button>` : ""}
       <button class="ghost" data-admin-toggle="${u.admin ? 0 : 1}">${u.admin ? "Make member" : "Make admin"}</button>
       ${u.jellyfin ? "" : `<button class="ghost" data-reset>Reset password</button>`}
       ${u.id === ME.id ? "" : `<button class="ghost danger" data-delete-user>Delete</button>`}</div></td></tr>`;
@@ -455,6 +468,9 @@ async function adminPanels(t) {
     if (opener) accessEditor(row, users.find((u) => String(u.id) === id), opener);
     const flip = e.target.closest("[data-admin-toggle]");
     if (flip) patch(`/api/users/${id}`, { admin: flip.dataset.adminToggle === "1" }).then(done, (err) => toast(err.message));
+    const house = e.target.closest("[data-household]");
+    if (house) patch(`/api/users/${id}`, { household: house.dataset.household === "1" }).then(done, (err) => toast(err.message));
+    if (e.target.closest("[data-clear-pin]") && confirm("Clear this person's PIN? A TV switches to them without asking until they set a new one.")) patch(`/api/users/${id}`, { clear_pin: true }).then(done, (err) => toast(err.message));
     if (e.target.closest("[data-reset]")) {
       const pw = prompt("New password (at least 8 characters). They'll be signed out everywhere.");
       if (pw) patch(`/api/users/${id}`, { password: pw }).then(() => toast("Password reset"), (err) => toast(err.message));
@@ -546,7 +562,7 @@ async function accessEditor(row, u, opener) {
   row.parentElement.querySelectorAll("[data-access]").forEach((b) => b.setAttribute("aria-expanded", "false"));
   if (open) return;
   opener.setAttribute("aria-expanded", "true");
-  const libs = await api("/api/access/libraries").then((r) => r.libraries).catch(() => null);
+  const [libs, ratings] = await Promise.all([api("/api/access/libraries").then((r) => r.libraries).catch(() => null), api("/api/jf/ratings").then((r) => r.ratings).catch(() => null)]);
   const edit = document.createElement("tr");
   edit.className = "access-row";
   const check = (name, value, on, label, note) => `<label class="check"><input type="checkbox" name="${name}" value="${esc(value)}"${on ? " checked" : ""}><span>${esc(label)}${note ? ` <small class="dim">${esc(note)}</small>` : ""}</span></label>`;
@@ -558,6 +574,11 @@ async function accessEditor(row, u, opener) {
         ${libs.map((l) => check("lib", l.id, u.libraries === null || u.libraries.includes(l.id), l.name)).join("")}
         <small class="dim">Held by Jellyfin itself: they play as a Jellyfin user of their own, so its apps show the same.</small></fieldset>`
         : `<p class="dim">Jellyfin isn't connected, so its libraries can't be limited yet.</p>`}
+      ${ratings?.length ? `<fieldset><legend>Age limit</legend>
+        <label class="field"><span class="vh">Nothing rated above</span><select name="rating"><option value="">No limit</option>
+          ${ratings.map((r) => `<option value="${r.value}"${u.max_rating === r.value ? " selected" : ""}>Up to ${esc(r.name)}</option>`).join("")}
+          ${u.max_rating != null && !ratings.some((r) => r.value === u.max_rating) ? `<option value="${u.max_rating}" selected>Up to rating ${u.max_rating}</option>` : ""}</select></label>
+        <small class="dim">Held by Jellyfin too: films and shows rated above it, and ones with no rating, are hidden everywhere they play, a TV acting as them included. YouTube has no ratings: close Watch above for a child. Give yourself a PIN, or a child picks you on the TV.</small></fieldset>` : ""}
       <div class="actions"><button class="primary small">Save</button><button type="button" class="ghost" data-cancel>Cancel</button></div>
     </form></td>`;
   row.after(edit);
@@ -572,6 +593,8 @@ async function accessEditor(row, u, opener) {
     e.preventDefault();
     const body = { blocked: [...form.querySelectorAll("[name=section]")].filter((b) => !b.checked).map((b) => b.value) };
     if (libs) body.libraries = all.checked ? null : [...form.querySelectorAll("[name=lib]:checked")].map((b) => b.value);
+    const rating = form.querySelector("[name=rating]");
+    if (rating && (rating.value === "" ? null : +rating.value) !== (u.max_rating ?? null)) body.max_rating = rating.value === "" ? null : +rating.value; // only when it changed: left out, it stays as it is
     try {
       await put(`/api/users/${u.id}/access`, body);
       toast(`Saved what ${u.name} can use`);

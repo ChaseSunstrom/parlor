@@ -90,6 +90,7 @@ async function showTvPair(error = "") {
       <h1>Pair this TV</h1>
       <p>On your phone or computer, open Parlor, go to <b>You → TVs</b>, enter this under <b>Add a TV</b> and press <b>Pair</b>:</p>
       <div class="tvcode" id="tvCode" role="img" aria-label="Pairing code ${esc(code.split("").join(" "))}">${esc(code.slice(0, 4))}<i></i>${esc(code.slice(4))}</div>
+      ${got?.qr ? `<div class="tvqr" role="img" aria-label="The same code as a square to scan">${got.qr}</div><p class="dim">Or point your phone's camera at the square: it opens Parlor with the code filled in.</p>` : ""}
       <p class="dim" id="tvCodeNote">${error ? esc(error) : "The code works once, for five minutes. A new one shows up by itself."}</p>
       <button class="ghost" id="tvSignIn">Sign in on the TV instead</button></div></div>`;
   $("#tvSignIn").addEventListener("click", () => { clearTimeout(tvPairTimer); showGate("login", true); });
@@ -118,6 +119,19 @@ async function tvBoot() {
   if (!tvMe) return remoteBoot();
   if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); route(); tvAwake(); } // a TV's session opened at another address is still a TV
   tvListen();
+  tvPeople = await api(`/api/tv/${tvMe.id}/people`).catch(() => null); // more than one person in the household: ask who is watching, once each time the TV starts
+  if ((tvPeople?.people.length || 0) < 2) return;
+  if (!$("#side [data-g=who]")) $("#side")?.insertAdjacentHTML("beforeend", tvWhoLink()); // the rail's link to it (later pages draw it themselves)
+  let asked = true;
+  try { asked = sessionStorage.getItem("parlor:who"); sessionStorage.setItem("parlor:who", "1"); } catch { /* no storage: it never asks by itself */ }
+  if (!asked) go("#/who");
+}
+
+let tvPeople = null; // {people, viewer}: who this TV can act as (tv.py)
+/** start again at Home: the TV acts as someone else now */
+function tvRestart() {
+  history.replaceState(null, "", `${location.pathname}#/`);
+  location.reload();
 }
 
 let tvStream = null;
@@ -131,7 +145,7 @@ function tvListen() {
   tvStream.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === "do") tvDo(m);
-    else if (m.type === "viewer" && m.tv === tvMe?.id) location.reload(); // someone else is watching now: their rows, their place, their limits
+    else if (m.type === "viewer" && m.tv === tvMe?.id) tvRestart(); // someone else is watching now: their rows, their place, their limits
   };
   tvStream.onopen = () => { tvReport(true); tvFresh(); }; // it opens again after Parlor restarts: an update, perhaps
 }

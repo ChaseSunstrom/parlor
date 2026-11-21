@@ -1189,6 +1189,33 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .whos .avatar { font-size: 1.5rem; }
 .whos small { display: flex; align-items: center; gap: 4px; }
 .whos small .i { width: 14px; height: 14px; }
+/* Who's watching, on the TV: a row of people, then a pad for a PIN (only transform changes with the focus) */
+.tvwho { position: fixed; inset: 0 0 0 var(--rail); display: grid; align-content: center; justify-items: center; gap: 36px; padding: 0 40px; }  /* fixed, not 100vh: a TV's root is zoomed */
+body.docked .tvwho { bottom: 76px; gap: 22px; }  /* a song's bar is up: the pad stays clear of it */
+.tvwho h1 { margin: 0; font-size: 52px; letter-spacing: -.02em; }
+.tvwho-people { display: flex; flex-wrap: wrap; justify-content: center; gap: 28px; }
+.tvwho-people[hidden], .tvwho-pin[hidden] { display: none; }
+.tvwho-people button { display: grid; justify-items: center; gap: 12px; width: 190px; padding: 24px 12px 16px; border: 0; border-radius: 28px; background: none; color: var(--text); font-size: 24px; transition: transform .18s ease; }
+.tvwho-people .avatar { font-size: 54px; }
+.tvwho-people button[aria-current] .avatar { outline: 4px solid var(--text); outline-offset: 5px; }
+.tvwho-people button:focus { transform: scale(1.06); background: var(--raise); }
+.tvwho small { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 17px; }
+.tvwho small .i { width: 18px; height: 18px; }
+.tvwho-pin { display: grid; justify-items: center; gap: 14px; }
+.tvwho-pin p { margin: 0; font-size: 24px; }
+.tvwho-dots { min-height: 52px; font-size: 44px; letter-spacing: .28em; }
+.tvwho-dots.empty { color: var(--line); }
+.tvwho-keys { display: grid; grid-template-columns: repeat(3, 88px); gap: 12px; }
+.tvwho-keys button { height: 64px; border: 2px solid var(--line); border-radius: 16px; background: var(--raise); color: var(--text); font-size: 26px; font-weight: 700; transition: transform .18s ease; }
+.tvwho-keys button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.tvwho-keys button:focus { transform: scale(1.08); }
+.tvwho .tvwho-said { min-height: 1.4em; color: var(--bad); font-size: 20px; }
+body.tv .side .side-head.who .avatar { font-size: 16px; }
+/* the pairing code as a square to scan: dark on white, whatever the theme (a camera needs the contrast) */
+.tvqr { width: 144px; margin: 2px auto 6px; padding: 8px; border-radius: 14px; background: #fff; }
+.tvqr svg { display: block; width: 100%; height: auto; }
+/* a TV's session is refused these (app.py TV_NEVER): they are managed from a phone or a computer */
+body.tv :is(#appKeys, #apiKeys, #devices, #account, #cookies, #pinPanel) { display: none; }
 /* On TV: what one of this account's TVs plays, on every other page */
 .tvbar { position: fixed; z-index: 29; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 6px; max-width: min(360px, calc(100vw - 32px));
   padding: 6px 6px 6px 14px; border-radius: 28px; background: var(--raise); border: 1px solid var(--line); box-shadow: 0 12px 30px rgb(0 0 0 / .35); }

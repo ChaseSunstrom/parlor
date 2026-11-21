@@ -36,6 +36,7 @@ PASSWORD = "Ui-tv-pass-42!"  # pragma: allowlist secret (made up)
 core.db()
 auth.create_user("boss", PASSWORD, True)
 auth.create_user("family", PASSWORD, False)
+auth.create_user("kid", PASSWORD, False)  # joins the household at the end (Who's watching)
 jfs.point(core)
 folder = Path.cwd() / "The Gulls" / "Harbor"
 folder.mkdir(parents=True, exist_ok=True)
@@ -106,6 +107,7 @@ with sync_playwright() as pw:
     code = screen.inner_text("#tvCode").replace("\n", "").replace(" ", "")
     screen.wait_for_timeout(500)
     screen.screenshot(path=str(OUT / "tv-pair.png"))
+    square = screen.evaluate("!!document.querySelector('.tvqr svg')")  # the code as a square to scan
     phone = signed_in_phone(b)
     phone.goto(BASE + "/#/tvs")
     phone.wait_for_selector("#tvAdd", timeout=30000)
@@ -113,7 +115,7 @@ with sync_playwright() as pw:
     phone.fill("#tvAddName", "Living room")
     phone.click("#tvAdd .primary")
     screen.wait_for_selector("#tvCode", state="detached", timeout=30000)
-    screen.wait_for_function("ME && ME.name === 'family' && tvMe && tvMe.name === 'Living room' && document.body.classList.contains('tv')", timeout=30000)
+    screen.wait_for_function("typeof tvMe !== 'undefined' && ME && ME.name === 'family' && tvMe && tvMe.name === 'Living room' && document.body.classList.contains('tv')", timeout=30000)
     checks["/tv shows a code; a phone enters it and the TV signs itself in"] = len(code) == 8
 
     # Home on a TV: a hero that follows the focused title over rows of posters; no top bar; the menu is a slim rail
@@ -248,7 +250,7 @@ with sync_playwright() as pw:
     # a TV is left on: when a newer Parlor answers, it reloads itself (nothing is playing)
     screen.wait_for_function("tvVersion", timeout=10000)
     screen.evaluate("window.oldPage = true; tvVersion = '000000000000'; tvFresh()")
-    screen.wait_for_function("!window.oldPage && ME && tvMe && tvVersion && tvVersion !== '000000000000'", timeout=30000)
+    screen.wait_for_function("!window.oldPage && typeof tvVersion !== 'undefined' && ME && tvMe && tvVersion && tvVersion !== '000000000000'", timeout=30000)  # typeof: mid-reload the scripts aren't in yet (tv.js, the last to define, is after core.js)
     checks["a TV left on reloads itself when Parlor was updated"] = True
 
     if REMOTE:
@@ -452,10 +454,54 @@ with sync_playwright() as pw:
         phone.select_option("#rSleep", "15")
         screen.wait_for_function("tvSleep > Date.now() + 14 * 60e3", timeout=5000)
         phone.wait_for_function("byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)
-        screen.evaluate("dockPlay([{ src: '/api/jf/music/none', title: 'x' }], 0, false); tvSleep = Date.now() + 300")  # its time has come
-        screen.wait_for_function("tvSleep === 0 && document.querySelector('#tvIdle') && !(tvPlayer() && !tvPlayer().paused)", timeout=8000)
+        screen.evaluate("dock.audio.currentTime = 0; tvDo({ cmd: 'play' })")  # the song from before, playing again
+        screen.wait_for_function("!dock.audio.paused", timeout=5000)
+        screen.evaluate("tvSleep = Date.now() + 300")  # its time has come
+        screen.wait_for_function("tvSleep === 0 && document.querySelector('#tvIdle') && dock.audio.paused", timeout=8000)
         phone.wait_for_function("!byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)
         checks["a sleep timer from the remote pauses the TV and darkens its screen"] = True
+        # Who's watching: family (who paired this TV) and kid become the household; kid has a PIN. The TV's picker switches
+        # to kid after the PIN on its pad (a wrong one first), and the remote's round picture switches it back.
+        core.db().execute("UPDATE users SET household = 1 WHERE name IN ('family', 'kid')")
+        core.db().execute("UPDATE users SET pin = ? WHERE name = 'kid'", (core.hash_password("4821"),))
+        press(screen, "ArrowDown")  # wakes the dark screen
+        screen.evaluate("go('#/who')")
+        screen.wait_for_selector("#tvWho [data-who]", timeout=10000)
+        screen.wait_for_timeout(300)
+        screen.screenshot(path=str(OUT / "tv-who.png"))
+        people = screen.evaluate("[...document.querySelectorAll('#tvWho [data-who]')].map((b) => b.querySelector('b').textContent)")
+        current = screen.evaluate("document.activeElement.querySelector('b')?.textContent")
+        press(screen, "ArrowRight")
+        press(screen, "Enter")
+        screen.wait_for_selector("#tvWhoPin:not([hidden])", timeout=5000)
+        screen.keyboard.type("1111")
+        press(screen, "ArrowDown", 2)
+        press(screen, "ArrowRight")
+        on_ok = screen.evaluate("document.activeElement.dataset.d")
+        press(screen, "Enter")
+        screen.wait_for_function("document.querySelector('#tvWhoSaid').textContent.includes('PIN')", timeout=5000)
+        screen.screenshot(path=str(OUT / "tv-who-pin.png"))
+        for d in "4821":  # with the arrows this time: each digit's key is pressed with OK
+            screen.evaluate(f"document.querySelector('#tvWhoPin [data-d=\"{d}\"]').focus()")
+            press(screen, "Enter")
+        screen.evaluate("document.querySelector('#tvWhoPin [data-d=ok]').focus()")
+        press(screen, "Enter")
+        screen.wait_for_function("typeof ME !== 'undefined' && ME && ME.name === 'kid' && tvMe && document.querySelector('#tvh')", timeout=30000)
+        screen.wait_for_selector("#side [data-g=who]", timeout=10000)
+        print("who's watching:", people, "focus began on", current, "| OK key reached with the arrows:", on_ok, "| the TV is now", screen.evaluate("ME.name"), "admin:", screen.evaluate("ME.admin"))
+        checks["a TV asks who is watching: a person with a PIN is picked after it, on a pad the arrows work"] = people == ["family", "kid"] and current == "family" and on_ok == "ok" \
+            and screen.evaluate("location.hash") in ("", "#/")
+        phone.wait_for_selector("#rWho:not([hidden])", timeout=10000)
+        phone.click("#rWho")
+        phone.wait_for_selector("#whoAsk [data-who]", timeout=5000)
+        phone.screenshot(path=str(OUT / "remote-who.png"))
+        phone.click("#whoAsk [data-who]:first-child")  # family, from their own phone: no PIN asked
+        screen.wait_for_function("typeof ME !== 'undefined' && ME && ME.name === 'family' && tvMe", timeout=30000)
+        checks["the remote's round picture says who the TV acts as, and switches it"] = True
+        # a phone that scanned the pairing screen's square opens You → TVs with the code filled in
+        other.goto(BASE + "/#/tvs/pair/abcd2345")
+        other.wait_for_function("document.querySelector('#tvAddCode')?.value === 'ABCD2345'", timeout=10000)
+        checks["the pairing screen shows a square to scan, and the phone it opens has the code filled in"] = square
     b.close()
 server.should_exit = True
 for k, v in checks.items():
@@ -463,6 +509,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (30 if REMOTE else 11) and all(checks.values()) and not errors
-print("RESULT:", "ok" if ok else "FAIL")
+ok = len(checks) == (33 if REMOTE else 11) and all(checks.values()) and not errors
+print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

@@ -17,7 +17,7 @@ Parlor on a TV is made for a remote, and your phone can be the remote. This page
 ## Pairing a TV
 
 1. Open Parlor on the TV's browser at `http://your-server:8800/tv` (or install the Android app on an Android TV: it's in the TV's launcher and opens this way by itself; an LG added as a [TV set](#the-tv-set-itself-power-input-and-volume) opens it from **Open Parlor on it**). The TV shows an 8-character code.
-2. On your phone open **You → TVs**, type the code and a name under **Add a TV**, then press **Pair**.
+2. On your phone open **You → TVs**, type the code and a name under **Add a TV**, then press **Pair**. Or point the phone's camera at the square under the code: it opens Parlor at **You → TVs** with the code filled in (sign in first if the phone isn't).
 3. The TV signs itself in to your account.
 
 No password is typed on the TV, and the code works once, for five minutes.
@@ -26,10 +26,11 @@ No password is typed on the TV, and the code works once, for five minutes.
 
 Parlor on a TV is laid out for a couch and a remote: everything is bigger, there is no top bar, and nothing needs a mouse.
 
-- **Home** is one screen that never scrolls. The title the focus is on fills the top: its artwork, its name, the year, how long is left, what it's about. Under it are rows of posters: Continue watching, Next up, what's new in each library, new from your subscriptions, Watch later, and the libraries.
+- **Home** is one screen that never scrolls. The title the focus is on fills the top: its artwork, its name, the year, how long is left, what it's about. Under it are rows of posters: Continue watching, Next up, My list (the films and shows you marked as favourites), what's new in each library, new from your subscriptions, Watch later, and the libraries.
 - **Arrows on Home**: Left and Right walk a row, Up and Down change rows. Each row remembers where you were in it. The selected poster lifts and glows; the rows slide under it, so it is always in the same place.
 - **OK and Back**: OK opens what's selected. Back returns to the very poster you opened it from; pressed again it goes to the first poster, then to the menu.
 - **The menu** is a slim rail of icons on the left (Search, Home, Library, Watch, Music, Request, You). Left from the first poster reaches it, and its names show while the focus is in it. A section's pages are the row of links along the top of each of its pages.
+- **Who's watching**: with two or more people in [the household](accounts.md#the-household-and-profiles-on-a-tv), the TV asks who is watching each time it starts, and a round picture at the foot of the menu opens the same screen later. Pick a person with the arrows and OK; one with a PIN gets a number pad (a remote's own number keys work too). The TV then starts again at Home as them.
 - **Other pages**: the arrows move to the nearest thing in that direction, and what's selected has a bright outline. When a page opens, the focus is already in it.
 - **A film or a video fills the screen.** A strip shows its name and where it is for a few seconds, and whenever it is paused.
 

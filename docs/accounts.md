@@ -26,6 +26,11 @@ A TV acts as one person, so each person's history, resume points, limits and Jel
 - **Who may pick and drive**: the TV's owner, the person it is acting as, and any household account, from a phone or the TV's own screen (`GET /api/tv/{id}/people`, `POST /api/tv/{id}/viewer`). The household shares the TVs its own accounts paired: a TV paired by an account outside the household stays that account's alone. Only the owner (or an admin from Settings → TVs) unpairs a TV.
 - **What a TV never does**: whoever it acts as, a TV's session can't change a password or a PIN, make or list API keys and app passwords, see or sign out that person's other devices, set their YouTube cookies or pair another screen. Those are done from the person's own phone or computer.
 - **PINs**: anyone can set a 4 to 8 digit PIN with their password (`PUT /api/me/pin`, `null` clears it; an admin can clear a forgotten one). Switching a TV to a person with a PIN asks for it, from a TV or someone else's phone, including going back to an owner who has one. Their own phone, and a TV already acting as them, aren't asked. Wrong PINs are throttled like wrong passwords: 8 in 15 minutes per person and per address, after which even the right PIN waits. A PIN is stored hashed.
+- **Where it is in Parlor**:
+  - *Settings → People* (an admin): **Into the household** / **Out of the household** on each person, **Clear PIN** for a forgotten one, and the age limit under **Access**.
+  - *Settings* (a household member, on their own phone or computer): **TV PIN**, set or removed with the account's password.
+  - *On the TV*: **Who's watching** when it starts and from the round picture in the menu. Settings on a TV shows none of the account panels (password, PIN, keys, devices, cookies).
+  - *On the remote*: the round picture beside the TV's name.
 
 ## Seerr users
 

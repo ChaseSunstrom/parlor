@@ -47,7 +47,12 @@ function sideHtml(at, tv = "") { // a TV has no top bar: its search is in the ra
   if (tv === "search") at = { ...at, group: "" };
   return (tv ? tvSearchLink(tv === "search") : "") + NAV.map((g) => `<div class="side-group${g.key === at.group ? " on" : ""}" data-g="${g.key}">
     <a class="side-head" href="${groupHref(g)}"${lit(g.key === at.group && (!g.pages || at.own))}>${ICON[g.icon]}<span>${esc(g.label)}</span></a>
-    ${(g.key === at.group ? g.pages || [] : []).map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</div>`).join("");
+    ${(g.key === at.group ? g.pages || [] : []).map(([label, href]) => `<a href="${href}"${lit(href === at.href)}>${esc(label)}</a>`).join("")}</div>`).join("") + (tv ? tvWhoLink() : "");
+}
+/** on a TV whose household has more than one person: who it is acting as, and the way to change that */
+function tvWhoLink() {
+  const p = tvPeople, now = p && (p.people.find((x) => x.id === p.viewer) || p.people.find((x) => x.owner));
+  return now && p.people.length > 1 ? `<div class="side-group" data-g="who"><a class="side-head who" href="#/who"${lit(location.hash.startsWith("#/who"))}>${avatar(now.name)}<span>${esc(now.name)}</span></a></div>` : "";
 }
 
 function tabsHtml(at) {

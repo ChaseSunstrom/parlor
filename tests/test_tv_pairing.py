@@ -32,6 +32,14 @@ class Pairing(unittest.TestCase):
     def pair(self, code, who=None, name="Living room"):
         return (who or self.owner).post("/api/tv/pair", json={"code": code, "name": name}, headers=H)
 
+    def test_the_code_comes_with_a_square_to_scan(self):
+        got = client().post("/api/tv/code", headers={**H, "Origin": "http://parlor.example:8800"}).json()
+        self.assertIn("<svg", got["qr"], "the address this TV opened Parlor by, with the code, as a QR picture")
+        import segno
+        self.assertEqual(got["qr"], segno.make(f"http://parlor.example:8800/#/tvs/pair/{got['code']}", error="m").svg_inline(border=2, omitsize=True))
+        odd = client().post("/api/tv/code", headers={**H, "Origin": "http://x/\"><script>"}).json()
+        self.assertEqual(odd["qr"], "", "an address that isn't plain is never drawn")
+
     def test_a_tv_pairs_by_code_and_gets_its_own_session(self):
         tvc, got = new_tv()
         code, claim = got["code"], got["claim"]

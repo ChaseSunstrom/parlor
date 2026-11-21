@@ -59,7 +59,20 @@ def new_code(request: Request):
     code, claim, now = "".join(secrets.choice(ALPHABET) for _ in range(8)), secrets.token_urlsafe(32), _now()
     db().execute("DELETE FROM tv_codes WHERE created < ?", (now - CODE_LIFE,))
     db().execute("INSERT INTO tv_codes(code, claim, created) VALUES (?, ?, ?)", (_hash(code), _hash(claim), now))
-    return {"code": code, "claim": claim, "expires": CODE_LIFE}
+    return {"code": code, "claim": claim, "expires": CODE_LIFE, "qr": _qr(request, code)}
+
+
+def _qr(request: Request, code: str) -> str:
+    """the pairing code as a square to scan (SVG): a phone's camera opens Parlor at You → TVs with the code filled in, at
+    the address this TV opened Parlor by. Empty when that address isn't plain, or the QR library isn't installed."""
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    if not re.fullmatch(r"https?://[A-Za-z0-9.:\[\]-]{1,200}", origin):
+        return ""
+    try:
+        import segno  # here, so a setup without it loses this picture and nothing else
+    except ImportError:
+        return ""
+    return segno.make(f"{origin}/#/tvs/pair/{code}", error="m").svg_inline(border=2, omitsize=True)
 
 
 class Pair(BaseModel):

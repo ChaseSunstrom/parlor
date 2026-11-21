@@ -35,6 +35,7 @@ async function showTvs(t, [id, all] = []) {
       <div class="rhw" id="rHw" hidden></div>
     </div>`);
   api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(0, sets), () => {});  // the sets themselves need no paired screen
+  if (id === "pair" && all) { $("#tvAddCode").value = all.toUpperCase().slice(0, 8); $("#tvAddName").focus(); } // the TV's square was scanned: only its name is left to type
   $("#tvAdd").addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
