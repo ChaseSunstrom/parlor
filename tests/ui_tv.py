@@ -451,11 +451,15 @@ with sync_playwright() as pw:
         phone.screenshot(path=str(OUT / "remote-phone.png"))
         # the sleep timer: set from More; when its time comes what plays pauses and the screen goes dark
         phone.click("#rMore summary")
+        screen.evaluate("dock.audio.currentTime = 0; tvDo({ cmd: 'play' })")  # the song from before (20 s long), playing again
+        screen.wait_for_function("!dock.audio.paused", timeout=5000)
+        phone.select_option("#rSleep", "-1")  # when this ends: the moment follows the song
+        screen.wait_for_function("tvSleepEnd && tvSleep > Date.now() + 10e3 && tvSleep < Date.now() + 21e3", timeout=5000)
+        phone.wait_for_function("byId('rSleepAt').textContent.includes('when this ends') && byId('rSleep').value === '-1'", timeout=5000)
         phone.select_option("#rSleep", "15")
+        screen.wait_for_function("!tvSleepEnd", timeout=5000)
         screen.wait_for_function("tvSleep > Date.now() + 14 * 60e3", timeout=5000)
         phone.wait_for_function("byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)
-        screen.evaluate("dock.audio.currentTime = 0; tvDo({ cmd: 'play' })")  # the song from before, playing again
-        screen.wait_for_function("!dock.audio.paused", timeout=5000)
         screen.evaluate("tvSleep = Date.now() + 300")  # its time has come
         screen.wait_for_function("tvSleep === 0 && document.querySelector('#tvIdle') && dock.audio.paused", timeout=8000)
         phone.wait_for_function("!byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)

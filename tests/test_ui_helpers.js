@@ -198,3 +198,13 @@ console.log("only Parlor's own files ok");
   assert.ok(grab(js("library.js"), '<div class="ptools">', "</div>").includes('tvButton("data-cast-jf", x.id)'), "the film player has the button");
   console.log("on TV from a player ok");
 }
+
+// on a TV a person's own preferences (subtitles, speed, autoplay) are kept under who is watching; the TV's own (quality)
+// and every preference on a phone or computer are kept as before
+const prefKeyAs = (tvMe, ME) => require("vm").runInNewContext(`(() => { let tvMe = ${JSON.stringify(tvMe)}, ME = ${JSON.stringify(ME)};
+  ${grab(core, "const PREF_OWN =", ";")} ${grab(core, "const prefKey =", ";\n")} return prefKey; })()`);
+assert.strictEqual(prefKeyAs({ id: 1 }, { id: 7 })("speed"), "parlor:7:speed");
+assert.strictEqual(prefKeyAs({ id: 1 }, { id: 7 })("tvQuality"), "parlor:tvQuality");
+assert.strictEqual(prefKeyAs(null, { id: 7 })("speed"), "parlor:speed");
+assert.strictEqual(prefKeyAs({ id: 1 }, null)("speed"), "parlor:speed");
+console.log("a TV's preferences per person ok");

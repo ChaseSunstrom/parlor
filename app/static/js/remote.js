@@ -112,7 +112,7 @@ async function showRemote(t, id, everyone) {
     <ul class="rfound" id="rFound" hidden></ul>
     <details class="rmore" id="rMore"><summary>More</summary>
       <div id="rLists"></div>
-      <label class="field"><span>Sleep timer</span><select id="rSleep"><option value="0">Off</option>${[15, 30, 45, 60, 90, 120].map((m) => `<option value="${m}">In ${m} minutes</option>`).join("")}</select>
+      <label class="field"><span>Sleep timer</span><select id="rSleep"><option value="0">Off</option><option value="-1">When this ends</option>${[15, 30, 45, 60, 90, 120].map((m) => `<option value="${m}">In ${m} minutes</option>`).join("")}</select>
         <small id="rSleepAt">The sound fades, what plays pauses and the screen goes dark.</small></label>
       <div class="rrow"><a class="ghost" id="rHere" hidden>Continue on this phone</a><button class="ghost" data-r="stop">Stop</button><a class="ghost" href="#/tvs">All TVs</a></div>
     </details>
@@ -167,8 +167,10 @@ async function showRemote(t, id, everyone) {
       r.lists = lists;
       $("#rLists").innerHTML = offered.map((l, i) => `<label class="field"><span>${esc(l.name)}</span><select data-opt="${i}">${l.all.map(([v, n]) => `<option value="${esc(v)}"${v === l.value ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`).join("");
     }
-    if (!s.sleep && document.activeElement !== $("#rSleep")) $("#rSleep").value = "0";
-    $("#rSleepAt").textContent = s.sleep ? `The TV pauses and goes dark at ${new Date(s.sleep * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.` : "The sound fades, what plays pauses and the screen goes dark.";
+    if (document.activeElement !== $("#rSleep") && (!s.sleep || s.sleepEnd)) $("#rSleep").value = s.sleepEnd ? "-1" : "0";
+    $("#rSleep option[value='-1']").disabled = !s.length; // nothing with an end is playing
+    const sleepAt = s.sleep && new Date(s.sleep * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    $("#rSleepAt").textContent = s.sleepEnd ? `The TV goes dark when this ends, about ${sleepAt}.` : s.sleep ? `The TV pauses and goes dark at ${sleepAt}.` : "The sound fades, what plays pauses and the screen goes dark.";
     const here = on && s.kind === "video" && /^#\/(jf\/play\/[0-9a-f]{32}|watch\/[\w-]{11})/.exec(at); // a film or a video: this phone can carry on with it
     $("#rHere").hidden = !here;
     if (here) $("#rHere").href = `${here[0]}/${Math.max(0, Math.floor(r.now()) - 3)}`;
@@ -248,7 +250,7 @@ async function showRemote(t, id, everyone) {
   });
   $("#rMore").addEventListener("change", (e) => {
     if (e.target.dataset.opt) send({ cmd: "set", opt: +e.target.dataset.opt, value: e.target.value });
-    else if (e.target.id === "rSleep") send({ cmd: "sleep", by: +e.target.value }).then((ok) => ok && +e.target.value && toast(`The TV sleeps in ${e.target.value} minutes`));
+    else if (e.target.id === "rSleep") send({ cmd: "sleep", by: +e.target.value }).then((ok) => ok && +e.target.value && toast(+e.target.value < 0 ? "The TV sleeps when this ends" : `The TV sleeps in ${e.target.value} minutes`));
   });
   $("#rHere").addEventListener("click", () => send({ cmd: "pause" })); // the link opens it here, from where the TV was
 }

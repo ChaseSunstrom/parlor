@@ -203,7 +203,7 @@ function tvDo(m) {
       if (el && [...el.options].some((o) => o.value === m.value)) { el.value = m.value; el.dispatchEvent(new Event("change", { bubbles: true })); }
       break;
     }
-    case "sleep": tvSleep = m.by > 0 ? Date.now() + m.by * 60e3 : 0; break;
+    case "sleep": tvSleepEnd = m.by < 0; tvSleep = m.by > 0 ? Date.now() + m.by * 60e3 : 0; if (tvSleepEnd) tvDoze(tvPlayer()); break; // in so many minutes; under 0: when what plays ends
     case "type": tvAwake(); tvType(m.text || "", m.key === "enter"); break;
     case "cast": tvCast(m.cast || {}); break;
     case "stop": p?.pause(); dockStop(); break;
@@ -284,7 +284,7 @@ function tvFocused() {
   const title = el && el !== document.body ? tvCut(el.getAttribute("aria-label") || el.title || el.textContent) : "";
   return title ? { title } : null;
 }
-let tvSleep = 0, tvSleepVolume = null; // when this TV pauses and goes dark by itself (a remote's sleep timer); the volume it had before the fade
+let tvSleep = 0, tvSleepVolume = null, tvSleepEnd = false; // when this TV pauses and goes dark by itself (a remote's sleep timer); the volume it had before the fade; whether that moment is the end of what plays
 
 /** what this TV is doing, for its remotes: at most twice a second, and on every change */
 let tvSaid = 0, tvSayTimer = 0;
@@ -302,7 +302,7 @@ function tvReport(now = false) {
     ...(p?.muted ? { muted: true } : {}), ...(tvBlocked ? { blocked: true } : {}), ...tvAck,
     image: x?.image || (p && p !== dock.audio ? p.getAttribute("poster") : "") || "", // its picture, and below: is it still loading, does the screen want text, when it sleeps
     ...(p && !p.paused && p.readyState < 3 ? { waiting: true } : {}), ...(document.activeElement?.matches?.("input:not([type=range]):not([type=checkbox]), textarea") || $("#tvSearch") ? { input: true } : {}),
-    ...(tvSleep ? { sleep: Math.round(tvSleep / 1000) } : {}),
+    ...(tvSleep ? { sleep: Math.round(tvSleep / 1000) } : {}), ...(tvSleepEnd ? { sleepEnd: true } : {}),
   };
   const focus = p && !p.paused ? null : tvFocused(); // while something plays, that is what the screen shows
   if (focus) state.focus = focus;
@@ -317,17 +317,23 @@ setInterval(() => { // idle, every 10 s: still on
   if (!tvMe) return;
   const playing = tvPlayer() && !tvPlayer().paused;
   if (tvStale && !playing) return location.reload();
-  if (tvSleep) tvDoze(tvPlayer());
+  if (tvSleep || tvSleepEnd) tvDoze(tvPlayer());
   if (playing || Date.now() - tvSaid > 10000) tvReport();
 }, 2000);
 
 /** a remote's sleep timer: the sound fades over the last half minute, then whatever plays pauses (its place is kept)
     and the screen goes dark */
 function tvDoze(p) {
+  if (tvSleepEnd) { // the end of what plays: that moment moves with every pause and jump
+    if (!p || !isFinite(p.duration)) { tvSleepEnd = false; tvSleep = 0; return tvReport(); } // nothing with an end is playing: there is nothing to wait for
+    tvSleep = Date.now() + Math.max(0, (p.duration - p.currentTime) / (p.playbackRate || 1) - 2.5) * 1000; // a look early (they come every 2 s): before the next episode starts itself
+    if (p.paused) return;
+  }
   const left = tvSleep - Date.now();
   if (left > 30e3) return;
   if (left > 0) { if (p) { tvSleepVolume ??= p.volume; p.volume = tvSleepVolume * (left / 30e3); } return; }
   tvSleep = 0;
+  tvSleepEnd = false;
   if (p) { p.pause(); if (tvSleepVolume != null) p.volume = tvSleepVolume; }
   tvSleepVolume = null;
   tvIdle();

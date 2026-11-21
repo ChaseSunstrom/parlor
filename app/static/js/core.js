@@ -136,13 +136,15 @@ const PREF_DEFAULTS = {
   autoplay: true, captions: "", hideShorts: false, theater: false, volume: 1, speed: 1, cutSponsors: false,
   spoilers: false, // episode lists hide the still and summary of what you haven't watched
 };
+const PREF_OWN = ["autoplay", "captions", "subtitles", "speed", "skip", "cutSponsors", "hideShorts", "spoilers"]; // a person's own taste: on a TV these follow who is watching
+const prefKey = (key) => `parlor:${typeof tvMe !== "undefined" && tvMe && ME && PREF_OWN.includes(key) ? `${ME.id}:` : ""}${key}`;
 function pref(key) {
   try {
-    const v = JSON.parse(localStorage.getItem("parlor:" + key) ?? localStorage.getItem("yeerr:" + key));  // compat: settings saved before the rename
+    const v = JSON.parse(localStorage.getItem(prefKey(key)) ?? localStorage.getItem("parlor:" + key) ?? localStorage.getItem("yeerr:" + key));  // a TV's shared setting until the person chooses; compat: settings saved before the rename
     return v ?? PREF_DEFAULTS[key];
   } catch { return PREF_DEFAULTS[key]; }
 }
-function setPref(key, value) { try { localStorage.setItem("parlor:" + key, JSON.stringify(value)); } catch { /* private mode */ } }
+function setPref(key, value) { try { localStorage.setItem(prefKey(key), JSON.stringify(value)); } catch { /* private mode */ } }
 
 /* ---------- rows from the last visit ---------- */
 
