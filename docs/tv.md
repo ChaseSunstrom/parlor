@@ -52,17 +52,21 @@ A film's or episode's **On TV** button (on its page, and under the player while 
 
 ## The remote
 
-You find it in You → TVs → a TV. It has:
+You find it in You → TVs → a TV. The app's shortcut **TV remote** (press and hold Parlor's icon on a phone) and the address `#/remote` open the remote of the TV that is on. From top to bottom:
 
-- a joystick: drag it for the arrows, hold to keep going, press it for OK;
-- Back and Home;
-- play/pause;
-- back 10 s and forward 30 s;
-- next song;
-- volume;
-- a box that types on the TV (searching, say).
+- **What the TV shows.** While something plays: its picture, its title, and a line you drag to jump (it moves by itself in between). With nothing playing: where the TV is and what its focus is on, so you can steer without looking up.
+- **The touchpad.** Swipe for an arrow. A short swipe is one step; a long one is a step for every 44 px, so one swipe walks along a row. Rest your thumb at the end of a swipe and it keeps going, quicker and quicker. Tap for OK. Tap an edge for one step that way, or hold the edge to keep going.
+- **Back** and **Home**.
+- **Play/pause**, back 10 s, forward 30 s, next song.
+- **Volume**: mute, a slider, and − and + for one step.
+- **A box** that searches the library from the phone: tap a film or an episode and it plays on the TV, tap a show and its page opens there. While the TV has a text box of its own open (its search, a sign-in), the box is that box's keyboard, letter by letter. **Send** types it on the TV and presses Enter.
+- **More**: the film's own lists (sound, subtitles, quality), a sleep timer (the sound fades over the last half minute, what plays pauses with its place kept, the screen goes dark), **Continue on this phone** (the film opens here from where the TV was, and the TV pauses), **Stop**.
 
-It shows what the TV is playing.
+Every key acts the moment it is touched, not when the finger lifts, and dips so your thumb knows. A press that did not reach the TV shakes, and a notice says why once, not for every press of a run. The first line says which it is: this device is offline, Parlor can't be reached, or the TV is off.
+
+With more than one TV, a list beside the name switches between them. With more than one person in the household, a round picture beside the name says who the TV is acting as; press it to change (see [accounts](accounts.md)).
+
+While a TV plays, Parlor's other pages show a small **On TV** bar: what plays, a button to pause it, and a press on it opens the remote.
 
 - **Two phones** can drive the same TV; both see what it does.
 - **A computer's** arrow keys, Enter and Space work it too.

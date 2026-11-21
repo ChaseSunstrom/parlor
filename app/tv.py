@@ -311,16 +311,18 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
 
 
 class Cast(BaseModel):
-    kind: Literal["jf", "yt", "queue"]  # a Jellyfin film or episode, a YouTube video, a queue of songs (an album or a song is a queue too)
+    kind: Literal["jf", "yt", "queue", "item"]  # a Jellyfin film or episode, a YouTube video, a queue of songs (an album or a song is a queue too), a title's page (a show: pick the episode there)
     id: str = Field("", max_length=200)
     at: float = Field(0, ge=0, le=10**7)  # start here (seconds)
     items: list = Field(default_factory=list, max_length=500)  # for a queue: dock items (ids and titles only)
 
 
 class Do(BaseModel):
-    cmd: Literal["key", "toggle", "play", "pause", "seek", "skip", "volume", "type", "cast", "stop"]
+    cmd: Literal["key", "toggle", "play", "pause", "seek", "skip", "volume", "mute", "type", "cast", "stop", "set", "sleep"]
     key: Optional[Literal["up", "down", "left", "right", "enter", "back", "home"]] = None
-    by: Optional[float] = Field(None, ge=-36000, le=36000)  # seek by seconds; volume by a step
+    by: Optional[float] = Field(None, ge=-36000, le=36000)  # seek by seconds; volume by a step; sleep in this many minutes (0: not at all)
+    opt: Optional[int] = Field(None, ge=0, le=20)  # set: which of the player's lists (sound, subtitles, quality), as the TV numbered them
+    value: Optional[str] = Field(None, max_length=200)  # set: the choice in that list
     to: Optional[float] = Field(None, ge=0, le=10**7)  # seek to seconds; volume to 0..1
     text: Optional[str] = Field(None, max_length=200)
     cast: Optional[Cast] = None

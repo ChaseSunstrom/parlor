@@ -3,9 +3,10 @@
 where the focus is never lost and Back returns to the tile a title was opened from; every page of Library, Watch,
 Music and Request is reachable with the arrows (a section from the menu, its pages from the row along its top), focus
 always shows, nothing traps it, Back goes back; search has a keyboard on the screen; an idle TV goes dark.
-With --remote, the phone's remote works the TV: arrows move the TV's focus (key to TV p95 measured, under 300 ms),
-an album and a film are cast from the phone and play on the TV, play/pause, seek, volume and typing act on it, a
-second remote sees the same state, and a TV that drops off says so on the remote and comes back by itself.
+With --remote, the phone's remote works the TV: swipes on its touchpad move the TV's focus (key to TV p95 measured,
+under 300 ms), an album and a film are cast from the phone and play on the TV, play/pause, the line to drag, the
+volume slider, mute, the film's lists, typing, quick search and the sleep timer act on it, a second remote sees the
+same state, a bar on other pages says what plays, and a TV that drops off says so and comes back by itself.
 Media comes from a Jellyfin stand-in and the music folder; screenshots at 1920×1080 and phone width:
    python tests/ui_tv.py [--remote] [OUT_DIR]   (needs Playwright, its Chromium and ffmpeg)"""
 import os
@@ -78,14 +79,14 @@ def press(page, key, times=1):
 
 
 def flick(page, direction):
-    """drag the remote's joystick to one side and let go: one arrow"""
-    box = page.locator("#rStick").bounding_box()
+    """a short swipe on the remote's touchpad (36 px, from its middle): one arrow"""
+    box = page.locator("#rPad").bounding_box()
     cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
     dx, dy = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}[direction]
     page.mouse.move(cx, cy)
     page.mouse.down()
-    for k in range(1, 5):
-        page.mouse.move(cx + dx * box["width"] * 0.08 * k, cy + dy * box["width"] * 0.08 * k)
+    for k in range(1, 4):
+        page.mouse.move(cx + dx * 12 * k, cy + dy * 12 * k)
     page.mouse.up()
 
 
@@ -257,7 +258,7 @@ with sync_playwright() as pw:
         other = signed_in_phone(b, 1280)
         other.goto(BASE + f"/#/tvs/{tid}")
         other.wait_for_function("document.querySelector('#rStatus')?.textContent.startsWith('On')", timeout=30000)
-        # the joystick: each flick moves the TV's focus; timed over 20 flicks from the server passing the press on to
+        # the touchpad: each swipe moves the TV's focus; timed over 20 swipes from the server passing the press on to
         # the TV's answer after the frame that shows it (the number the remote shows)
         screen.evaluate("(() => { window.tvHeard = []; const heard = tvDo; tvDo = (m) => { tvHeard.push(m); return heard(m); }; })()")
         gaps, moved = [], 0
@@ -270,7 +271,11 @@ with sync_playwright() as pw:
             moved += screen.evaluate("document.activeElement?.outerHTML.slice(0, 80)") != before
         p95 = sorted(gaps)[int(len(gaps) * 0.95)]
         print(f"remote key to the TV's frame and back: p95 {p95} ms, worst {max(gaps)} ms; focus moved on {moved} of 20")
-        checks["the remote's joystick moves the TV's focus, key to the TV's frame p95 under 300 ms"] = moved >= 18 and p95 < 300
+        checks["a swipe on the remote's touchpad moves the TV's focus, key to the TV's frame p95 under 300 ms"] = moved >= 18 and p95 < 300
+        # what the TV's focus is on shows on the phone
+        phone.wait_for_function("byId('rTitle').textContent === (remote.tv.state.focus || {}).title", timeout=5000)
+        print("the remote shows:", phone.inner_text("#rWhere"), "/", phone.inner_text("#rTitle"))
+        checks["the remote shows what the TV's focus is on"] = phone.inner_text("#rTitle") == screen.evaluate("tvFocused().title") and "On its screen: Home" in phone.text_content("#rWhere")
         # one path: the TV's own remote and its media keys go through tvDo like a phone's presses
         own = screen.evaluate("tvHeard.length")
         press(screen, "ArrowDown")
@@ -282,24 +287,26 @@ with sync_playwright() as pw:
         said = phone.evaluate("remote.tv.state")
         print(f"the remote says: {phone.inner_text('#rStatus')}; the TV took {said.get('took')} ms to act, {said.get('paint')} ms to its frame")
         checks["the remote shows how fast the TV answers"] = said["lag"] < 400 and said.get("paint") is not None
-        # held, it keeps going; pressed, it's OK
+        # a long swipe is a step for every 44 px; resting at its end keeps going; a tap is OK; a tap on an edge is one step that way
         heard = screen.evaluate("(() => { window.tvKeys = []; const was = tvDo; window.tvDo = (m) => { tvKeys.push(m.key || m.cmd); was(m); }; return true; })()")
-        box = phone.locator("#rStick").bounding_box()
+        box = phone.locator("#rPad").bounding_box()
         cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
         phone.mouse.move(cx, cy)
         phone.mouse.down()
         for k in range(1, 6):
             phone.mouse.move(cx, cy + box["width"] * 0.08 * k)
         phone.wait_for_timeout(700)
-        phone.locator("#rStick").screenshot(path=str(OUT / "remote-joystick.png"))  # held, mid-drag
+        phone.locator("#rPad").screenshot(path=str(OUT / "remote-pad.png"))  # held, mid-swipe
         phone.wait_for_timeout(800)
         phone.mouse.up()
         phone.wait_for_timeout(300)
         held = screen.evaluate("tvKeys.filter((k) => k === 'down').length")
         phone.mouse.click(cx, cy)
         screen.wait_for_function("tvKeys.includes('enter')", timeout=5000)
-        print(f"held down for 1.5 s: {held} steps")
-        checks["holding the joystick keeps going, pressing it is OK"] = heard and held >= 4 and phone.evaluate("byId('rKnob').style.translate") in ("", "none")
+        phone.mouse.click(box["x"] + box["width"] * 0.93, cy)  # its right edge
+        screen.wait_for_function("tvKeys.at(-1) === 'right'", timeout=5000)
+        print(f"a swipe of {round(box['width'] * 0.4)} px, then held for 1.5 s: {held} steps")
+        checks["a long swipe steps along, resting keeps going, a tap is OK and a tap on an edge is that arrow"] = heard and held >= 6 and not phone.evaluate("byId('rPad').classList.contains('held')")
         # an album from the phone: ⋯ → Play on TV; it plays in the TV's dock, and both remotes see it
         phone.goto(BASE + "/#/library/The%20Gulls/Harbor")
         phone.wait_for_selector(".hero [data-local-more]", timeout=30000)
@@ -310,6 +317,16 @@ with sync_playwright() as pw:
         phone.wait_for_function("document.querySelector('#rTitle').textContent === 'Dawn'", timeout=10000)
         other.wait_for_function("document.querySelector('#rTitle').textContent === 'Dawn'", timeout=10000)
         checks["an album cast from the phone plays on the TV, and both remotes see it"] = True
+        # on another page of Parlor, a bar says what the TV plays; its button pauses and plays it
+        other.goto(BASE + "/#/")
+        other.wait_for_function("byId('tvBar') && !byId('tvBar').hidden && byId('tvBar').textContent.includes('Dawn')", timeout=10000)
+        other.click("#tvBar button")
+        screen.wait_for_function("dock.audio.paused", timeout=5000)
+        other.wait_for_function("byId('tvBar').textContent.includes('paused')", timeout=5000)
+        other.screenshot(path=str(OUT / "remote-bar.png"))
+        other.click("#tvBar button")
+        screen.wait_for_function("!dock.audio.paused", timeout=5000)
+        checks["a bar on Parlor's other pages says what the TV plays, and pauses it"] = other.evaluate("byId('tvBar').querySelector('a').hash") == f"#/tvs/{tid}"
         # play/pause, volume, then a film cast from its page, seeking on it
         phone.click("#rToggle")
         screen.wait_for_function("dock.audio.paused", timeout=5000)
@@ -317,6 +334,16 @@ with sync_playwright() as pw:
         phone.click("[data-r='volume:-0.1']")
         screen.wait_for_function("Math.abs(dock.audio.volume - 0.9) < 0.01", timeout=5000)
         checks["play/pause and volume from the remote"] = True
+        phone.locator("#rVolume").fill("40")  # the slider
+        screen.wait_for_function("Math.abs(dock.audio.volume - 0.4) < 0.01", timeout=5000)
+        phone.click("#rMute")
+        screen.wait_for_function("dock.audio.muted", timeout=5000)
+        phone.wait_for_function("byId('rMute').getAttribute('aria-pressed') === 'true' && byId('rVol').textContent === 'Muted'", timeout=5000)
+        phone.click("#rMute")
+        screen.wait_for_function("!dock.audio.muted", timeout=5000)
+        phone.locator("#rVolume").fill("100")
+        screen.wait_for_function("dock.audio.volume === 1", timeout=5000)
+        checks["the volume slider and mute"] = True
         phone.goto(BASE + f"/#/jf/item/{jfs.FILM}")
         phone.wait_for_selector("[data-cast-jf]", timeout=30000)
         phone.click("[data-cast-jf]")
@@ -326,6 +353,24 @@ with sync_playwright() as pw:
         phone.click("[data-r='seek:-10']")
         screen.wait_for_function("document.querySelector('#jfVideo').currentTime < 2.5", timeout=5000)
         checks["a film cast from its page plays on the TV, and the remote seeks it"] = True
+        # the line under the title: it moves by itself while the film plays, and dragged it jumps there
+        phone.wait_for_function("+byId('rSeek').max > 10 && !byId('rSeek').disabled", timeout=5000)
+        phone.locator("#rSeek").fill("4")
+        screen.wait_for_function("Math.abs(document.querySelector('#jfVideo').currentTime - 4) < 1.5", timeout=5000)
+        phone.wait_for_function("+byId('rSeek').value >= 6 && byId('rAt').textContent === clock(+byId('rSeek').value)", timeout=8000)
+        checks["the remote's line is dragged to jump, and moves by itself while the film plays"] = "/api/" in phone.evaluate("byId('rArt').getAttribute('src') || ''")
+        # the film's own lists (sound, subtitles, quality) are in More on the remote
+        lists = phone.evaluate("remote.tv.state.lists")
+        print("the film's lists on the remote:", [(l["name"], len(l["all"])) for l in lists])
+        phone.click("#rMore summary")
+        n = next(i for i, l in enumerate(lists) if l["name"] != "Quality" and len(l["all"]) > 1)
+        phone.select_option(f"#rLists select[data-opt='{n}']", lists[n]["all"][1][0])
+        screen.wait_for_function(f"tvLists()[{n}].selectedIndex === 1", timeout=5000)
+        phone.screenshot(path=str(OUT / "remote-more.png"), full_page=True)
+        phone.click("#rMore summary")
+        checks["a film's subtitles and sound are chosen from the remote"] = True
+        phone.click("[data-r='seek:-10']")  # back to its start, for what follows
+        screen.wait_for_function("document.querySelector('#jfVideo').currentTime < 2.5", timeout=5000)
         # the film fills the screen; OK pauses with a strip over it; Down opens its options, where OK steps a list on; Up returns
         press(screen, "Enter")
         screen.wait_for_function("document.querySelector('#jfVideo').paused && document.querySelector('.player.osd')", timeout=5000)
@@ -377,14 +422,40 @@ with sync_playwright() as pw:
         screen.wait_for_function("location.hash.includes('search/') && decodeURIComponent(location.hash).includes('Gale')", timeout=10000)
         phone.wait_for_function("document.querySelector('#rText').value === ''", timeout=5000)  # sent: the box empties
         checks["typing on the remote searches on the TV"] = True
+        # the same box searches from the phone when the TV has no text box open: a title found plays on the TV. With the TV's
+        # search open, what is typed shows there letter by letter.
+        phone.click("[data-r='key:home']")
+        phone.wait_for_function("remote.tv.state.page === '#/' && !remote.tv.state.input", timeout=10000)
+        phone.fill("#rText", "Night")
+        phone.wait_for_selector("#rFound [data-found]", timeout=10000)
+        stayed = screen.evaluate("location.hash") in ("", "#/")
+        phone.screenshot(path=str(OUT / "remote-search.png"))
+        phone.click("#rFound [data-found^='jf:']")
+        screen.wait_for_function("location.hash.startsWith('#/jf/play/')", timeout=10000)
+        screen.evaluate("go('#/tvsearch')")
+        phone.wait_for_function("remote.tv.state.input", timeout=10000)
+        phone.locator("#rText").press_sequentially("Gal")
+        screen.wait_for_function("document.querySelector('#tvq')?.textContent === 'Gal'", timeout=10000)
+        checks["the remote's box finds a title and plays it on the TV, and types into the TV's own search"] = stayed and phone.evaluate("byId('rFound').hidden")
+        phone.fill("#rText", "")
         # the TV drops off: the remote says so, and it comes back by itself
         screen.evaluate("tvStream.close()")  # the TV's connection drops
         phone.wait_for_function("document.querySelector('#rStatus').textContent.startsWith('Off')", timeout=(tv.PING + 10) * 1000)
         screen.evaluate("tvListen()")  # what EventSource does by itself after a drop
         phone.wait_for_function("document.querySelector('#rStatus').textContent.startsWith('On')", timeout=15000)
         checks["a TV that drops off shows as off on the remote, and comes back"] = True
+        phone.evaluate("scrollTo(0, 0)")
         phone.wait_for_timeout(400)
         phone.screenshot(path=str(OUT / "remote-phone.png"))
+        # the sleep timer: set from More; when its time comes what plays pauses and the screen goes dark
+        phone.click("#rMore summary")
+        phone.select_option("#rSleep", "15")
+        screen.wait_for_function("tvSleep > Date.now() + 14 * 60e3", timeout=5000)
+        phone.wait_for_function("byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)
+        screen.evaluate("dockPlay([{ src: '/api/jf/music/none', title: 'x' }], 0, false); tvSleep = Date.now() + 300")  # its time has come
+        screen.wait_for_function("tvSleep === 0 && document.querySelector('#tvIdle') && !(tvPlayer() && !tvPlayer().paused)", timeout=8000)
+        phone.wait_for_function("!byId('rSleepAt').textContent.includes('goes dark at')", timeout=5000)
+        checks["a sleep timer from the remote pauses the TV and darkens its screen"] = True
     b.close()
 server.should_exit = True
 for k, v in checks.items():
@@ -392,6 +463,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (23 if REMOTE else 11) and all(checks.values()) and not errors
+ok = len(checks) == (30 if REMOTE else 11) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

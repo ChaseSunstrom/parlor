@@ -193,6 +193,9 @@ class Remote(unittest.TestCase):
         for bad in ({"cmd": "key", "key": "sideways"}, {"cmd": "explode"}, {"cmd": "cast"}, {"cmd": "type", "text": "x" * 201},
                     {"cmd": "cast", "cast": {"kind": "jf", "id": "x" * 300}}, {"cmd": "volume", "to": -1}):
             self.assertEqual(self.owner.post(f"/api/tv/{tid}/do", json=bad).status_code, 422, bad)
+        for good in ({"cmd": "mute"}, {"cmd": "sleep", "by": 30}, {"cmd": "set", "opt": 1, "value": "eng"}, {"cmd": "cast", "cast": {"kind": "item", "id": "a" * 32}}):
+            self.assertEqual(self.owner.post(f"/api/tv/{tid}/do", json=good).status_code, 200, good)
+        self.assertEqual(self.owner.post(f"/api/tv/{tid}/do", json={"cmd": "set", "opt": 99, "value": "x"}).status_code, 422)
         self.assertEqual(self.owner.post("/api/tv/state", json={"state": {}}).status_code, 403, "only a TV says what it plays")
         self.assertEqual(t.post("/api/tv/state", json={"state": {"x": "y" * 5000}}).status_code, 413)
         self.assertEqual(httpx.post(f"{BASE}/api/tv/{tid}/do", json={"cmd": "toggle"}, cookies=self.owner.cookies).status_code, 403,

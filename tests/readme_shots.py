@@ -479,7 +479,7 @@ def main():
             tv.wait_for_function("document.querySelector('#jfVideo') && !document.querySelector('#jfVideo').paused", timeout=30000)
             phone.set_viewport_size({"width": 390, "height": 866})  # a little taller: the volume row shows whole
             tid = phone.evaluate("fetch('/api/tv').then(r => r.json()).then(r => r.tvs[0].id)")
-            shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rStick", lambda q: (q.wait_for_function(
+            shoot(phone, "remote", "phone", f"#/tvs/{tid}", "#rPad", lambda q: (q.wait_for_function(
                 "document.querySelector('#rStatus')?.textContent.startsWith('On') && !document.querySelector('#toast.show') && document.querySelector('#rTitle')?.textContent === 'Night Train'", timeout=30000),
                 q.wait_for_timeout(600)))  # the toast fades out in 0.18 s: don't shoot it half gone
             # Request → Games, with Steam's store and Questarr standing in

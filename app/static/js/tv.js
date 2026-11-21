@@ -131,6 +131,7 @@ function tvListen() {
   tvStream.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.type === "do") tvDo(m);
+    else if (m.type === "viewer" && m.tv === tvMe?.id) location.reload(); // someone else is watching now: their rows, their place, their limits
   };
   tvStream.onopen = () => { tvReport(true); tvFresh(); }; // it opens again after Parlor restarts: an update, perhaps
 }
@@ -182,6 +183,13 @@ function tvDo(m) {
       for (const el of new Set([p, dock.audio, dock.spare].filter(Boolean))) { el.volume = v; if (v > 0 && (m.by || 0) >= 0) el.muted = false; } // the dock's two players keep the same level; turning it up takes a mute off
       break;
     }
+    case "mute": { const on = !(p || dock.audio).muted; for (const el of new Set([p, dock.audio, dock.spare].filter(Boolean))) el.muted = on; break; }
+    case "set": { // one of the player's lists, by the number tvReport gave it
+      const el = tvLists()[m.opt];
+      if (el && [...el.options].some((o) => o.value === m.value)) { el.value = m.value; el.dispatchEvent(new Event("change", { bubbles: true })); }
+      break;
+    }
+    case "sleep": tvSleep = m.by > 0 ? Date.now() + m.by * 60e3 : 0; break;
     case "type": tvAwake(); tvType(m.text || "", m.key === "enter"); break;
     case "cast": tvCast(m.cast || {}); break;
     case "stop": p?.pause(); dockStop(); break;
@@ -195,7 +203,7 @@ let tvAck = null;
 function tvActed({ n, cmd }, t0) {
   const took = performance.now() - t0;
   let said = false;
-  if (!n) return cmd === "key" ? undefined : tvReport(); // the TV's own remote: no phone waits for an answer, and an arrow changes nothing a phone shows
+  if (!n) return tvReport(); // the TV's own remote: no phone waits for an answer (what the focus is on now goes out at the usual pace)
   const say = (t1, t2) => {
     if (said) return;
     said = true;
@@ -245,11 +253,24 @@ function tvCast(c) {
   const at = Math.floor(+c.at || 0);
   if (c.kind === "jf" && tvHex(c.id)) return go(`#/jf/play/${c.id}${at ? `/${at}` : ""}`);
   if (c.kind === "yt" && /^[\w-]{11}$/.test(c.id || "")) return go(`#/watch/${c.id}${at ? `/${at}` : ""}`);
+  if (c.kind === "item" && tvHex(c.id)) return go(`#/jf/item/${c.id}`); // a show's page: the episode is picked there
   if (c.kind === "queue") {
     const items = (c.items || []).map(tvItem).filter(Boolean);
     if (items.length) dockPlay(items, Math.max(0, Math.min(+c.id || 0, items.length - 1)), false);
   }
 }
+
+/** the lists a player offers (sound, subtitles, quality), in the order a remote numbers them */
+const tvLists = () => [...document.querySelectorAll("#view .ptools select")].filter((el) => !el.hidden && !el.disabled && el.options.length > 1);
+const tvCut = (s, n = 60) => String(s || "").trim().replace(/\s+/g, " ").slice(0, n);
+/** what the focus is on, for a phone that mirrors this screen: Home's tile with its picture, else the name of the button or link */
+function tvFocused() {
+  const x = $("#tvhStack") && TVH.rows[TVH.r]?.items[TVH.at[TVH.key]], el = document.activeElement;
+  if (x && el?.closest("#tvhStack")) return { title: tvCut(x.title), image: x.img || "", kind: x.kind };
+  const title = el && el !== document.body ? tvCut(el.getAttribute("aria-label") || el.title || el.textContent) : "";
+  return title ? { title } : null;
+}
+let tvSleep = 0, tvSleepVolume = null; // when this TV pauses and goes dark by itself (a remote's sleep timer); the volume it had before the fade
 
 /** what this TV is doing, for its remotes: at most twice a second, and on every change */
 let tvSaid = 0, tvSayTimer = 0;
@@ -265,15 +286,36 @@ function tvReport(now = false) {
     by: x?.by || "", kind: p ? (p === dock.audio ? "audio" : "video") : null, playing: !!p && !p.paused, at: p ? Math.floor(p.currentTime || 0) : 0,
     length: p && isFinite(p.duration) ? Math.floor(p.duration) : 0, volume: p ? Math.round(p.volume * 100) / 100 : 1,
     ...(p?.muted ? { muted: true } : {}), ...(tvBlocked ? { blocked: true } : {}), ...tvAck,
+    image: x?.image || (p && p !== dock.audio ? p.getAttribute("poster") : "") || "", // its picture, and below: is it still loading, does the screen want text, when it sleeps
+    ...(p && !p.paused && p.readyState < 3 ? { waiting: true } : {}), ...(document.activeElement?.matches?.("input:not([type=range]):not([type=checkbox]), textarea") || $("#tvSearch") ? { input: true } : {}),
+    ...(tvSleep ? { sleep: Math.round(tvSleep / 1000) } : {}),
   };
+  const focus = p && !p.paused ? null : tvFocused(); // while something plays, that is what the screen shows
+  if (focus) state.focus = focus;
+  const lists = p && p !== dock.audio ? tvLists().map((el) => ({ name: tvCut(el.getAttribute("aria-label"), 30), value: el.value, all: [...el.options].slice(0, 30).map((o) => [o.value, tvCut(o.textContent, 40)]) })) : [];
+  if (lists.length && JSON.stringify(lists).length < 2600) state.lists = lists; // the server takes 4000 characters in all
   tvAck = null;
   post("/api/tv/state", { state }).catch(() => {});
 }
-for (const k of ["play", "pause", "seeked", "volumechange", "loadedmetadata"]) document.addEventListener(k, () => tvReport(), true);
+for (const k of ["play", "pause", "seeked", "volumechange", "loadedmetadata", "waiting", "playing"]) document.addEventListener(k, () => tvReport(), true);
 addEventListener("hashchange", () => tvReport());
 setInterval(() => { // idle, every 10 s: still on
   if (!tvMe) return;
   const playing = tvPlayer() && !tvPlayer().paused;
   if (tvStale && !playing) return location.reload();
+  if (tvSleep) tvDoze(tvPlayer());
   if (playing || Date.now() - tvSaid > 10000) tvReport();
 }, 2000);
+
+/** a remote's sleep timer: the sound fades over the last half minute, then whatever plays pauses (its place is kept)
+    and the screen goes dark */
+function tvDoze(p) {
+  const left = tvSleep - Date.now();
+  if (left > 30e3) return;
+  if (left > 0) { if (p) { tvSleepVolume ??= p.volume; p.volume = tvSleepVolume * (left / 30e3); } return; }
+  tvSleep = 0;
+  if (p) { p.pause(); if (tvSleepVolume != null) p.volume = tvSleepVolume; }
+  tvSleepVolume = null;
+  tvIdle();
+  tvReport(true);
+}

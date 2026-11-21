@@ -1,4 +1,5 @@
-/* A phone or a computer and the house's TVs: TVs (#/tvs) to add one by its code, a remote for each, On TV on films,
+/* A phone or a computer and the house's TVs: TVs (#/tvs) to add one by its code, a remote for each (a touchpad, what
+   plays with a line to drag, volume, a box that types on the TV or searches from here, who is watching), On TV on films,
    episodes, videos, albums and songs, and the TV sets themselves (power, input, volume, their own player) for the
    accounts an admin gave them to. Every command to a TV showing Parlor goes through tvSend. tv.js is the TV's side;
    tv.py, tvhw.py and cast.py are the server's. */
@@ -9,6 +10,7 @@ let tvKnown = [], tvSets = []; // this account's paired TVs; the TV sets that pl
 async function remoteBoot() {
   [tvKnown, tvSets] = await Promise.all([api("/api/tv").then((r) => r.tvs, () => []), api("/api/tv/hw").then((r) => r.sets.filter((x) => x.plays), () => [])]);
   document.querySelectorAll(".ontv").forEach((b) => { b.hidden = !(tvKnown.length || tvSets.length); });
+  tvBar();
 }
 
 page("tvs", showTvs, "settings");
@@ -18,6 +20,7 @@ async function showTvs(t, [id, all] = []) {
   const { tvs } = await api("/api/tv");
   if (t !== ticket) return;
   tvKnown = tvs;
+  tvBar();
   paint(t, `<section class="home">${aurora}<h1>TVs</h1><p>Open Parlor on a TV at <b>${esc(location.origin)}/tv</b> (or the Android app on Android TV): it shows a code. Enter it here, and this account's phones and computers can play things on that TV and work it as a remote.</p></section>
     <div class="wrap tvs-page">
       <form class="panel tvadd" id="tvAdd"><h3>Add a TV</h3>
@@ -49,72 +52,252 @@ document.addEventListener("click", (e) => {
 
 let remote = null;
 const chev = (deg) => ICON.chev.replace("<svg", `<svg style="rotate:${deg}deg"`);
+const R_MUTE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" fill="currentColor"/><path d="m16 9.5 4.5 5m0-5-4.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+const R_SHAKE = [{ translate: "0" }, { translate: "-6px" }, { translate: "6px" }, { translate: "-3px" }, { translate: "0" }]; // a press that didn't get there
+/** a person's round picture: their initial on a colour of their own (from the name, so it is the same on every screen) */
+const avatar = (name) => `<span class="avatar" style="--h:${[...String(name)].reduce((n, c) => (n * 31 + c.codePointAt(0)) % 360, 7)}" aria-hidden="true">${esc([...String(name).trim()][0]?.toUpperCase() || "?")}</span>`;
+const TV_PLACES = [["#/tvsearch", "Search"], ["#/search", "Search"], ["#/jf", "Library"], ["#/watch", "Watch"], ["#/yt", "Watch"], ["#/live", "Live"], ["#/music", "Music"], ["#/library", "Music"],
+  ["#/request", "Request"], ["#/games", "Games"], ["#/who", "Who's watching"], ["#/settings", "Settings"]];
+const tvPlace = (hash = "") => TV_PLACES.find(([h]) => hash.startsWith(h))?.[1] || "Home"; // where a TV is, in a word
+const tvOwn = (url) => (/^\/(?!\/)/.test(url || "") ? url : ""); // a picture a TV names: only from Parlor itself
+/** send only the newest value while an earlier one is still on its way (a slider being dragged, a box being typed in) */
+const latest = (send) => {
+  let busy = false, next = null;
+  const go = async (v) => {
+    if (busy) { next = [v]; return; }
+    busy = true;
+    await send(v);
+    busy = false;
+    if (next) { const [n] = next; next = null; go(n); }
+  };
+  return go;
+};
+
+/** #/remote (the app's shortcut): the remote of the TV that is on, else of the one used last */
+page("remote", async (t) => {
+  const { tvs } = await api("/api/tv");
+  if (t !== ticket) return;
+  const last = pref("tvLast"), x = tvs.find((x) => x.online && x.id === last) || tvs.find((x) => x.online) || tvs.find((x) => x.id === last) || tvs[0];
+  location.replace(x ? `#/tvs/${x.id}` : "#/tvs");
+}, "settings");
+
 async function showRemote(t, id, everyone) {
-  remote?.stream.close();
+  remote?.end();
+  setPref("tvLast", id);
   paint(t, `<div class="wrap remote" id="remote" data-tv="${id}">
-    <header><span class="dot" id="rDot"></span><div><h1 id="rName">TV</h1><small class="dim" id="rStatus">Connecting…</small></div><a class="ghost" href="#/tvs">All TVs</a></header>
-    <div class="rnow" id="rNow" aria-live="polite"><div class="rtitle"><b id="rTitle">Nothing playing</b><span class="dim" id="rBy"></span></div>
-      <div class="rline"><span id="rAt">0:00</span><i><b id="rBar"></b></i><span id="rLen">0:00</span></div>
+    <header><span class="dot" id="rDot"></span><div><h1 id="rName">${esc(tvKnown.find((x) => x.id === id)?.name || "TV")}</h1><small class="dim" id="rStatus">Connecting…</small></div>
+      <select id="rTvs" aria-label="Another TV" hidden></select><button class="who" id="rWho" hidden></button></header>
+    <div class="rnow" id="rNow" aria-live="polite"><img id="rArt" alt="" hidden>
+      <div class="rtitle"><small class="dim" id="rWhere"></small><b id="rTitle">Nothing playing</b><span class="dim" id="rBy"></span></div>
+      <div class="rline"><span id="rAt">0:00</span><input type="range" id="rSeek" min="0" max="0" value="0" step="1" disabled aria-label="Where it is: drag to jump"><span id="rLen">0:00</span></div>
       <p class="rwarn" id="rWarn" role="alert" hidden></p></div>
-    <div class="stick" id="rStick" tabindex="0" role="group" aria-label="Joystick: drag it for the arrows, hold to keep going, press it for OK. Arrow keys and Enter work too.">
-      <span class="notch up">${chev(-90)}</span><span class="notch right">${chev(0)}</span><span class="notch down">${chev(90)}</span><span class="notch left">${chev(180)}</span>
-      <span class="knob" id="rKnob" aria-hidden="true"><b>OK</b></span>
+    <div class="pad" id="rPad" tabindex="0" role="group" aria-label="Touchpad: swipe for the arrows and rest to keep going, tap for OK, tap an edge for one step that way. Arrow keys and Enter work too.">
+      <span class="edge up">${chev(-90)}</span><span class="edge right">${chev(0)}</span><span class="edge down">${chev(90)}</span><span class="edge left">${chev(180)}</span>
+      <span class="padok" aria-hidden="true">OK</span><i class="padtouch" aria-hidden="true"></i>
       <span class="vh">${[["up", "Up"], ["left", "Left"], ["enter", "OK"], ["right", "Right"], ["down", "Down"]].map(([k, l]) => `<button tabindex="-1" data-r="key:${k}">${l}</button>`).join("")}</span>
     </div>
-    <div class="rrow"><button class="ghost" data-r="key:back">Back</button><button class="ghost" data-r="key:home">${ICON.home}Home</button></div>
+    <div class="rrow"><button class="ghost" data-r="key:back">${chev(180)}Back</button><button class="ghost" data-r="key:home">${ICON.home}Home</button></div>
     <div class="rrow">
       <button class="icon-btn" data-r="seek:-10" aria-label="Back 10 seconds">−10</button>
       <button class="icon-btn big" data-r="toggle" id="rToggle" aria-label="Play or pause">${ICON.play}</button>
       <button class="icon-btn" data-r="seek:30" aria-label="Forward 30 seconds">+30</button>
       <button class="icon-btn" data-r="skip:1" aria-label="Next song">${ICON.next}</button>
     </div>
-    <div class="rrow"><button class="ghost" data-r="volume:-0.1" aria-label="Quieter">−</button><span class="dim" id="rVol">Volume</span><button class="ghost" data-r="volume:0.1" aria-label="Louder">+</button></div>
+    <div class="rrow rvol"><button class="icon-btn" data-r="mute" id="rMute" aria-label="Mute" aria-pressed="false">${R_MUTE}</button>
+      <button class="icon-btn" data-r="volume:-0.1" aria-label="Quieter">−</button>
+      <input type="range" id="rVolume" min="0" max="100" value="100" aria-label="Volume">
+      <button class="icon-btn" data-r="volume:0.1" aria-label="Louder">+</button><span class="dim" id="rVol">100%</span></div>
+    <form class="actions" id="rType"><label class="field grow"><span class="vh">Search, or type on the TV</span><input id="rText" maxlength="200" placeholder="Search, or type on the TV" autocomplete="off" enterkeyhint="send"></label><button class="primary small">Send</button></form>
+    <ul class="rfound" id="rFound" hidden></ul>
+    <details class="rmore" id="rMore"><summary>More</summary>
+      <div id="rLists"></div>
+      <label class="field"><span>Sleep timer</span><select id="rSleep"><option value="0">Off</option>${[15, 30, 45, 60, 90, 120].map((m) => `<option value="${m}">In ${m} minutes</option>`).join("")}</select>
+        <small id="rSleepAt">The sound fades, what plays pauses and the screen goes dark.</small></label>
+      <div class="rrow"><a class="ghost" id="rHere" hidden>Continue on this phone</a><button class="ghost" data-r="stop">Stop</button><a class="ghost" href="#/tvs">All TVs</a></div>
+    </details>
     <div class="rhw" id="rHw" hidden></div>
-    <form class="actions" id="rType"><label class="field grow"><span class="vh">Type on the TV</span><input id="rText" maxlength="200" placeholder="Type on the TV (search, a name…)" autocomplete="off"></label><button class="primary small">Send</button></form>
   </div>`);
   const all = everyone ? "?everyone=true" : ""; // an admin's remote from Settings → TVs
-  const r = (remote = { id, all, stream: new EventSource(`/api/tv/events${all}`), tv: null });
-  const draw = () => {
-    if (t !== ticket) return;
-    const x = r.tv, s = x?.state || {};
-    $("#rName").textContent = x?.name || "This TV isn't paired any more";
-    $("#rDot").className = `dot${x?.online ? " on" : ""}`;
+  const gone = new AbortController();
+  const r = (remote = { id, all, stream: new EventSource(`/api/tv/events${all}`), tv: null, heardAt: Date.now() });
+  r.end = () => { r.stream.close(); clearInterval(r.timer); gone.abort(); };
+  /** where it is now: what the TV last said, and the seconds since while it plays */
+  r.now = () => {
+    const s = r.tv?.state || {};
+    return Math.min(s.length || Infinity, (s.at || 0) + (s.playing && !s.waiting ? (Date.now() - r.heardAt) / 1000 : 0));
+  };
+  const tick = () => {
+    if (r.seeking) return;
+    const seek = $("#rSeek"), length = r.tv?.state?.length || 0, at = r.now();
+    seek.max = length;
+    seek.disabled = !length;
+    seek.value = at;
+    $("#rAt").textContent = clock(at);
+    $("#rLen").textContent = clock(length);
+  };
+  r.timer = setInterval(() => (t === ticket && $("#remote") ? tick() : r.end()), 500);
+  const draw = (r.draw = () => {
+    if (t !== ticket || !$("#remote")) return;
+    const x = r.tv, s = x?.state || {}, on = !!x?.online, f = (!s.title && s.focus) || null, at = String(s.page || ""); // nothing playing: what the TV's focus is on
+    if (r.heard) $("#rName").textContent = x?.name || "This TV isn't paired any more";
+    $("#rDot").className = `dot${on ? " on" : ""}`;
+    $("#remote").classList.toggle("off", !on);
     if (s.lag != null) { r.lag = s.lag; r.ack = s.ack; } // the last press the TV answered: its number, and the time from the server to the TV's frame and back
-    $("#rStatus").textContent = !x ? "" : x.online ? (s.page ? `On${r.lag == null ? "" : r.lag < 400 ? ` · answers in ${r.lag} ms` : ` · slow to answer (${(r.lag / 1000).toFixed(1)} s)`}` : "On, starting")
-      : "Off, or not showing Parlor. It reconnects by itself when it's back.";
-    $("#rTitle").textContent = s.title || "Nothing playing";
+    $("#rStatus").textContent = !navigator.onLine ? "This device is offline" : r.lost ? "Can't reach Parlor: trying again…" : !x ? ""
+      : on ? (s.page ? `On${r.lag == null ? "" : r.lag < 400 ? ` · answers in ${r.lag} ms` : ` · slow to answer (${(r.lag / 1000).toFixed(1)} s)`}` : "On, starting")
+        : "Off, or not showing Parlor. It reconnects by itself when it's back.";
+    $("#rWhere").textContent = !on ? "" : s.title ? (s.waiting ? "Loading…" : s.playing ? "Playing" : "Paused") : `On its screen: ${tvPlace(at)}`;
+    $("#rTitle").textContent = s.title || f?.title || "Nothing playing";
+    $("#rBy").textContent = s.by || (f && f.kind) || "";
+    const art = tvOwn(s.title ? s.image : f?.image), img = $("#rArt");
+    if (img.dataset.src !== art) { img.dataset.src = art; img.hidden = !art; if (art) img.src = art; }
     $("#rWarn").hidden = !(s.blocked || s.muted);
     $("#rWarn").textContent = s.blocked ? "The TV's browser is holding this back until a key is pressed on the TV itself. A browser left running as a TV needs --autoplay-policy=no-user-gesture-required."
       : s.muted ? "The sound is muted on the TV's page: press + to turn it on." : "";
-    $("#rBy").textContent = s.by || "";
-    $("#rAt").textContent = clock(s.at || 0);
-    $("#rLen").textContent = clock(s.length || 0);
-    $("#rBar").style.width = s.length ? `${(100 * s.at) / s.length}%` : "0";
     $("#rToggle").innerHTML = s.playing ? ICON.pause : ICON.play;
-    $("#rVol").textContent = `Volume ${Math.round((s.volume ?? 1) * 100)}%`;
+    $("#rToggle").setAttribute("aria-label", s.playing ? "Pause" : "Play");
+    const volume = Math.round((s.volume ?? 1) * 100);
+    if (!r.sliding) $("#rVolume").value = volume;
+    $("#rVol").textContent = s.muted ? "Muted" : `${volume}%`;
+    $("#rMute").setAttribute("aria-pressed", String(!!s.muted));
+    const offered = (Array.isArray(s.lists) ? s.lists : []).filter((l) => Array.isArray(l?.all) && l.all.every(Array.isArray));
+    const lists = JSON.stringify(offered); // the player's own choices: sound, subtitles, quality
+    if (lists !== r.lists && !$("#rLists select:focus")) {
+      r.lists = lists;
+      $("#rLists").innerHTML = offered.map((l, i) => `<label class="field"><span>${esc(l.name)}</span><select data-opt="${i}">${l.all.map(([v, n]) => `<option value="${esc(v)}"${v === l.value ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`).join("");
+    }
+    if (!s.sleep && document.activeElement !== $("#rSleep")) $("#rSleep").value = "0";
+    $("#rSleepAt").textContent = s.sleep ? `The TV pauses and goes dark at ${new Date(s.sleep * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.` : "The sound fades, what plays pauses and the screen goes dark.";
+    const here = on && s.kind === "video" && /^#\/(jf\/play\/[0-9a-f]{32}|watch\/[\w-]{11})/.exec(at); // a film or a video: this phone can carry on with it
+    $("#rHere").hidden = !here;
+    if (here) $("#rHere").href = `${here[0]}/${Math.max(0, Math.floor(r.now()) - 3)}`;
+    tick();
+  });
+  /** who the TV is acting as, when its household has more than one person */
+  const who = async () => {
+    const p = await api(`/api/tv/${id}/people${all}`).catch(() => null);
+    if (t !== ticket || !$("#rWho") || !p || p.people.length < 2) return;
+    const now = p.people.find((x) => x.id === p.viewer) || p.people.find((x) => x.owner) || p.people[0];
+    $("#rWho").hidden = false;
+    $("#rWho").innerHTML = `${avatar(now.name)}<span class="vh">Watching as ${esc(now.name)}: change who</span>`;
+    $("#rWho").title = `Watching as ${now.name}`;
+    $("#rWho").onclick = () => whoAsk(id, p.people, now.id, all);
   };
   r.stream.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.type === "tvs") r.tv = m.tvs.find((x) => x.id === id) || null;
-    else if (m.tv !== id || !r.tv) return;
+    Object.assign(r, { lost: false, heard: true });
+    if (m.type === "tvs") {
+      r.tv = m.tvs.find((x) => x.id === id) || null;
+      r.heardAt = Date.now();
+      const tvs = $("#rTvs"); // more than one TV: the others are one press away
+      tvs.hidden = m.tvs.length < 2;
+      tvs.innerHTML = m.tvs.map((x) => `<option value="${x.id}"${x.id === id ? " selected" : ""}>${esc(x.name)}${x.online ? "" : " (off)"}</option>`).join("");
+    } else if (m.tv !== id || !r.tv) return;
     else if (m.type === "online") r.tv.online = true;
     else if (m.type === "offline") r.tv.online = false;
-    else if (m.type === "state") { r.tv.online = true; r.tv.state = m.state; }
+    else if (m.type === "state") { r.tv.state = m.state; r.heardAt = Date.now(); } // on or off is the server's word alone: a TV whose stream dropped still says what it shows
+    else if (m.type === "viewer") who();
     else if (m.type === "gone") r.tv = null;
     draw();
   };
   r.stream.onerror = () => {
     if (t !== ticket) return;
-    $("#rStatus").textContent = "Reconnecting…";
+    r.lost = true;
+    draw();
     if (r.stream.readyState === EventSource.CLOSED) setTimeout(() => t === ticket && route(), 5000); // refused: start again
   };
-  addEventListener("hashchange", () => r.stream.close(), { once: true });
-  joystick(byId("rStick"), (key) => tvSend(id, { cmd: "key", key }, all));
+  r.stream.onopen = () => { r.lost = false; draw(); };
+  addEventListener("hashchange", r.end, { once: true });
+  for (const k of ["online", "offline"]) addEventListener(k, draw, { signal: gone.signal });
+  const send = (body) => tvSend(id, body, all);
+  touchpad(byId("rPad"), (key) => send({ cmd: "key", key }));
+  who();
   api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(id, sets), () => {});
+  $("#rTvs").addEventListener("change", (e) => go(`#/tvs/${e.target.value}${everyone ? "/all" : ""}`));
+  // where it is: dragged, the time under the thumb shows; let go, the TV jumps there
+  $("#rSeek").addEventListener("input", (e) => { r.seeking = true; $("#rAt").textContent = clock(+e.target.value); });
+  $("#rSeek").addEventListener("change", (e) => {
+    const s = r.tv?.state;
+    if (s) { s.at = +e.target.value; r.heardAt = Date.now(); }
+    r.seeking = false;
+    send({ cmd: "seek", to: +e.target.value });
+  });
+  const volume = latest((v) => send({ cmd: "volume", to: v / 100 }));
+  $("#rVolume").addEventListener("input", (e) => { r.sliding = true; $("#rVol").textContent = `${e.target.value}%`; volume(+e.target.value); });
+  $("#rVolume").addEventListener("change", () => { r.sliding = false; });
+  // the text box: the TV's keyboard while the TV has a box of its own open; otherwise a search here, whose answers play there
+  const typed = latest((text) => tvSend(id, { cmd: "type", text }, all, true)); // letter by letter: no notice for each
+  let finding = 0;
+  $("#rText").addEventListener("input", (e) => {
+    const q = e.target.value;
+    clearTimeout(finding);
+    if (r.tv?.state?.input) { $("#rFound").hidden = true; return typed(q); }
+    finding = setTimeout(() => remoteFind(t, q.trim()), 250);
+  });
   $("#rType").addEventListener("submit", (e) => {
     e.preventDefault();
-    tvSend(id, { cmd: "type", text: $("#rText").value, key: "enter" }, all).then((ok) => { if (ok) { $("#rText").value = ""; toast("Typed on the TV"); } });
+    clearTimeout(finding);
+    send({ cmd: "type", text: $("#rText").value, key: "enter" }).then((ok) => { if (ok) { $("#rText").value = ""; $("#rFound").hidden = true; toast("Typed on the TV"); } });
   });
+  $("#rFound").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-found]");
+    if (!b) return;
+    const [kind, item] = b.dataset.found.split(":");
+    send({ cmd: "cast", cast: { kind, id: item } }).then((ok) => { if (ok) { $("#rText").value = ""; $("#rFound").hidden = true; toast(kind === "item" ? "Opened on the TV" : "Playing on the TV"); } });
+  });
+  $("#rMore").addEventListener("change", (e) => {
+    if (e.target.dataset.opt) send({ cmd: "set", opt: +e.target.dataset.opt, value: e.target.value });
+    else if (e.target.id === "rSleep") send({ cmd: "sleep", by: +e.target.value }).then((ok) => ok && +e.target.value && toast(`The TV sleeps in ${e.target.value} minutes`));
+  });
+  $("#rHere").addEventListener("click", () => send({ cmd: "pause" })); // the link opens it here, from where the TV was
+}
+
+/** the remote's quick search: titles in the library; a film or an episode plays on the TV, a show opens there */
+async function remoteFind(t, q) {
+  const found = q && libraryOpen() ? await api(`/api/jf/items?search=${encodeURIComponent(q)}&types=Movie,Series,Episode&limit=8`).catch(() => null) : null;
+  const box = byId("rFound");
+  if (t !== ticket || !box || byId("rText").value.trim() !== q) return; // typed on since
+  const items = found?.items || found || [];
+  box.hidden = !q || !libraryOpen();
+  box.innerHTML = items.length ? items.map((x) => `<li><button type="button" data-found="${x.type === "Series" ? "item" : "jf"}:${esc(x.id)}">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : "<i></i>"}
+      <span><b>${esc(x.type === "Episode" ? x.series || x.name : x.name)}</b><small class="dim">${esc([TVH_KIND[x.type], x.type === "Episode" ? [epCode(x), x.name].filter(Boolean).join(" · ") : x.year].filter(Boolean).join(" · "))}</small></span>
+      ${x.type === "Series" ? chev(0) : ICON.play}</button></li>`).join("")
+    : `<li class="dim">Nothing in the library for “${esc(q)}”. Send searches everything, on the TV.</li>`;
+}
+
+/** Who's watching, from a phone: the people a TV can act as. Someone with a PIN is asked for it (not for their own, on
+    their own phone); the TV starts again as the person picked. */
+function whoAsk(tid, people, viewer, all = "") {
+  byId("whoAsk")?.remove();
+  document.body.insertAdjacentHTML("beforeend", `<dialog class="sheet who" id="whoAsk"><form method="dialog"><h2>Who's watching?</h2>
+    <p class="dim">The TV shows their rows, carries on where they left off and keeps to their limits.</p>
+    <div class="whos">${people.map((p) => `<button type="button" data-who="${p.id}"${p.id === viewer ? ' aria-current="true"' : ""}>${avatar(p.name)}<b>${esc(p.name)}</b>${p.pin ? `<small class="dim">${ICON.lock}PIN</small>` : ""}</button>`).join("")}</div>
+    <label class="field" id="whoPinField" hidden><span id="whoPinFor"></span><input id="whoPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off"></label>
+    <p class="rwarn" id="whoSaid" role="alert" hidden></p>
+    <div class="actions"><button class="ghost" value="cancel">Close</button><button type="button" class="primary small" id="whoGo" hidden>Switch</button></div></form></dialog>`);
+  const d = byId("whoAsk");
+  let chosen = null;
+  const pick = async (pid, pin) => {
+    const name = people.find((p) => p.id === pid).name;
+    try {
+      await post(`/api/tv/${tid}/viewer${all}`, { user_id: pid, ...(pin ? { pin } : {}) });
+      d.close();
+      toast(`The TV is ${name}'s now`);
+    } catch (err) {
+      const ask = err.status === 403 && !pin; // they have a PIN: ask for it
+      if (ask) { chosen = pid; byId("whoPinField").hidden = byId("whoGo").hidden = false; byId("whoPinFor").textContent = `${name}'s PIN`; byId("whoPin").value = ""; byId("whoPin").focus(); }
+      byId("whoSaid").hidden = ask;
+      byId("whoSaid").textContent = err.message;
+    }
+  };
+  d.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-who]");
+    if (b) pick(+b.dataset.who);
+    else if (e.target.id === "whoGo" && chosen != null) pick(chosen, byId("whoPin").value);
+  });
+  byId("whoPin").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); byId("whoGo").click(); } });
+  d.addEventListener("close", () => d.remove());
+  d.showModal();
 }
 
 /** the TV set's own buttons on the remote (tvhw.py): power, input and its volume, for the sets an admin gave this account.
@@ -179,81 +362,156 @@ document.addEventListener("click", (e) => {
     && toast("Opening Parlor. If the TV says to check its network, use On TV → (its own player)"), (err) => toast(err.message));
 });
 
-/** the remote's joystick: drag the knob for an arrow (held, it keeps going, quicker and quicker), press it for OK;
-    it springs back to the middle when let go */
-function joystick(el, send) {
-  const knob = el.querySelector(".knob");
-  let s = null; // the drag under way
+/** the remote's touchpad. A swipe is an arrow: one step after the first 22 px and one more for every 44 px, so a long
+    swipe walks along a row; resting at the end of a swipe keeps going, quicker and quicker. A tap is OK; a tap on an
+    edge is one step that way, and held there it keeps going. Presses reach the TV in the order they were made, and a
+    network that has stopped answering never has a pile of them waiting behind it. `send(key)` answers whether it got there. */
+function touchpad(el, send) {
+  const dot = el.querySelector(".padtouch");
+  let s = null, chain = Promise.resolve(), waiting = 0; // the touch under way; the presses on their way
   const step = (key) => {
-    const sent = send(key);
     navigator.vibrate?.(key === "enter" ? 18 : 8);
-    if (key !== "enter") { el.classList.remove("step"); void el.offsetWidth; el.classList.add("step"); } // the notch blinks
-    return sent;
+    el.querySelector(key === "enter" ? ".padok" : `.edge.${key}`).animate([{ scale: 1.6, opacity: 1 }, { scale: 1 }], { duration: 240, easing: "ease-out" });
+    if (s) s.steps++;
+    if (waiting > 3) return chain;
+    waiting++;
+    return (chain = chain.then(() => send(key)).then((ok) => { waiting--; if (!ok) el.animate(R_SHAKE, { duration: 300 }); }));
   };
-  const repeat = async (dir, wait) => { // the next step waits for the last one to be sent: a slow network never queues presses up
-    const held = s, sent = step(dir);
-    await Promise.all([sent, new Promise((ok) => { held.timer = setTimeout(ok, wait); })]);
-    if (s === held && s.dir === dir) repeat(dir, Math.max(110, wait * 0.72));
+  const hold = (dir, wait) => { // the next step waits for the last one to be sent
+    const held = s;
+    held.timer = setTimeout(async () => {
+      if (s !== held || s.dir !== dir) return;
+      await step(dir);
+      if (s === held && s.dir === dir) hold(dir, Math.max(110, wait * 0.72));
+    }, wait);
   };
+  const edge = (e) => { // the outer fifth of each side, corners left out
+    const b = el.getBoundingClientRect(), x = (e.clientX - b.left) / b.width, y = (e.clientY - b.top) / b.height, mid = (v) => v > 0.2 && v < 0.8;
+    return mid(x) ? (y < 0.2 ? "up" : y > 0.8 ? "down" : null) : mid(y) ? (x < 0.2 ? "left" : x > 0.8 ? "right" : null) : null;
+  };
+  const place = (e) => { const b = el.getBoundingClientRect(); dot.style.transform = `translate3d(${e.clientX - b.left}px,${e.clientY - b.top}px,0)`; };
   el.addEventListener("pointerdown", (e) => {
     if (e.button > 0 || e.target.closest(".vh")) return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
     el.focus({ preventScroll: true });
-    s = { x: e.clientX, y: e.clientY, t: Date.now(), far: 0, dir: null, timer: 0 };
+    const dir = edge(e);
+    s = { x: e.clientX, y: e.clientY, t: Date.now(), steps: 0, dir, edge: dir, swiped: false, moved: false, timer: 0 };
     el.classList.add("held");
+    place(e);
+    if (dir) hold(dir, 450);
   });
   el.addEventListener("pointermove", (e) => {
     if (!s) return;
-    let dx = e.clientX - s.x, dy = e.clientY - s.y;
-    const max = (el.offsetWidth - knob.offsetWidth) / 2, d = Math.hypot(dx, dy);
-    s.far = Math.max(s.far, d);
-    if (d > max) { dx *= max / d; dy *= max / d; }
-    knob.style.translate = `${dx}px ${dy}px`;
-    const dir = d < max * 0.42 ? null : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
-    if (dir === s.dir) return;
+    place(e);
+    const dx = e.clientX - s.x, dy = e.clientY - s.y, far = Math.max(Math.abs(dx), Math.abs(dy));
+    if (far > 12 && !s.moved) { s.moved = true; if (s.edge) { clearTimeout(s.timer); s.dir = s.edge = null; } } // a swipe that began on an edge isn't a press on it
+    if (far < (s.swiped ? 44 : 22)) return;
+    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
     clearTimeout(s.timer);
-    s.dir = dir;
-    el.dataset.dir = dir || "";
-    if (dir) repeat(dir, 420);
+    Object.assign(s, { x: e.clientX, y: e.clientY, dir, swiped: true });
+    step(dir);
+    hold(dir, 420);
   });
   const end = () => {
     if (!s) return;
     clearTimeout(s.timer);
-    if (s.far < 12 && Date.now() - s.t < 700) { // a press, not a drag: OK
-      step("enter");
-      el.classList.remove("pressed");
-      void el.offsetWidth;
-      el.classList.add("pressed");
-    }
+    const tap = !s.steps && !s.moved && Date.now() - s.t < 700 ? s.edge || "enter" : null;
     s = null;
-    knob.style.translate = "";
-    el.dataset.dir = "";
     el.classList.remove("held");
+    if (tap) step(tap);
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);
   el.addEventListener("lostpointercapture", end);
 }
 
-/** the one way a phone's command goes to a TV; it says when the TV isn't there, and answers whether it was sent */
-function tvSend(id, body, all = "") {
-  return post(`/api/tv/${id}/do${all}`, body).then(() => true, (err) => { toast(err.message); return false; });
+/** the one way a phone's command goes to a TV; it says when the TV isn't there (once, not for every press of a run;
+    `quiet`: not at all), and answers whether it was sent */
+let tvSaidWhy = ["", 0];
+function tvSend(id, body, all = "", quiet = false) {
+  return post(`/api/tv/${id}/do${all}`, body).then(() => true, (err) => {
+    if (!quiet && (err.message !== tvSaidWhy[0] || Date.now() - tvSaidWhy[1] > 4000)) toast(err.message);
+    tvSaidWhy = [err.message, Date.now()];
+    return false;
+  });
 }
 
-document.addEventListener("click", (e) => {
+/** a button of the remote: it acts the moment it is touched (not when the finger lifts), dips so the thumb knows, and
+    shakes when the press didn't get to the TV */
+function remotePress(b) {
+  if (!remote) return;
+  const [cmd, arg] = b.dataset.r.split(":"), s = remote.tv?.state;
+  navigator.vibrate?.(8);
+  b.animate([{ scale: 0.88 }, { scale: 1 }], { duration: 180, easing: "ease-out" });
+  if (cmd === "toggle" && s?.kind && remote.tv.online) { s.at = remote.now(); s.playing = !s.playing; remote.heardAt = Date.now(); remote.draw(); } // shown at once; the TV's own word follows
+  tvSend(remote.id, cmd === "key" ? { cmd, key: arg } : arg != null ? { cmd, by: +arg } : { cmd }, remote.all).then((ok) => ok || b.animate(R_SHAKE, { duration: 300 }));
+}
+let remoteDown = null; // the button a pointer is on: its click, when the finger lifts, is not a second press
+document.addEventListener("pointerdown", (e) => {
+  const b = e.target.closest?.("[data-r]");
+  if (!b || e.button > 0) return;
+  remoteDown = b;
+  remotePress(b);
+});
+for (const k of ["pointerup", "pointercancel"]) document.addEventListener(k, () => setTimeout(() => { remoteDown = null; }, 0));
+document.addEventListener("click", (e) => { // a keyboard's Enter, a screen reader's press
   const b = e.target.closest("[data-r]");
-  if (!b || !remote) return;
-  const [cmd, arg] = b.dataset.r.split(":");
-  tvSend(remote.id, cmd === "key" ? { cmd, key: arg } : arg != null ? { cmd, by: +arg } : { cmd }, remote.all);
+  if (b && remoteDown !== b) remotePress(b);
 });
 document.addEventListener("keydown", (e) => { // a computer's keyboard works the remote too
-  if (!remote || !$("#remote") || e.target.matches("input, textarea, select") || TV_MODE) return;
-  if ((e.key === "Enter" || e.key === " ") && e.target.closest("button, a")) return; // the button itself acts
+  if (!remote || !$("#remote") || e.target.matches("input, textarea, select") || TV_MODE || byId("whoAsk")) return;
+  if ((e.key === "Enter" || e.key === " ") && e.target.closest("button, a, summary")) return; // the button itself acts
   const key = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "enter", Escape: "back", Backspace: "back" }[e.key];
   if (key) { e.preventDefault(); tvSend(remote.id, { cmd: "key", key }, remote.all); }
   else if (e.key === " ") { e.preventDefault(); tvSend(remote.id, { cmd: "toggle" }, remote.all); }
 });
+
+/* ---------- On TV: a bar on this device's other pages while one of its TVs plays ---------- */
+
+/** one stream while the page is in front and this account has a TV (the remote's page has its own): it keeps tvKnown
+    current, and shows what plays with a way to pause it and a way to the remote */
+let tvBarFeed = null;
+function tvBar() {
+  const want = !tvMe && tvKnown.length && !document.hidden && !/^#\/tvs\/\d/.test(location.hash);
+  if (!want) {
+    tvBarFeed?.close();
+    tvBarFeed = null;
+    if (byId("tvBar")) byId("tvBar").hidden = true;
+    return;
+  }
+  if (tvBarFeed) return;
+  let tvs = [];
+  tvBarFeed = new EventSource("/api/tv/events");
+  tvBarFeed.onmessage = (e) => {
+    const m = JSON.parse(e.data), x = tvs.find((x) => x.id === m.tv);
+    if (m.type === "tvs") tvs = m.tvs;
+    else if (!x) return;
+    else if (m.type === "state") x.state = m.state;
+    else if (m.type === "online" || m.type === "offline") x.online = m.type === "online";
+    else if (m.type === "gone") tvs = tvs.filter((y) => y !== x);
+    else return;
+    tvKnown = tvs;
+    const on = tvs.find((x) => x.online && x.state?.title);
+    if (!byId("tvBar")) document.body.insertAdjacentHTML("beforeend", `<div class="tvbar" id="tvBar" hidden><a>${ICON.tv}<span><b></b><small></small></span></a><button class="icon-btn"></button></div>`);
+    const bar = byId("tvBar");
+    bar.hidden = !on;
+    if (!on) return;
+    bar.dataset.tv = on.id;
+    $("a", bar).href = `#/tvs/${on.id}`;
+    $("b", bar).textContent = on.state.title;
+    $("small", bar).textContent = `${on.name} · ${on.state.playing ? "playing" : "paused"}`;
+    $("button", bar).innerHTML = on.state.playing ? ICON.pause : ICON.play;
+    $("button", bar).setAttribute("aria-label", `${on.state.playing ? "Pause" : "Play"} on ${on.name}`);
+  };
+  tvBarFeed.onerror = () => { if (tvBarFeed?.readyState === EventSource.CLOSED) tvBarFeed = null; }; // refused: the next page tries again
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("#tvBar button");
+  if (b) tvSend(+b.parentElement.dataset.tv, { cmd: "toggle" });
+});
+document.addEventListener("visibilitychange", tvBar);
+addEventListener("hashchange", () => setTimeout(tvBar, 0)); // after the page it led to has drawn
 
 /** Play on TV: straight to the one TV that's on, or a menu of them. A film or a Watch video (`own`: {kind, id, start?})
     can also go to a TV set that plays it in its own player, with no Parlor on its screen: then this device is its

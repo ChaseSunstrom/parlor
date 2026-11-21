@@ -18,6 +18,6 @@ const calls = (src, re) => [...src.matchAll(re)].length;
 assert.strictEqual(calls(tv.replace(body(tv, "function tvDo(m) {"), ""), /\btvBack\(\)/g), 1, "tvBack is called only inside tvDo (its own definition is the one left)");
 const sends = [...remote.matchAll(/post\(`\/api\/tv\/\$\{[^}]+\}\/do/g)];
 assert.strictEqual(sends.length, 1, "one place posts a command to a TV");
-assert.ok(body(remote, "function tvSend(id, body, all = \"\") {").includes(sends[0][0]), "and it is tvSend");
+assert.ok(body(remote, "function tvSend(id, body, all = \"\", quiet = false) {").includes(sends[0][0]), "and it is tvSend");
 for (const f of fs.readdirSync(path.join(__dirname, "..", "app", "static", "js"))) if (f !== "remote.js") assert.ok(!/\/api\/tv\/\$\{[^}]+\}\/do/.test(js(f)), `${f} sends through tvSend`);
 console.log("tv paths ok");

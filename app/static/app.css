@@ -1117,11 +1117,28 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .tvlist li div { display: grid; min-width: 0; }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); opacity: .5; }
 .dot.on { background: var(--ok); opacity: 1; box-shadow: 0 0 12px var(--ok); animation: breathe 2.4s ease-in-out infinite; }
-.remote { max-width: 460px; display: grid; gap: 18px; padding-top: 24px; }
-.remote header { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
-.remote h1 { margin: 0; font-size: 1.5rem; }
-.rnow { padding: 16px; border-radius: 16px; background: var(--raise); border: 1px solid var(--line); display: grid; gap: 10px; }
-.rtitle { display: grid; }
+.remote { max-width: 460px; display: grid; gap: 16px; padding-top: 20px; }
+.remote header { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; }
+.remote h1 { margin: 0; font-size: 1.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.remote header select { min-height: 36px; max-width: 130px; padding: 4px 8px; }
+.remote [data-r], .remote .pad { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }  /* a press acts at the touch: it is never the start of a scroll */
+@media (max-width: 760px) { body:has(#remote) #searchForm { display: none; } }  /* a phone: the remote has its own box, and its keys fit one screen */
+#rType { align-items: end; margin: 0; }
+#rType .field { margin-top: 0; }
+.remote.off .pad, .remote.off > .rrow { opacity: .5; }  /* the TV is off: the keys still say so when pressed */
+.remote input[type="range"] { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
+/* a person's round picture: their initial on a colour of their own */
+.avatar { display: inline-grid; place-items: center; flex: none; width: 2.4em; height: 2.4em; border-radius: 50%; font-weight: 800; color: var(--accent-ink); background: oklch(.82 .13 calc(var(--h) * 1deg)); }
+.who { display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; }
+.who:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.rnow { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 14px; align-items: center; padding: 14px; border-radius: 16px; background: var(--raise); border: 1px solid var(--line); }
+.rnow > * { grid-column: 1 / -1; }
+.rnow > img { grid-column: 1; width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: var(--sunk); }
+.rnow > img:not([hidden]) + .rtitle { grid-column: 2; }
+.rtitle { display: grid; min-width: 0; }
+.rtitle b { font-size: 1.1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rtitle small { font-size: .74rem; letter-spacing: .05em; text-transform: uppercase; }
+.rtitle span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; color: var(--dim); font-size: .82rem; font-variant-numeric: tabular-nums; }
 .rnow .rline { background: none; }  /* the book reader's .rline (above) is a bar itself: here it's a row with a bar in it */
 .rnow .rline i { width: auto; height: 4px; border-radius: 2px; background: var(--sunk); overflow: hidden; transition: none; }
@@ -1129,32 +1146,61 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .rnow #hwLine { height: 14px; border-radius: 7px; cursor: pointer; }  /* pressed to jump: big enough for a thumb */
 .rhw .rnow { margin: 4px 0 10px; }
 .rwarn { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--bad) 16%, transparent); color: var(--text); font-size: .88rem; }
-/* the joystick: a well with four notches, and a knob that follows the thumb and springs back */
-.stick { position: relative; justify-self: center; width: min(270px, 74vw); aspect-ratio: 1; border-radius: 50%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
-  background: radial-gradient(circle at 50% 38%, color-mix(in oklab, var(--raise) 82%, var(--accent)), var(--sunk) 74%);
-  border: 1px solid var(--line); box-shadow: inset 0 8px 26px rgb(0 0 0 / .5), inset 0 -2px 0 color-mix(in oklab, var(--accent) 18%, transparent), 0 20px 44px rgb(0 0 0 / .28); }
-.stick::before { content: ""; position: absolute; inset: 17%; border-radius: 50%; border: 1px dashed color-mix(in oklab, var(--dim) 45%, transparent); }
-.stick::after { content: ""; position: absolute; inset: 31%; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; pointer-events: none; }
-.stick.pressed::after { animation: stickring .45s ease-out; }
-@keyframes stickring { from { opacity: .9; scale: .9; } to { opacity: 0; scale: 1.7; } }
-.stick:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
-.stick .notch { position: absolute; display: grid; place-items: center; width: 34px; height: 34px; color: var(--dim); opacity: .55; transition: color .15s ease, opacity .15s ease, scale .15s ease; }
-.notch.up { top: 4%; left: 50%; translate: -50% 0; } .notch.down { bottom: 4%; left: 50%; translate: -50% 0; }
-.notch.left { left: 4%; top: 50%; translate: 0 -50%; } .notch.right { right: 4%; top: 50%; translate: 0 -50%; }
-.stick[data-dir="up"] .notch.up, .stick[data-dir="down"] .notch.down, .stick[data-dir="left"] .notch.left, .stick[data-dir="right"] .notch.right {
-  color: var(--accent); opacity: 1; scale: 1.3; filter: drop-shadow(0 0 8px var(--accent)); }
-.stick.step[data-dir] .notch { animation: notchblink .18s ease; }
-@keyframes notchblink { 50% { scale: 1.55; } }
-.stick .knob { position: absolute; left: 31%; top: 31%; width: 38%; height: 38%; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(circle at 34% 28%, color-mix(in oklab, var(--accent) 62%, white), var(--accent) 58%, color-mix(in oklab, var(--accent) 72%, black));
-  color: var(--accent-ink); font-weight: 800; letter-spacing: .04em;
-  box-shadow: 0 14px 30px color-mix(in oklab, var(--accent) 42%, transparent), inset 0 2px 6px rgb(255 255 255 / .38), inset 0 -4px 10px rgb(0 0 0 / .22);
-  transition: translate .32s cubic-bezier(.3, 1.7, .5, 1), scale .15s ease; }
-.stick.held { cursor: grabbing; }
-.stick.held .knob { transition: scale .15s ease; scale: .95; }
-.stick.pressed .knob { animation: knobpress .22s ease; }
-@keyframes knobpress { 50% { scale: .84; } }
+/* the touchpad: a slab the thumb swipes on, an arrow at each edge, OK in the middle, a glow under the finger */
+.pad { position: relative; justify-self: center; width: min(100%, 340px); aspect-ratio: 1.3; border-radius: 28px; overflow: hidden; cursor: pointer;
+  background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--raise) 86%, var(--accent)), var(--sunk) 70%);
+  border: 1px solid var(--line); box-shadow: inset 0 1px 0 rgb(255 255 255 / .06), inset 0 -18px 40px rgb(0 0 0 / .28), 0 18px 40px rgb(0 0 0 / .25); }
+.pad:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.pad.held { border-color: color-mix(in oklab, var(--accent) 50%, var(--line)); }
+.pad .edge { position: absolute; display: grid; place-items: center; width: 44px; height: 44px; color: var(--dim); pointer-events: none; }
+.edge.up { top: 2%; left: 50%; translate: -50% 0; } .edge.down { bottom: 2%; left: 50%; translate: -50% 0; }
+.edge.left { left: 2%; top: 50%; translate: 0 -50%; } .edge.right { right: 2%; top: 50%; translate: 0 -50%; }
+.pad .padok { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; pointer-events: none;
+  border: 1.5px solid color-mix(in oklab, var(--accent) 55%, transparent); color: var(--accent); font-weight: 800; letter-spacing: .06em; }
+.pad .padtouch { position: absolute; left: -50px; top: -50px; width: 100px; height: 100px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .25s ease;
+  background: radial-gradient(circle, color-mix(in oklab, var(--accent) 55%, transparent), transparent 68%); }
+.pad.held .padtouch { opacity: 1; transition: none; }
 .rrow { display: flex; justify-content: center; align-items: center; gap: 14px; }
+.rrow .icon-btn { width: 52px; height: 52px; background: var(--raise); color: var(--text); font-weight: 700; }
+.rrow .icon-btn.big { width: 68px; height: 68px; background: var(--text); color: var(--bg); }
+.rvol { gap: 8px; }
+.rvol input { flex: 1; }
+.rvol .icon-btn { width: 44px; height: 44px; flex: none; }
+.rvol #rVol { width: 3.4em; text-align: right; font-size: .86rem; font-variant-numeric: tabular-nums; }
+#rMute[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+/* the remote's quick search: titles to play on the TV */
+.rfound { list-style: none; margin: -6px 0 0; padding: 6px; display: grid; gap: 2px; border-radius: 14px; background: var(--raise); border: 1px solid var(--line); }
+.rfound[hidden] { display: none; }
+.rfound li.dim { padding: 10px; }
+.rfound button { display: grid; grid-template-columns: 40px minmax(0, 1fr) 24px; gap: 12px; align-items: center; width: 100%; padding: 6px 8px; border: 0; border-radius: 10px; background: none; color: var(--text); text-align: left; }
+.rfound button:hover, .rfound button:focus-visible { background: var(--sunk); }
+.rfound img, .rfound i { width: 40px; height: 56px; border-radius: 6px; object-fit: cover; background: var(--sunk); }
+.rfound span { display: grid; min-width: 0; }
+.rfound b, .rfound small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rmore { border-top: 1px solid var(--line); }
+.rmore summary { padding: 12px 0; font-weight: 700; color: var(--dim); cursor: pointer; }
+.rmore[open] summary { color: var(--text); }
+.rmore select { width: 100%; }
+.rmore .rrow { flex-wrap: wrap; justify-content: flex-start; gap: 10px; margin: 16px 0 6px; }
+/* Who's watching, on a phone */
+.whos { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; margin-top: 16px; }
+.whos button { display: grid; justify-items: center; gap: 6px; padding: 14px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--sunk); color: var(--text); }
+.whos button[aria-current] { border-color: var(--accent); }
+.whos .avatar { font-size: 1.5rem; }
+.whos small { display: flex; align-items: center; gap: 4px; }
+.whos small .i { width: 14px; height: 14px; }
+/* On TV: what one of this account's TVs plays, on every other page */
+.tvbar { position: fixed; z-index: 29; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 6px; max-width: min(360px, calc(100vw - 32px));
+  padding: 6px 6px 6px 14px; border-radius: 28px; background: var(--raise); border: 1px solid var(--line); box-shadow: 0 12px 30px rgb(0 0 0 / .35); }
+.tvbar[hidden], body.tv .tvbar { display: none; }
+.tvbar a { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--text); text-decoration: none; }
+.tvbar a .i { flex: none; color: var(--accent); }
+.tvbar span { display: grid; min-width: 0; }
+.tvbar b, .tvbar small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tvbar small { color: var(--dim); font-size: .78rem; }
+.tvbar .icon-btn { flex: none; color: var(--text); }
+body.docked .tvbar { bottom: 104px; }
+@media (max-width: 760px) { .tvbar { bottom: calc(70px + env(safe-area-inset-bottom)); } body.docked .tvbar { bottom: calc(142px + env(safe-area-inset-bottom)); } }
 .rhw { display: grid; gap: 12px; padding: 16px 0; border-block: 1px solid var(--line); }
 .rhw .rrow { flex-wrap: wrap; gap: 10px; }
 .rhw select { min-height: 34px; padding: 4px 8px; }
@@ -1163,8 +1209,6 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .hwlist li .hwwho { grid-column: 1 / -1; font-size: .92rem; }
 .hwwho .check { margin-top: 0; }
 #hwAdd { align-items: end; }
-.rrow .icon-btn { width: 52px; height: 52px; color: var(--text); font-weight: 700; }
-.rrow .icon-btn.big { width: 64px; height: 64px; background: var(--text); color: var(--bg); }
 
 /* ---------- Games: Steam shelves, retro tiles, a PC streamed here ---------- */
 .gsec h2 { margin-top: 0; } .gsec h2 a { color: inherit; text-decoration: none; } .gsec h2 a:hover { color: var(--link); }

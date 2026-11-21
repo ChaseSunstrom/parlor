@@ -335,9 +335,9 @@ function tvIdle() {
   const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
   if (!onTv() || $("#gate")?.childElementCount || (v && !v.paused)) return tvAwake(); // a film playing is not idle
   if (!$("#tvIdle")) document.body.insertAdjacentHTML("beforeend", `<div class="tvidle" id="tvIdle"><div><b></b><span></span></div></div>`);
-  const card = $("#tvIdle div"), song = dock.queue.length && !dock.audio.paused ? dock.queue[dock.index] : null;
+  const card = $("#tvIdle div"), song = dock.queue.length && !dock.audio.paused ? dock.queue[dock.at] : null;
   $("b", card).textContent = tvTime();
-  $("span", card).textContent = song ? [song.title, song.artist].filter(Boolean).join(" · ") : new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  $("span", card).textContent = song ? [song.title, song.by].filter(Boolean).join(" · ") : new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   card.style.transform = `translate3d(${Math.round((Math.random() - 0.5) * 560)}px,${Math.round((Math.random() - 0.5) * 300)}px,0)`; // somewhere else each minute
   tvIdleTimer = setTimeout(tvIdle, 60e3);
 }
