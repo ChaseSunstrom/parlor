@@ -43,6 +43,26 @@ import vault
 import yt
 
 log = logging.getLogger("parlor")
+
+
+def _close_idle_only():
+    """uvicorn's keep-alive timer (5 seconds) is meant for a connection nobody is using. A request that arrived while
+    the one before was finishing starts with that timer still running, and when it went off the answer was cut in the
+    middle: an event stream to a TV (deaf until it reconnects), a film. Now it closes a connection only between
+    answers. tests/test_keepalive.py fails without this; drop it when uvicorn does the same."""
+    from uvicorn.protocols.http.h11_impl import H11Protocol
+    timed_out = H11Protocol.timeout_keep_alive_handler
+    if getattr(timed_out, "idle_only", False):
+        return
+
+    def handler(self):
+        if self.cycle is None or self.cycle.response_complete:
+            timed_out(self)
+    handler.idle_only = True
+    H11Protocol.timeout_keep_alive_handler = handler
+
+
+_close_idle_only()
 app = FastAPI(title="Parlor", description=api.__doc__, docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json",
               swagger_ui_oauth2_redirect_url=None)  # the docs need a sign-in like the rest of /api
 PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup",
