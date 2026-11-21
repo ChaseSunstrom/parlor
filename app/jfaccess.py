@@ -1,6 +1,6 @@
 """Jellyfin library limits, held by Jellyfin itself: a limited person plays as a Jellyfin user of their own
 (their Jellyfin sign-in, else one Parlor makes, hidden and with a random password nobody needs), and that user's
-policy lists the libraries they may see. Search, Next up, pictures and streams then all follow it, in Parlor and in
+policy lists the libraries they may see and the highest age rating they may watch (MaxParentalRating). Search, Next up, pictures and streams then all follow it, in Parlor and in
 any Jellyfin app. Someone sharing the default Jellyfin user is given their own first, so the others keep theirs."""
 import json
 import secrets
@@ -26,6 +26,10 @@ def lift(person):
         limit(person, None)
     except HTTPException:
         db().execute("UPDATE users SET libraries = NULL WHERE id = ?", (person["id"],))  # an admin plays as anyone anyway
+    try:
+        rate(person, None)
+    except HTTPException:
+        db().execute("UPDATE users SET max_rating = NULL WHERE id = ?", (person["id"],))
 
 
 def forget(person):
@@ -73,13 +77,37 @@ def _limit(person, ids):
         if any(i not in known for i in ids):
             db().execute("UPDATE users SET libraries = ? WHERE id = ?", (before, person["id"]))
             raise HTTPException(422, "Jellyfin has no such library")
+    _push(person, EnableAllFolders=ids is None, EnabledFolders=list(ids or []))
+    db().execute("UPDATE users SET libraries = ? WHERE id = ?", (None if ids is None else json.dumps(list(ids)), person["id"]))
+
+
+def _push(person, **changes):
+    """Their own Jellyfin user's policy as it is, with these changes (a None drops the key), posted back."""
     uid = _own_user(person)
     users = jf.call("GET", "/Users").json()
     policy = dict(next((u.get("Policy") or {} for u in users if u["Id"] == uid), {}))
-    policy.update(EnableAllFolders=ids is None, EnabledFolders=list(ids or []))
+    for k, v in changes.items():
+        policy.pop(k, None)
+        if v is not None:
+            policy[k] = v
     row = one("SELECT jf_own, jf_user, jellyfin_id FROM users WHERE id = ?", person["id"])
     if row["jf_own"] and uid == row["jf_user"] and not row["jellyfin_id"]:
         policy["IsHidden"] = True  # only the user Parlor made: someone's own Jellyfin account stays as it was
     jf.call("POST", f"/Users/{uid}/Policy", json=policy)
     jf._users.drop("all")
-    db().execute("UPDATE users SET libraries = ? WHERE id = ?", (None if ids is None else json.dumps(list(ids)), person["id"]))
+
+
+# Music has no age rating, so a limit never blocks it; everything else with no rating is hidden from a limited person.
+UNRATED = ["Movie", "Series", "Trailer", "Program", "LiveTvChannel", "ChannelContent", "Book", "Other"]
+
+
+def rate(person, rating):
+    """Hide what is rated above this (Jellyfin's own number: MaxParentalRating), and what has no rating; None lifts it.
+    Unlike a library limit, a failure leaves the stored limit as it was."""
+    with _lock:
+        if one("SELECT max_rating FROM users WHERE id = ?", person["id"])["max_rating"] == rating:
+            return  # nothing to change, and no Jellyfin user to make for it
+        _push(person, MaxParentalRating=rating, BlockUnratedItems=UNRATED if rating is not None else [])
+        db().execute("UPDATE users SET max_rating = ? WHERE id = ?", (rating, person["id"]))
+    with jf._seen.lock:  # items they could see a moment ago may be hidden now
+        jf._seen.data.clear()

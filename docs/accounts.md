@@ -34,6 +34,9 @@ Settings → People → **Access** sets, for each member, what they can use:
   - Search, Next up, pictures and streams follow it, in Parlor and in Jellyfin's own apps.
   - Someone sharing the default Jellyfin user is given their own first, so the others keep theirs.
   - If Jellyfin can't be reached while you save, they see no library until it can, never every library.
+- **An age limit.** An admin can set the highest rating a member may watch, as Jellyfin's own rating number (its *Maximum parental rating*). Parlor sets it on the same Jellyfin user of their own, and blocks titles with no rating (music is left alone), so Jellyfin hides what is too old in lists, search and streams, in Parlor and in Jellyfin's own apps.
+  - Clearing it removes it. Making someone an admin clears it too.
+  - If Jellyfin can't be reached while you save, the limit stays as it was and the save fails: it is never half set.
 
 ## Private items
 
