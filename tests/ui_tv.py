@@ -441,10 +441,17 @@ with sync_playwright() as pw:
         checks["the remote's box finds a title and plays it on the TV, and types into the TV's own search"] = stayed and phone.evaluate("byId('rFound').hidden")
         phone.fill("#rText", "")
         # the TV drops off: the remote says so, and it comes back by itself
-        screen.evaluate("tvStream.close()")  # the TV's connection drops
+        # Parlor restarts behind a proxy: the TV's stream and its pairing check both get the proxy's 502, which ends an
+        # EventSource for good. The TV has to open it again by itself once Parlor answers.
+        gateway = lambda route: route.fulfill(status=502, body="Bad Gateway")  # noqa: E731
+        for path in ("**/api/tv/events", "**/api/tv/me"):
+            screen.route(path, gateway)
+        screen.evaluate("tvListen()")  # the stream it had is cut, and the new one is refused
         phone.wait_for_function("document.querySelector('#rStatus').textContent.startsWith('Off')", timeout=(tv.PING + 10) * 1000)
-        screen.evaluate("tvListen()")  # what EventSource does by itself after a drop
-        phone.wait_for_function("document.querySelector('#rStatus').textContent.startsWith('On')", timeout=15000)
+        screen.wait_for_timeout(1500)  # its first look at the pairing gets the 502 too
+        for path in ("**/api/tv/events", "**/api/tv/me"):
+            screen.unroute(path, gateway)
+        phone.wait_for_function("document.querySelector('#rStatus').textContent.startsWith('On')", timeout=20000)
         checks["a TV that drops off shows as off on the remote, and comes back"] = True
         phone.evaluate("scrollTo(0, 0)")
         phone.wait_for_timeout(400)

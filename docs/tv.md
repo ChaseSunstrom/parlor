@@ -103,7 +103,9 @@ A browser won't start sound that nobody pressed a key for, and a phone's press d
 
 ### Updates
 
-A TV left on reloads itself when Parlor was updated, as soon as nothing is playing.
+A TV left on reloads itself when Parlor was updated, as soon as nothing is playing. While Parlor restarts the remote says **Off**; the TV asks again every 5 seconds until Parlor answers, also when a proxy in front of Parlor answered in its place with an error page.
+
+A TV page opened before 21 November 2026 doesn't do that last part: after an update it can stay **Off** on the remote while its screen looks fine. Reload it once (restart the TV's browser).
 
 ## Unpairing and safety
 

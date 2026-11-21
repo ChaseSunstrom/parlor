@@ -138,9 +138,9 @@ let tvStream = null;
 function tvListen() {
   tvStream?.close();
   const s = (tvStream = new EventSource("/api/tv/events")); // reconnects by itself when it drops
-  s.onerror = () => { // refused (signed out, unpaired, a proxy's error page) it stops: pair again, or try again
+  s.onerror = () => { // refused, it stops for good. Unpaired or signed out: pair again. Anything else (Parlor restarting, a proxy's 502 in its place): try again
     if (s.readyState !== EventSource.CLOSED || tvStream !== s) return;
-    api("/api/tv/me").then((r) => (r.tv ? setTimeout(tvListen, 5000) : showGate()), (err) => err.offline && setTimeout(tvListen, 5000));
+    api("/api/tv/me").then((r) => (r.tv ? setTimeout(tvListen, 5000) : showGate()), (err) => (err.offline || err.status) && setTimeout(tvListen, 5000)); // an answer with a status is an error page; signed out or locked has its own screen (core.js)
   };
   tvStream.onmessage = (e) => {
     const m = JSON.parse(e.data);
