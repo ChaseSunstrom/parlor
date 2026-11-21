@@ -164,19 +164,26 @@ with sync_playwright() as pw:
         other = signed_in_phone(b, 1280)
         other.goto(BASE + f"/#/tvs/{tid}")
         other.wait_for_function("document.querySelector('#rStatus')?.textContent.startsWith('On')", timeout=30000)
-        # the joystick: each flick moves the TV's focus; key to TV timed over 20 flicks
-        screen.evaluate("(() => { const heard = tvDo; tvDo = (m) => { window.tvLastDo = { ...m, heard: Date.now() }; return heard(m); }; })()")
+        # the joystick: each flick moves the TV's focus; timed over 20 flicks from the server passing the press on to
+        # the TV's answer after the frame that shows it (the number the remote shows)
+        screen.evaluate("(() => { window.tvHeard = []; const heard = tvDo; tvDo = (m) => { tvHeard.push(m); return heard(m); }; })()")
         gaps, moved = [], 0
         for i in range(20):
             before = screen.evaluate("document.activeElement?.outerHTML.slice(0, 80)")
-            sent = screen.evaluate("Date.now()")
             flick(phone, "down" if i % 2 == 0 else "up")
-            screen.wait_for_function(f"window.tvLastDo && window.tvLastDo.sent >= {sent}", timeout=5000)
-            gaps.append(screen.evaluate("tvLastDo.heard - tvLastDo.sent"))
+            screen.wait_for_function(f"tvHeard.length > {i}", timeout=5000)
+            phone.wait_for_function(f"remote.ack === {screen.evaluate('tvHeard.at(-1).n')}", timeout=5000)
+            gaps.append(phone.evaluate("remote.lag"))
             moved += screen.evaluate("document.activeElement?.outerHTML.slice(0, 80)") != before
         p95 = sorted(gaps)[int(len(gaps) * 0.95)]
-        print(f"remote key to TV: p95 {p95} ms, worst {max(gaps)} ms; focus moved on {moved} of 20")
-        checks["the remote's joystick moves the TV's focus, key to TV p95 under 300 ms"] = moved >= 18 and p95 < 300
+        print(f"remote key to the TV's frame and back: p95 {p95} ms, worst {max(gaps)} ms; focus moved on {moved} of 20")
+        checks["the remote's joystick moves the TV's focus, key to the TV's frame p95 under 300 ms"] = moved >= 18 and p95 < 300
+        # one path: the TV's own remote and its media keys go through tvDo like a phone's presses
+        own = screen.evaluate("tvHeard.length")
+        press(screen, "ArrowDown")
+        screen.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'MediaPlayPause', bubbles: true }))")  # a remote's play/pause key
+        press(screen, "Escape")
+        checks["the TV's own keys and a phone's presses take the same path"] = screen.evaluate(f"tvHeard.slice({own}).map((m) => m.key || m.cmd).join()") == "down,toggle,back"
         # the TV answers each press after the frame that shows it; the remote says how long the whole way took
         phone.wait_for_function("/answers in \\d+ ms/.test(document.querySelector('#rStatus').textContent)", timeout=5000)
         said = phone.evaluate("remote.tv.state")
@@ -270,6 +277,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (16 if REMOTE else 6) and all(checks.values()) and not errors
+ok = len(checks) == (17 if REMOTE else 6) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)

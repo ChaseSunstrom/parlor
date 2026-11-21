@@ -232,7 +232,7 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
 
 
 class Cast(BaseModel):
-    kind: Literal["jf", "yt", "music", "album", "queue"]  # a Jellyfin item, a YouTube video, a song in the music folder, a Jellyfin album, a queue
+    kind: Literal["jf", "yt", "queue"]  # a Jellyfin film or episode, a YouTube video, a queue of songs (an album or a song is a queue too)
     id: str = Field("", max_length=200)
     at: float = Field(0, ge=0, le=10**7)  # start here (seconds)
     items: list = Field(default_factory=list, max_length=500)  # for a queue: dock items (ids and titles only)
@@ -245,7 +245,6 @@ class Do(BaseModel):
     to: Optional[float] = Field(None, ge=0, le=10**7)  # seek to seconds; volume to 0..1
     text: Optional[str] = Field(None, max_length=200)
     cast: Optional[Cast] = None
-    sent: Optional[float] = None  # the remote's clock when it was pressed (the TV can tell how long it took)
 
 
 @router.post("/{tid}/do")

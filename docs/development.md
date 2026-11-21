@@ -26,6 +26,8 @@ python3 tests/smoke.py http://127.0.0.1:8800                     # live check ag
 | `app/music.py` | music-fndr's backend, copied by `scripts/vendor-music.sh ../music-fndr`. Change it in music-fndr, then copy it again. |
 | `app/static/` | The whole UI, with no build step. |
 | `js/music.js` | music-fndr's page code (in `app/static/`). |
+| `tv.py`, `js/tv.js`, `js/remote.js` | TVs: pairing, the event stream and commands (`tv.py`); Parlor on the TV, where everything that changes it goes through `tvDo` (`tv.js`); the phone's side, where every command goes through `tvSend` (`remote.js`). `tvhw.py` and `cast.py` work the TV set itself. |
+| `tests/perf_tv.py` | Measures what the TV page costs to draw at 4K on a slow graphics chip. |
 | [DESIGN.md](../DESIGN.md) | Describes the look. |
 | `desktop/` | The desktop app (Electron). |
 | `constraints.txt` | Pins every Python package in the image except yt-dlp (which updates itself on purpose), so a rebuild gives the same ones. |

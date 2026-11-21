@@ -44,7 +44,7 @@ console.log("only Parlor's own files ok");
 {
   const handler = (videos) => {
     let click, own;
-    require("vm").runInNewContext(grab(js("tv.js"), "/* Play on TV buttons", "\n});\n"), {
+    require("vm").runInNewContext(grab(js("remote.js"), "/* Play on TV buttons", "\n});\n"), {
       document: { addEventListener: (_, f) => { click = f; } }, byId: (id) => videos[id] || null, tvChoose: (_a, _c, o) => { own = o; } });
     return (data) => {
       const b = { dataset: data };
