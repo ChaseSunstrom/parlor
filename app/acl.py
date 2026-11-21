@@ -7,7 +7,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import core
 from core import admin, db, one
@@ -84,9 +84,10 @@ def allowed(user: dict, path: str, method: str = "GET") -> Optional[str]:
 def view(user: dict) -> dict:
     """What /api/me says about it, so the page hides what the server refuses."""
     off = set() if user.get("admin") else blocked(user["id"])
-    row = one("SELECT libraries FROM users WHERE id = ?", user["id"]) or {}
+    row = one("SELECT libraries, max_rating FROM users WHERE id = ?", user["id"]) or {}
     return {"blocked": sorted(off), "sections": {s: s not in off for s in SECTIONS},
-            "libraries": None if user.get("admin") or row.get("libraries") is None else json.loads(row["libraries"])}
+            "libraries": None if user.get("admin") or row.get("libraries") is None else json.loads(row["libraries"]),
+            "max_rating": None if user.get("admin") else row.get("max_rating")}
 
 
 # --- the admin's editor ----------------------------------------------------------------------
@@ -97,6 +98,7 @@ router = APIRouter(prefix="/api")
 class Access(BaseModel):
     blocked: Optional[list[str]] = None
     libraries: Optional[list[str]] = ["*"]  # None: every library; a list: only these; left out: unchanged
+    max_rating: Optional[int] = Field(None, ge=0, le=1000)  # Jellyfin's rating number: nothing above it; null: no limit; left out: unchanged
 
 
 @router.put("/users/{user_id}/access")
@@ -110,9 +112,12 @@ def set_access(user_id: int, body: Access, _=Depends(admin)):
         if any(s not in SECTIONS for s in body.blocked):
             raise HTTPException(422, "Unknown section")
         db().execute("UPDATE users SET blocked = ? WHERE id = ?", (",".join(sorted(set(body.blocked))), user_id))
-    if body.libraries != ["*"]:
+    if "max_rating" in body.model_fields_set or body.libraries != ["*"]:
         import jfaccess  # late: it talks to Jellyfin
-        jfaccess.limit(person, body.libraries)
+        if "max_rating" in body.model_fields_set:
+            jfaccess.rate(person, body.max_rating)
+        if body.libraries != ["*"]:
+            jfaccess.limit(person, body.libraries)
     return view(person)
 
 

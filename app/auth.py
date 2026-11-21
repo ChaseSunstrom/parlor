@@ -262,7 +262,7 @@ def create_user(name, password, is_admin) -> int:
 @router.get("/users")
 def list_users(_=Depends(admin)):
     people = rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.jf_user, u.created,
-                            u.blocked, u.libraries, (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
+                            u.blocked, u.libraries, u.max_rating, (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
                      FROM users u ORDER BY u.name""")
     for p in people:
         p["blocked"] = [s for s in (p["blocked"] or "").split(",") if s]
