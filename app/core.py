@@ -1,8 +1,10 @@
 """Shared bits: the SQLite database, settings, accounts and sessions."""
 
 import hashlib
+import datetime
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -15,6 +17,7 @@ from fastapi import HTTPException, Request
 
 import vault
 
+log = logging.getLogger("parlor.core")
 DATA = Path(os.environ.get("DATA_DIR", "/data"))
 VIDEOS = Path(os.environ.get("VIDEO_DIR", "/videos"))
 SESSION_DAYS = 30
@@ -235,6 +238,50 @@ def db() -> sqlite3.Connection:
                 _ready.add(path)
         _local.db, _local.path = conn, path
     return conn
+
+
+BACKUPS, KEEP_BACKUPS, BACKUP_HOUR = "backups", 7, 3
+_BACKUP_NAME = re.compile(r"yeerr-\d{4}-\d{2}-\d{2}\.db")
+
+
+def backup_db(day: datetime.date) -> Path:
+    """A copy of the database for this day in DATA/backups, made by SQLite itself from a live connection (VACUUM INTO:
+    a consistent snapshot, encrypted with the same key when the database is), then the oldest beyond KEEP_BACKUPS go.
+    Written under a temporary name first, so a failure never leaves a half copy that looks whole."""
+    folder = DATA / BACKUPS
+    folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    final = folder / f"yeerr-{day.isoformat()}.db"
+    tmp = folder / (final.name + ".partial")
+    tmp.unlink(missing_ok=True)
+    try:
+        db().execute("VACUUM INTO ?", (str(tmp),))
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, final)
+    finally:
+        tmp.unlink(missing_ok=True)
+    for old in sorted(p for p in folder.iterdir() if _BACKUP_NAME.fullmatch(p.name))[:-KEEP_BACKUPS]:
+        old.unlink(missing_ok=True)
+    return final
+
+
+def backup_due(now: datetime.datetime) -> bool:
+    """After 3 in the morning, and today's copy isn't there yet."""
+    return now.hour >= BACKUP_HOUR and not (DATA / BACKUPS / f"yeerr-{now.date().isoformat()}.db").exists()
+
+
+def start_backups():
+    """A copy each night (called once at startup; the loop looks hourly, so a Parlor that was off at 3 catches up)."""
+    def loop():
+        while True:
+            try:
+                if backup_due(now := datetime.datetime.now()):
+                    log.info("copied the database to %s", backup_db(now.date()).name)
+            except Exception:
+                log.exception("the nightly copy of the database failed")
+            time.sleep(3600)
+
+    threading.Thread(target=loop, daemon=True, name="db-backup").start()
 
 
 def rows(sql, *args):

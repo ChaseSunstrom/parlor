@@ -24,6 +24,16 @@ assert.ok(!html.includes('data-seek="83"'), "no button inside the link");
 assert.ok(!linkify("javascript:alert(1) 1:00", false).includes("<a"), "only http(s) links");
 console.log("ui helpers ok");
 
+// artwork from YouTube and TMDB goes through Parlor (kept on disk); any other address, and an empty one, is left alone
+const { artUrl, img } = require("vm").runInNewContext(`(() => { ${grab(core, "const ESC =", ";\n")} ${grab(core, "const esc =", ";\n")}
+  ${grab(core, "const artUrl =", ";\n")} ${grab(core, "const img =", ";\n")} return { artUrl, img }; })()`);
+assert.strictEqual(artUrl("https://i.ytimg.com/vi/abc/mqdefault.jpg"), "/api/art?u=https%3A%2F%2Fi.ytimg.com%2Fvi%2Fabc%2Fmqdefault.jpg");
+assert.ok(artUrl("https://image.tmdb.org/t/p/w500/x.jpg").startsWith("/api/art?u="));
+assert.ok(artUrl("https://yt3.ggpht.com/a=s88").startsWith("/api/art?u="));
+for (const same of ["https://evil.test/i.ytimg.com/", "https://i.ytimg.com.evil.test/a.jpg", "/api/jf/image/1", "", undefined]) assert.strictEqual(artUrl(same), same);
+assert.ok(img("https://i.ytimg.com/vi/a/b.jpg").includes('src="/api/art?u=https%3A%2F%2Fi.ytimg.com'), "img() uses it");
+console.log("artwork through Parlor ok");
+
 // the page's scripts share one global scope: the same const in two files would stop the later one
 const order = [...fs.readFileSync(path.join(__dirname, "..", "app", "static", "index.html"), "utf8").matchAll(/<script src="js\/([\w-]+\.js)"/g)].map((m) => m[1]);
 assert.ok(order.length >= 6, order);

@@ -23,7 +23,7 @@ from core import _digest, db, me, one, rows
 
 router = APIRouter()
 READS = ("GET", "HEAD")
-NEVER = ("/api/me/api-keys", "/api/me/password", "/api/me/app-passwords", "/api/auth/", "/api/vault/", "/api/private/")  # not with a key, at all
+NEVER = ("/api/me/api-keys", "/api/me/password", "/api/me/app-passwords", "/api/me/sessions", "/api/auth/", "/api/vault/", "/api/private/")  # not with a key, at all
 # what a key may change: downloads, requests and your own lists. Accounts, settings, the stack and the server are for
 # people who sign in, admins' keys included, so a leaked key can't make itself an account or repoint the server
 WRITES = ("/api/v1/", "/api/yt/", "/api/seerr/request", "/api/seerr/sets/", "/api/arr/music/", "/music/api/", "/api/jf/progress", "/api/jf/playback", "/api/jf/stopped",

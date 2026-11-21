@@ -68,7 +68,7 @@ class Keys(unittest.TestCase):
     def test_what_a_key_can_never_do(self):
         bot = keyed(self.make()["key"])
         for method, path in (("POST", "/api/me/api-keys"), ("GET", "/api/me/api-keys"), ("POST", "/api/me/password"), ("POST", "/api/me/app-passwords"),
-                             ("POST", "/api/auth/logout-everywhere"), ("GET", "/api/vault/key"), ("POST", "/api/private/unlock"), ("GET", "/api/private")):
+                             ("GET", "/api/me/sessions"), ("POST", "/api/auth/logout-everywhere"), ("GET", "/api/vault/key"), ("POST", "/api/private/unlock"), ("GET", "/api/private")):
             self.assertEqual(bot.request(method, path, json={}).status_code, 403, path)
 
     def test_signing_out_everywhere_ends_the_keys_too(self):

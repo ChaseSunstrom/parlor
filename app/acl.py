@@ -35,6 +35,7 @@ RULES = [
     ("/music/api/", ("music",)), ("/rest/", ("music",)),
     ("/api/users", ADMIN), ("/api/settings", ADMIN), ("/api/stack", ADMIN), ("/api/qbit", ADMIN), ("/qbit", ADMIN),
     ("/api/access/", ADMIN), ("/api/vault/key", ADMIN), ("/api/vault/passphrase", ADMIN),
+    ("/api/art", EVERYONE),  # artwork for any page (art.py)
     ("/api/health", EVERYONE), ("/api/auth/", EVERYONE), ("/api/vault/", EVERYONE), ("/api/me/app-passwords", EVERYONE),
     ("/api/me/password", EVERYONE), ("/api/me", EVERYONE),
     ("/hooks/lidarr/", SECRET),  # Lidarr's webhook (musicreq.lidarr_hook)

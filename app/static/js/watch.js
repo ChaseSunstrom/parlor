@@ -17,7 +17,7 @@ function vcard(v, { forget = false, remove = false } = {}) {
   const meta = [views(v.views), since(v.published || v.watched || v.added)].filter(Boolean).join(" · ");
   return `<article class="vcard" data-video="${cardData(v)}">
     <a class="vthumb" href="${href}" tabindex="-1" aria-hidden="true">
-      <img src="${esc(v.thumb || ytThumb(v.id))}" alt="" loading="lazy">${len}
+      <img src="${esc(artUrl(v.thumb || ytThumb(v.id)))}" alt="" loading="lazy">${len}
       ${pct ? `<span class="seen"><i style="width:${pct.toFixed(1)}%"></i></span>` : ""}
       ${v.downloaded ? `<span class="tag">${ICON.ok}Saved</span>` : ""}
     </a>
@@ -41,7 +41,7 @@ function vcard(v, { forget = false, remove = false } = {}) {
 const ccard = (c) => `<div class="ccard"><a href="#/channel/${esc(c.id)}">${img(c.avatar)}<span class="t">${esc(c.name)}</span>
   <span class="s">${esc([c.handle, c.followers != null && `${compact.format(c.followers)} subscribers`].filter(Boolean).join(" · "))}</span></a>
   ${subButton(c.id, c.name, c.avatar, c.subscribed)}</div>`;
-const lcard = (p) => `<article class="vcard lcard"><a class="vthumb" href="#/ytlist/${esc(p.id)}">${p.thumb ? `<img src="${esc(p.thumb)}" alt="" loading="lazy">` : ""}
+const lcard = (p) => `<article class="vcard lcard"><a class="vthumb" href="#/ytlist/${esc(p.id)}">${p.thumb ? `<img src="${esc(artUrl(p.thumb))}" alt="" loading="lazy">` : ""}
   <span class="len">${ICON.play}${p.count ? plural(p.count, "video") : "Playlist"}</span></a>
   <div class="vmeta"><a class="t" href="#/ytlist/${esc(p.id)}">${esc(p.title)}</a>${p.channel ? `<span class="c">${esc(p.channel)}</span>` : ""}</div></article>`;
 const hideShorts = (items) => (pref("hideShorts") ? items.filter((v) => !v.short) : items);

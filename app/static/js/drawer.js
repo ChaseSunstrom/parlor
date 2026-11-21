@@ -94,7 +94,7 @@ function videoItem(j) {
   const label = j.kind === "music" ? "Audio to your music library" : `Video, ${j.quality === "best" ? "best quality" : j.quality + "p"}`;
   const play = j.status === "done" && j.kind === "video" ? ` <a href="#/watch/${esc(j.id)}">Play</a>` : "";
   return `<li class="job video">
-    <img src="https://i.ytimg.com/vi/${esc(j.id)}/mqdefault.jpg" alt="" loading="lazy">
+    <img src="${esc(artUrl(ytThumb(j.id)))}" alt="" loading="lazy">
     <div>
       <strong>${esc(j.title || "YouTube video")}</strong>
       <span class="sub">${esc([label, j.channel].filter(Boolean).join(" · "))}</span>

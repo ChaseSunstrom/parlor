@@ -9,7 +9,7 @@ const titlesOf = (n, media) => plural(n, media === "tv" ? "show" : "film");
 
 function setCard(a) {
   return `<a class="pcard setcard" href="${setHref(a.kind, a.id)}">
-    <div class="poster">${a.poster ? `<img src="${esc(a.poster)}" alt="" loading="lazy">` : `<span class="noart">${esc(a.name)}</span>`}
+    <div class="poster">${a.poster ? `<img src="${esc(artUrl(a.poster))}" alt="" loading="lazy">` : `<span class="noart">${esc(a.name)}</span>`}
       ${a.have ? `<span class="pill available"><span class="dot"></span>${a.have} in your library</span>` : ""}</div>
     <span class="t">${esc(a.name)}</span></a>`;
 }

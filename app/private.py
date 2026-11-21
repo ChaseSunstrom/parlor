@@ -156,7 +156,12 @@ def hold(user_id: int, password: str, token: str) -> bool:
 
 
 def drop(token: str):
-    _held.pop(core._digest(token or ""), None)
+    drop_digest(core._digest(token or ""))
+
+
+def drop_digest(digest: str):
+    """The same, for a session known by its stored digest (the devices list signs one out)."""
+    _held.pop(digest, None)
 
 
 def drop_user(user_id: int):
