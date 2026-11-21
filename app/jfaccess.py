@@ -86,6 +86,9 @@ def _push(person, **changes):
     uid = _own_user(person)
     users = jf.call("GET", "/Users").json()
     policy = dict(next((u.get("Policy") or {} for u in users if u["Id"] == uid), {}))
+    kept = one("SELECT max_rating FROM users WHERE id = ?", person["id"])["max_rating"]
+    if kept is not None and "MaxParentalRating" not in changes:  # a Jellyfin user made again carries the age limit it had
+        changes = {**changes, "MaxParentalRating": kept, "BlockUnratedItems": UNRATED}
     for k, v in changes.items():
         policy.pop(k, None)
         if v is not None:
@@ -98,15 +101,15 @@ def _push(person, **changes):
 
 
 # Music has no age rating, so a limit never blocks it; everything else with no rating is hidden from a limited person.
-UNRATED = ["Movie", "Series", "Trailer", "Program", "LiveTvChannel", "ChannelContent", "Book", "Other"]
+UNRATED = ["Movie", "Series", "Trailer", "LiveTvProgram", "LiveTvChannel", "ChannelContent", "Book", "Other"]  # Jellyfin's UnratedItem names: any other and it refuses the whole policy
 
 
 def rate(person, rating):
     """Hide what is rated above this (Jellyfin's own number: MaxParentalRating), and what has no rating; None lifts it.
     Unlike a library limit, a failure leaves the stored limit as it was."""
     with _lock:
-        if one("SELECT max_rating FROM users WHERE id = ?", person["id"])["max_rating"] == rating:
-            return  # nothing to change, and no Jellyfin user to make for it
+        if rating is None and one("SELECT max_rating FROM users WHERE id = ?", person["id"])["max_rating"] is None:
+            return  # nothing to lift, and no Jellyfin user to make for it (a limit is always sent again: Jellyfin may have lost it)
         _push(person, MaxParentalRating=rating, BlockUnratedItems=UNRATED if rating is not None else [])
         db().execute("UPDATE users SET max_rating = ? WHERE id = ?", (rating, person["id"]))
     with jf._seen.lock:  # items they could see a moment ago may be hidden now

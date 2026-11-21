@@ -373,8 +373,14 @@ def session_user(token: str):
     if now - row["seen"] > 3600:  # sliding expiry, written at most hourly
         db().execute("UPDATE sessions SET seen = ? WHERE token = ?", (now, _digest(token)))
     row.pop("seen")
-    row["admin"], row["local"] = bool(row["admin"]) and not row.pop("tv"), bool(row["local"])  # a TV in the living room is never an admin
+    row["admin"], row["local"] = bool(row["admin"]) and not row["tv"], bool(row["local"])  # a TV in the living room is never an admin (tv: its id, kept for the guard)
     return row
+
+
+def unpick(user_id: int):
+    """No TV acts as this person any more (they signed out everywhere, changed their password or PIN, or left the household):
+    a TV goes back to its owner, and picking them again asks for the PIN again."""
+    db().execute("UPDATE tvs SET viewer_id = NULL WHERE viewer_id = ?", (user_id,))
 
 
 def drop_session(token: str):

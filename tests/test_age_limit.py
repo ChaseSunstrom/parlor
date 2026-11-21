@@ -31,6 +31,9 @@ class AgeLimit(unittest.TestCase):
     def stored(self):
         return core.one("SELECT max_rating FROM users WHERE id = ?", self.mid)["max_rating"]
 
+    def policy_owner(self):
+        return core.one("SELECT jf_user FROM users WHERE id = ?", self.mid)["jf_user"]
+
     def policy(self):
         return self.fake.policies[core.one("SELECT jf_user FROM users WHERE id = ?", self.mid)["jf_user"]]
 
@@ -71,6 +74,23 @@ class AgeLimit(unittest.TestCase):
         self.assertEqual(len(self.fake.calls), n, "no call to Jellyfin")
         self.assertEqual(self.stored(), 10)
         access(self.admin, self.mid, blocked=[])
+
+    def test_a_limit_jellyfin_lost_is_sent_again(self):
+        access(self.admin, self.mid, max_rating=10)
+        uid = core.one("SELECT jf_user FROM users WHERE id = ?", self.mid)["jf_user"]
+        self.fake.users = [u for u in self.fake.users if u["Id"] != uid]  # deleted in Jellyfin since
+        jf._users.drop("all")
+        self.assertEqual(access(self.admin, self.mid, max_rating=10).status_code, 200, "the same number is not a reason to skip it")
+        self.assertEqual(self.policy()["MaxParentalRating"], 10)
+        self.fake.users = [u for u in self.fake.users if u["Id"] != self.policy_owner()]
+        jf._users.drop("all")
+        self.assertEqual(access(self.admin, self.mid, libraries=["f" * 32]).status_code, 200)  # a user made again for a library limit
+        self.assertEqual(self.policy()["MaxParentalRating"], 10, "carries the age limit too")
+        self.assertIn("LiveTvProgram", self.policy()["BlockUnratedItems"], "Jellyfin's own names: any other and it refuses the policy")
+
+    def test_the_ratings_an_admin_chooses_from(self):
+        self.assertEqual(self.admin.get("/api/jf/ratings").json()["ratings"], [{"value": 0, "name": "G"}, {"value": 10, "name": "PG"}, {"value": 13, "name": "PG-13"}])
+        self.assertEqual(self.member.get("/api/jf/ratings").status_code, 403)
 
     def test_no_limit_and_clearing_it_again_never_calls_jellyfin(self):
         self.assertEqual(access(self.admin, self.mid, max_rating=None).status_code, 200)

@@ -22,8 +22,9 @@ A TV acts as one person, so each person's history, resume points, limits and Jel
 
 - **The household**: an admin marks accounts as part of it (Settings → People, `household` on `PATCH /api/users/{id}`). A profile is a household account; there are no sub-profiles inside one account.
 - **Who a TV acts as**: its owner (the account that paired it) until someone else in the household is picked. Then every request from the TV is answered as that person: their sections, their libraries, their history. It is never an admin, even when that person is.
-- **Falling back**: if the person is deleted or taken out of the household, the TV acts as its owner again. Put back into the household, they are picked again.
-- **Who may pick and drive**: the TV's owner, the person it is acting as, and any household account, from a phone or the TV's own screen (`GET /api/tv/{id}/people`, `POST /api/tv/{id}/viewer`). A household account sees and drives every TV, including ones paired by accounts outside the household. Only the owner (or an admin from Settings → TVs) unpairs a TV.
+- **Falling back**: the TV acts as its owner again when the person is deleted or taken out of the household, signs out everywhere, or changes their password or PIN. Picking them again asks for the PIN again.
+- **Who may pick and drive**: the TV's owner, the person it is acting as, and any household account, from a phone or the TV's own screen (`GET /api/tv/{id}/people`, `POST /api/tv/{id}/viewer`). The household shares the TVs its own accounts paired: a TV paired by an account outside the household stays that account's alone. Only the owner (or an admin from Settings → TVs) unpairs a TV.
+- **What a TV never does**: whoever it acts as, a TV's session can't change a password or a PIN, make or list API keys and app passwords, see or sign out that person's other devices, set their YouTube cookies or pair another screen. Those are done from the person's own phone or computer.
 - **PINs**: anyone can set a 4 to 8 digit PIN with their password (`PUT /api/me/pin`, `null` clears it; an admin can clear a forgotten one). Switching a TV to a person with a PIN asks for it, from a TV or someone else's phone, including going back to an owner who has one. Their own phone, and a TV already acting as them, aren't asked. Wrong PINs are throttled like wrong passwords: 8 in 15 minutes per person and per address, after which even the right PIN waits. A PIN is stored hashed.
 
 ## Seerr users
@@ -44,8 +45,10 @@ Settings → People → **Access** sets, for each member, what they can use:
   - Search, Next up, pictures and streams follow it, in Parlor and in Jellyfin's own apps.
   - Someone sharing the default Jellyfin user is given their own first, so the others keep theirs.
   - If Jellyfin can't be reached while you save, they see no library until it can, never every library.
-- **An age limit.** An admin can set the highest rating a member may watch, as Jellyfin's own rating number (its *Maximum parental rating*). Parlor sets it on the same Jellyfin user of their own, and blocks titles with no rating (music is left alone), so Jellyfin hides what is too old in lists, search and streams, in Parlor and in Jellyfin's own apps.
+- **An age limit.** An admin can set the highest rating a member may watch, from Jellyfin's own ratings (its *Maximum parental rating*: G, PG, PG-13 and so on; `GET /api/jf/ratings` lists them). Parlor sets it on the same Jellyfin user of their own, and blocks titles with no rating (music is left alone), so Jellyfin hides what is too old in lists, search and streams, in Parlor and in Jellyfin's own apps.
   - Clearing it removes it. Making someone an admin clears it too.
+  - Give a parent's account a PIN: without one, anyone at the TV can switch it to that parent and watch as them.
+  - YouTube has no ratings Parlor can enforce: close Watch for that account if it should not be there.
   - If Jellyfin can't be reached while you save, the limit stays as it was and the save fails: it is never half set.
 
 ## Private items

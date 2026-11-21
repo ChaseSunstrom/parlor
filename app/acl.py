@@ -101,6 +101,17 @@ class Access(BaseModel):
     max_rating: Optional[int] = Field(None, ge=0, le=1000)  # Jellyfin's rating number: nothing above it; null: no limit; left out: unchanged
 
 
+@router.get("/jf/ratings")
+def ratings(_=Depends(admin)):
+    """Jellyfin's age ratings for People's age limit: one name for each number (the shortest: G, PG, PG-13), lowest first"""
+    import jf  # late: it talks to Jellyfin
+    names = {}
+    for r in jf.call("GET", "/Localization/ParentalRatings").json():
+        if r.get("Value") is not None and len(r["Name"]) < len(names.get(r["Value"], r["Name"] + " ")):
+            names[r["Value"]] = r["Name"]
+    return {"ratings": [{"value": v, "name": names[v]} for v in sorted(names)]}
+
+
 @router.put("/users/{user_id}/access")
 def set_access(user_id: int, body: Access, _=Depends(admin)):
     person = one("SELECT id, name, admin FROM users WHERE id = ?", user_id)

@@ -11,7 +11,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from core import (COOKIE, OLD_COOKIE, session_cookie, _digest, admin, check_password, db, drop_session, hash_password, me, new_session, one, rows,
+from core import (COOKIE, OLD_COOKIE, session_cookie, _digest, admin, check_password, db, drop_session, hash_password, me, new_session, one, rows, unpick,
                   set_cookie, set_setting, setting, valid_name, valid_password)
 import stack
 
@@ -170,6 +170,7 @@ def logout(request: Request, response: Response):
 def logout_everywhere(response: Response, user=Depends(me)):
     db().execute("DELETE FROM sessions WHERE user_id = ?", (user["id"],))
     db().execute("DELETE FROM api_keys WHERE user_id = ?", (user["id"],))  # every way in, keys included
+    unpick(user["id"])  # and a TV acting as them
     import private  # late: it imports this module
     private.drop_user(user["id"])
     response.delete_cookie(COOKIE, path="/")
@@ -247,6 +248,7 @@ def set_pin(body: PinChange, user=Depends(me)):
     if not confirm_password(user, body.password):
         raise HTTPException(403, "Your password isn't right")
     db().execute("UPDATE users SET pin = ? WHERE id = ?", (body.pin and hash_password(body.pin), user["id"]))
+    unpick(user["id"])  # a TV already acting as them asks for the new one
     return {"ok": True}
 
 
@@ -263,6 +265,7 @@ def change_password(body: PasswordChange, request: Request, user=Depends(me)):
     # other devices have to sign in again with the new password
     keep = session_cookie(request)
     db().execute("DELETE FROM sessions WHERE user_id = ? AND token != ?", (user["id"], _digest(keep)))
+    unpick(user["id"])
     return {"ok": True}
 
 
@@ -332,6 +335,7 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
         db().execute("UPDATE users SET pw = ? WHERE id = ?", (hash_password(valid_password(body.password)), user_id))
         db().execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
         db().execute("DELETE FROM api_keys WHERE user_id = ?", (user_id,))
+        unpick(user_id)
         import private  # late: it imports this module
         private.drop_user(user_id)
     if body.seerr_id is not None or body.unlink_seerr:
@@ -340,6 +344,9 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
         db().execute("UPDATE users SET jf_user = ? WHERE id = ?", (_jf_user(body.jf_user) or None, user_id))
     if body.household is not None:
         db().execute("UPDATE users SET household = ? WHERE id = ?", (int(body.household), user_id))
+        if not body.household:  # out of the household: no TV acts as them, and theirs act as nobody else
+            unpick(user_id)
+            db().execute("UPDATE tvs SET viewer_id = NULL WHERE user_id = ?", (user_id,))
     if body.clear_pin:
         db().execute("UPDATE users SET pin = NULL WHERE id = ?", (user_id,))
     return {"ok": True}

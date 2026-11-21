@@ -67,6 +67,10 @@ app = FastAPI(title="Parlor", description=api.__doc__, docs_url="/api/docs", red
               swagger_ui_oauth2_redirect_url=None)  # the docs need a sign-in like the rest of /api
 PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/auth/signup",
           "/api/tv/code", "/api/tv/claim", "/api/tv/me"} | security.PUBLIC  # a TV pairs before it has a session
+# what a TV's session never does, whoever it acts as: it sits in the living room, and its owner or the person picked on it
+# manages their account from their own phone (passwords, PINs, keys, other devices, pairing more screens)
+TV_NEVER = ("/api/me/sessions", "/api/me/api-keys", "/api/me/app-passwords", "/api/me/password", "/api/me/pin", "/api/me/youtube-cookies",
+            "/api/auth/logout-everywhere", "/api/tv/pair")
 
 
 @app.middleware("http")
@@ -96,6 +100,8 @@ async def guard(request: Request, call_next):
             user = await anyio.to_thread.run_sync(core.session_user, core.session_cookie(request))
             if not user:
                 return JSONResponse({"detail": "Sign in first"}, status_code=401)
+            if user["tv"] and path.startswith(TV_NEVER):
+                return JSONResponse({"detail": "Not from a TV: do this from your own phone or computer"}, status_code=403)
             lacking = await anyio.to_thread.run_sync(acl.allowed, user, path, request.method)
             if lacking:
                 return JSONResponse({"detail": f"{lacking} isn't open to your account; ask an admin"}, status_code=403)

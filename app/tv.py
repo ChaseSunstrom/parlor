@@ -130,18 +130,22 @@ def _viewer(tid: int) -> Optional[int]:
 
 
 def audience(tid: int) -> set:
-    """the accounts that hear a TV and may drive it: its owner and the household (the viewer is always one of them)"""
-    t = one("SELECT user_id FROM tvs WHERE id = ?", tid)
-    return {r["id"] for r in rows("SELECT id FROM users WHERE household = 1 OR id = ?", t["user_id"] if t else 0)}
+    """the accounts that hear a TV and may drive it: its owner, and the rest of the household when the owner is part of it
+    (a TV paired by someone outside the household stays theirs alone). The viewer is always one of them."""
+    t = one("SELECT t.user_id, u.household FROM tvs t JOIN users u ON u.id = t.user_id WHERE t.id = ?", tid)
+    if not t:
+        return set()
+    return {t["user_id"]} | ({r["id"] for r in rows("SELECT id FROM users WHERE household = 1")} if t["household"] else set())
 
 
 @router.get("")
 def my_tvs(everyone: bool = False, user=Depends(me)):
-    """this account's TVs, or all of them for a household account; an admin asks for everyone's (Settings → TVs)"""
-    every = everyone and user["admin"] or household(user["id"])
+    """this account's TVs, and the household's for an account that is part of it; an admin asks for everyone's (Settings → TVs)"""
+    every = everyone and user["admin"]
     found = rows("""SELECT t.id, t.name, t.user_id, t.created, u.name AS owner, v.id AS vid, v.name AS vname FROM tvs t
                     JOIN users u ON u.id = t.user_id LEFT JOIN users v ON v.id = t.viewer_id AND v.household = 1"""
-                 + ("" if every else " WHERE t.user_id = ?") + " ORDER BY t.created", *(() if every else (user["id"],)))
+                 + ("" if every else " WHERE t.user_id = ? OR (u.household = 1 AND ?)") + " ORDER BY t.created",
+                 *(() if every else (user["id"], household(user["id"]))))
     for t in found:
         t.update(online=hub.online(t["id"]), state=hub.state.get(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
     return {"tvs": found}
@@ -151,7 +155,7 @@ def _mine(tid: int, user: dict, everyone: bool = False, owner: bool = False) -> 
     """a TV this account may drive: its owner's, its viewer's or a household account's; anyone else's only for an admin asking
     from Settings → TVs (everyone). owner: only its owner (or that admin), for what a household account may not do"""
     t = one("SELECT id, user_id, name, session FROM tvs WHERE id = ?", tid)
-    if not t or not (t["user_id"] == user["id"] or (everyone and user["admin"]) or (not owner and household(user["id"]))):
+    if not t or not (t["user_id"] == user["id"] or (everyone and user["admin"]) or (not owner and user["id"] in audience(tid))):
         raise HTTPException(404, "No such TV")
     return t
 
@@ -172,8 +176,8 @@ async def unpair(tid: int, everyone: bool = False, user=Depends(me)):
 def people(tid: int, everyone: bool = False, user=Depends(me)):
     """who this TV can act as: its owner and the household, and whether each has a PIN (the TV's own picker and a remote's)"""
     t = _mine(tid, user, everyone)
-    found = rows("SELECT id, name, pin IS NOT NULL AS pin, id = ? AS owner FROM users WHERE household = 1 OR id = ? ORDER BY owner DESC, name",
-                 t["user_id"], t["user_id"])
+    found = [p for p in rows("SELECT id, name, pin IS NOT NULL AS pin, id = ? AS owner FROM users ORDER BY owner DESC, name", t["user_id"])
+             if p["id"] in audience(tid)]
     return {"people": [{**p, "pin": bool(p["pin"]), "owner": bool(p["owner"])} for p in found], "viewer": _viewer(tid)}
 
 
@@ -187,7 +191,7 @@ def _pick(t: dict, body: Pick, user: dict, by_tv: bool, address: str) -> Optiona
     of the one asking from their own phone, isn't asked); who it acts as now, None for the owner"""
     owner = t["user_id"]
     target = body.user_id if body.user_id not in (None, owner) else owner
-    row = one("SELECT id, name, pin FROM users WHERE id = ? AND (household = 1 OR id = ?)", target, owner)
+    row = one("SELECT id, name, pin FROM users WHERE id = ?", target) if target in audience(t["id"]) else None
     if not row:
         raise HTTPException(404, "They aren't part of the household")
     if row["pin"] and target != (_viewer(t["id"]) or owner) and (by_tv or user["id"] != target):

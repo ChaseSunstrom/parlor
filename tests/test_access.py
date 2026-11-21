@@ -132,6 +132,9 @@ class FakeJellyfin:
         elif method == "DELETE" and path.startswith("/Users/"):
             self.users = [u for u in self.users if u["Id"] != path.split("/")[2]]
             code = 204
+        elif path == "/Localization/ParentalRatings":
+            body = [{"Name": "Unrated", "Value": None}, {"Name": "Approved", "Value": 0}, {"Name": "G", "Value": 0}, {"Name": "TV-PG", "Value": 10},
+                    {"Name": "PG", "Value": 10}, {"Name": "PG-13", "Value": 13}]
         elif path == "/Library/VirtualFolders":
             body = [{"Name": "Films", "ItemId": "f" * 32, "CollectionType": "movies"}, {"Name": "Shows", "ItemId": "e" * 32, "CollectionType": "tvshows"}]
         return mock.Mock(status_code=code, ok=code < 300, json=lambda: body, headers={}, close=lambda: None)

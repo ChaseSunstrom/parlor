@@ -33,9 +33,9 @@ class Profiles(unittest.TestCase):
         self.kid = signed_in("pkid")
         self.mum = signed_in("pmum")
         self.guest = signed_in("pguest")  # not in the household
-        for name in ("pkid", "pmum"):
+        for name in ("pkid", "pmum", "pownerr"):
             core.db().execute("UPDATE users SET household = 1, pin = NULL, blocked = '' WHERE name = ?", (name,))
-        core.db().execute("UPDATE users SET household = 0, pin = NULL WHERE name IN ('pguest', 'pownerr')")
+        core.db().execute("UPDATE users SET household = 0, pin = NULL WHERE name = 'pguest'")
         self.uid = {r["name"]: r["id"] for r in core.rows("SELECT id, name FROM users")}
         self.tv, self.tid = paired(self.owner)
 
@@ -153,7 +153,7 @@ class Profiles(unittest.TestCase):
         self.assertEqual(self.admin.patch(f"/api/users/{self.uid['pguest']}", json={"household": True}, headers=H).status_code, 200)
         listed = {p["name"]: p for p in self.admin.get("/api/users").json()}
         self.assertTrue(listed["pguest"]["household"])
-        self.assertFalse(listed["pownerr"]["household"])
+        self.assertFalse(listed["admin"]["household"])
         self.assertNotIn("pin", listed["pguest"], "the hash never leaves")
         self.set_pin(self.guest, "1111")
         self.assertTrue(next(p for p in self.admin.get("/api/users").json() if p["name"] == "pguest")["has_pin"])
@@ -162,6 +162,42 @@ class Profiles(unittest.TestCase):
         self.assertEqual(self.guest.patch("/api/users/1", json={"household": True}, headers=H).status_code, 403, "only an admin")
         me = self.mum.get("/api/me").json()
         self.assertEqual((me["household"], me["has_pin"]), (True, False))
+
+    def test_a_tv_paired_from_outside_the_household_stays_its_owner_s(self):
+        t, tid = paired(self.guest, "Guest room")
+        self.assertEqual(self.kid.post(f"/api/tv/{tid}/do", json={"cmd": "toggle"}, headers=H).status_code, 404, "the household can't drive it")
+        self.assertEqual(self.kid.get(f"/api/tv/{tid}/people").status_code, 404)
+        self.assertNotIn(tid, [x["id"] for x in self.kid.get("/api/tv").json()["tvs"]])
+        self.assertEqual(self.pick(self.guest, "pkid", tid=tid).status_code, 404, "nor can it act as one of the household")
+        self.assertEqual([p["name"] for p in self.guest.get(f"/api/tv/{tid}/people").json()["people"]], ["pguest"])
+        self.assertEqual(tv.audience(tid), {self.uid["pguest"]})
+
+    def test_a_tv_never_manages_an_account(self):
+        self.pick(self.owner, "pmum")
+        for method, path, body in (("get", "/api/me/sessions", None), ("post", "/api/auth/logout-everywhere", {}), ("get", "/api/me/api-keys", None),
+                                   ("post", "/api/me/api-keys", {"name": "x"}), ("post", "/api/me/password", {"old": PW, "new": "another horse"}),
+                                   ("put", "/api/me/pin", {"pin": "1234", "password": PW}), ("post", "/api/tv/pair", {"code": "ABCDEFGH", "name": "x"})):
+            r = getattr(self.tv, method)(path, headers=H, **({"json": body} if body is not None else {}))
+            self.assertEqual(r.status_code, 403, f"{method} {path}")
+            self.assertIn("Not from a TV", r.json()["detail"])
+        self.assertEqual(self.mum.get("/api/me/sessions").status_code, 200, "her own phone still does")
+        self.assertEqual(self.tv.get("/api/me/history").status_code, 200, "what a TV shows is still hers")
+
+    def test_signing_out_everywhere_or_a_new_pin_takes_the_tv_back(self):
+        self.pick(self.owner, "pmum")
+        self.assertEqual(self.set_pin(self.mum, "4321").status_code, 200)
+        self.assertEqual(self.tv.get("/api/me").json()["name"], "pownerr", "a new PIN: picking her asks for it")
+        self.assertEqual(self.pick(self.owner, "pmum", "4321").status_code, 200)
+        self.assertEqual(self.mum.post("/api/auth/logout-everywhere", headers=H).status_code, 200)
+        self.assertEqual(self.tv.get("/api/me").json()["name"], "pownerr")
+        self.mum = signed_in("pmum")
+
+    def test_leaving_the_household_clears_the_pick_for_good(self):
+        self.pick(self.owner, "pkid")
+        kid = self.uid["pkid"]
+        self.assertEqual(self.admin.patch(f"/api/users/{kid}", json={"household": False}, headers=H).status_code, 200)
+        self.assertEqual(self.admin.patch(f"/api/users/{kid}", json={"household": True}, headers=H).status_code, 200)
+        self.assertEqual(self.tv.get("/api/me").json()["name"], "pownerr", "back in the household, but nobody picked them again")
 
 
 if __name__ == "__main__":
