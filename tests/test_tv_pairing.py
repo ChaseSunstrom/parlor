@@ -48,7 +48,7 @@ class Pairing(unittest.TestCase):
         tvs = self.owner.get("/api/tv").json()["tvs"]
         self.assertEqual([t["name"] for t in tvs], ["Living room"])
         self.assertEqual(tvc.get("/api/tv/me").json()["tv"]["name"], "Living room", "the TV knows it's a TV")
-        self.assertEqual(self.owner.get("/api/tv/me").json(), {"tv": None})
+        self.assertIsNone(self.owner.get("/api/tv/me").json()["tv"])
 
     def test_a_code_works_once_and_for_five_minutes(self):
         tvc, got = new_tv()

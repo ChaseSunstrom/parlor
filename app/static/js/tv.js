@@ -36,7 +36,7 @@ function tvMove(dir) {
 }
 
 function tvBack() {
-  if ($("#tvAsk")) return $("#tvAsk").remove();
+  if ($("#tvAsk")) { tvBlocked = null; $("#tvAsk").remove(); return tvReport(true); }
   if (byId("queueMenu")) return byId("queueMenu").close(true);
   if (!byId("queuePanel").hidden) return queueShow(false);
   if (history.length > 1 && location.hash && location.hash !== "#/") history.back();
@@ -117,7 +117,18 @@ function tvListen() {
     const m = JSON.parse(e.data);
     if (m.type === "do") tvDo(m);
   };
-  tvStream.onopen = () => tvReport(true);
+  tvStream.onopen = () => { tvReport(true); tvFresh(); }; // it opens again after Parlor restarts: an update, perhaps
+}
+
+/** a TV is left on for weeks and nobody presses Reload on it: when a newer Parlor answers, it reloads itself as soon
+    as nothing is playing */
+let tvVersion = null, tvStale = false;
+async function tvFresh() {
+  const v = (await api("/api/tv/me").catch(() => ({}))).version;
+  if (v && tvVersion && v !== tvVersion) tvStale = true;
+  tvVersion ??= v || null;
+  const p = tvPlayer();
+  if (tvStale && !(p && !p.paused)) location.reload();
 }
 
 /** what's playing on this TV, if anything: a video on the page, else the dock */
@@ -127,7 +138,7 @@ function tvPlayer() {
 }
 
 function tvDo(m) {
-  const p = tvPlayer();
+  const p = tvPlayer(), t0 = performance.now();
   switch (m.cmd) {
     case "key":
       if (m.key === "back") tvBack();
@@ -142,7 +153,7 @@ function tvDo(m) {
     case "skip": (m.by || 1) > 0 ? dockSkip() : dockBack(); break;
     case "volume": {
       const v = Math.min(1, Math.max(0, m.to ?? (p?.volume ?? dock.audio.volume) + (m.by || 0)));
-      for (const el of new Set([p, dock.audio, dock.spare].filter(Boolean))) el.volume = v; // the dock's two players keep the same level
+      for (const el of new Set([p, dock.audio, dock.spare].filter(Boolean))) { el.volume = v; if (v > 0 && (m.by || 0) >= 0) el.muted = false; } // the dock's two players keep the same level; turning it up takes a mute off
       break;
     }
     case "type": {
@@ -156,17 +167,51 @@ function tvDo(m) {
     case "cast": tvCast(m.cast || {}); break;
     case "stop": p?.pause(); dockStop(); break;
   }
-  setTimeout(() => tvReport(true), 150);
+  tvActed(m.n, t0);
+}
+
+/** after the frame that shows what a command changed, say so: with the command's number (the server times the way
+    there and back), how long acting on it took, and how long until that frame and the one after it */
+let tvAck = null;
+function tvActed(n, t0) {
+  const took = performance.now() - t0;
+  let said = false;
+  const say = (t1, t2) => {
+    if (said) return;
+    said = true;
+    if (n) tvAck = { ack: n, took: Math.round(took), ...(t2 ? { paint: Math.round(t2 - t0), frame: Math.round(t2 - t1) } : {}) };
+    tvReport(true);
+  };
+  requestAnimationFrame((t1) => requestAnimationFrame((t2) => say(t1, t2)));
+  setTimeout(say, 1000); // a page nobody sees draws no frames
 }
 
 /** play, or on a TV that blocks playing without a press, ask for one OK */
 function tvPlay(p) {
-  p.play().catch(() => {
-    if ($("#tvAsk")) return;
-    document.body.insertAdjacentHTML("beforeend", `<div class="tvask" id="tvAsk"><button class="primary" id="tvAskGo">${ICON.play}Press OK to play</button></div>`);
-    $("#tvAskGo").addEventListener("click", () => { $("#tvAsk").remove(); p.play().catch(() => {}); });
-    $("#tvAskGo").focus();
-  });
+  p.play().catch(() => tvRefused(p));
+}
+
+/** The browser won't start sound that nobody pressed a key for. A TV's own remote can press OK; a press that comes
+    from a phone doesn't count as one, so the remotes are told too (a kiosk's browser needs
+    --autoplay-policy=no-user-gesture-required). Anything on this page that tries to play comes through here. */
+let tvBlocked = null; // the player that was refused
+function tvRefused(p) {
+  if (!p.paused) return;
+  tvBlocked = p;
+  tvReport(true);
+  if ($("#tvAsk")) return;
+  document.body.insertAdjacentHTML("beforeend", `<div class="tvask" id="tvAsk"><button class="primary" id="tvAskGo">${ICON.play}Press OK to play</button></div>`);
+  $("#tvAskGo").addEventListener("click", () => { $("#tvAsk").remove(); p.play().catch(() => {}); });
+  $("#tvAskGo").focus();
+}
+if (TV_MODE) {
+  const play = HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play = function () { // every player on the page: a film, a video, the music dock
+    const r = play.call(this);
+    r?.catch((err) => { if (err.name === "NotAllowedError") tvRefused(this); });
+    return r;
+  };
+  document.addEventListener("playing", (e) => { if (e.target === tvBlocked) { tvBlocked = null; $("#tvAsk")?.remove(); } }, true);
 }
 
 const tvHex = (s) => /^[0-9a-f]{32}$/.test(s || "");
@@ -198,17 +243,25 @@ function tvReport(now = false) {
   clearTimeout(tvSayTimer);
   if (!now && Date.now() - tvSaid < 500) { tvSayTimer = setTimeout(() => tvReport(true), 500); return; }
   tvSaid = Date.now();
+  if (tvBlocked && tvBlocked.paused === false) { tvBlocked = null; $("#tvAsk")?.remove(); } // the music dock's player isn't on the page: its "playing" isn't heard there
   const p = tvPlayer(), x = p === dock.audio ? dock.queue[dock.at] : null;
   const state = {
     page: location.hash || "#/", title: x?.title || (p ? $(".vinfo h1, .jplay h1, .offline-video h1, .hero h1")?.textContent || "" : ""),
     by: x?.by || "", kind: p ? (p === dock.audio ? "audio" : "video") : null, playing: !!p && !p.paused, at: p ? Math.floor(p.currentTime || 0) : 0,
     length: p && isFinite(p.duration) ? Math.floor(p.duration) : 0, volume: p ? Math.round(p.volume * 100) / 100 : 1,
+    ...(p?.muted ? { muted: true } : {}), ...(tvBlocked ? { blocked: true } : {}), ...tvAck,
   };
+  tvAck = null;
   post("/api/tv/state", { state }).catch(() => {});
 }
 for (const k of ["play", "pause", "seeked", "volumechange", "loadedmetadata"]) document.addEventListener(k, () => tvReport(), true);
 addEventListener("hashchange", () => tvReport());
-setInterval(() => { if (tvMe && ((tvPlayer() && !tvPlayer().paused) || Date.now() - tvSaid > 10000)) tvReport(); }, 2000); // idle, every 10 s: still on
+setInterval(() => { // idle, every 10 s: still on
+  if (!tvMe) return;
+  const playing = tvPlayer() && !tvPlayer().paused;
+  if (tvStale && !playing) return location.reload();
+  if (playing || Date.now() - tvSaid > 10000) tvReport();
+}, 2000);
 
 /* ---------- on a phone or computer: TVs, the remote, Play on TV ---------- */
 
@@ -255,7 +308,8 @@ async function showRemote(t, id, everyone) {
   paint(t, `<div class="wrap remote" id="remote" data-tv="${id}">
     <header><span class="dot" id="rDot"></span><div><h1 id="rName">TV</h1><small class="dim" id="rStatus">Connecting…</small></div><a class="ghost" href="#/tvs">All TVs</a></header>
     <div class="rnow" id="rNow" aria-live="polite"><div class="rtitle"><b id="rTitle">Nothing playing</b><span class="dim" id="rBy"></span></div>
-      <div class="rline"><span id="rAt">0:00</span><i><b id="rBar"></b></i><span id="rLen">0:00</span></div></div>
+      <div class="rline"><span id="rAt">0:00</span><i><b id="rBar"></b></i><span id="rLen">0:00</span></div>
+      <p class="rwarn" id="rWarn" role="alert" hidden></p></div>
     <div class="stick" id="rStick" tabindex="0" role="group" aria-label="Joystick: drag it for the arrows, hold to keep going, press it for OK. Arrow keys and Enter work too.">
       <span class="notch up">${chev(-90)}</span><span class="notch right">${chev(0)}</span><span class="notch down">${chev(90)}</span><span class="notch left">${chev(180)}</span>
       <span class="knob" id="rKnob" aria-hidden="true"><b>OK</b></span>
@@ -279,8 +333,13 @@ async function showRemote(t, id, everyone) {
     const x = r.tv, s = x?.state || {};
     $("#rName").textContent = x?.name || "This TV isn't paired any more";
     $("#rDot").className = `dot${x?.online ? " on" : ""}`;
-    $("#rStatus").textContent = !x ? "" : x.online ? (s.page ? "On" : "On, starting") : "Off, or not showing Parlor. It reconnects by itself when it's back.";
+    if (s.lag != null) r.lag = s.lag; // the last press, from the server to the TV's frame and back
+    $("#rStatus").textContent = !x ? "" : x.online ? (s.page ? `On${r.lag == null ? "" : r.lag < 400 ? ` · answers in ${r.lag} ms` : ` · slow to answer (${(r.lag / 1000).toFixed(1)} s)`}` : "On, starting")
+      : "Off, or not showing Parlor. It reconnects by itself when it's back.";
     $("#rTitle").textContent = s.title || "Nothing playing";
+    $("#rWarn").hidden = !(s.blocked || s.muted);
+    $("#rWarn").textContent = s.blocked ? "The TV's browser is holding this back until a key is pressed on the TV itself. A browser left running as a TV needs --autoplay-policy=no-user-gesture-required."
+      : s.muted ? "The sound is muted on the TV's page: press + to turn it on." : "";
     $("#rBy").textContent = s.by || "";
     $("#rAt").textContent = clock(s.at || 0);
     $("#rLen").textContent = clock(s.length || 0);
@@ -380,13 +439,15 @@ function joystick(el, send) {
   const knob = el.querySelector(".knob");
   let s = null; // the drag under way
   const step = (key) => {
-    send(key);
+    const sent = send(key);
     navigator.vibrate?.(key === "enter" ? 18 : 8);
     if (key !== "enter") { el.classList.remove("step"); void el.offsetWidth; el.classList.add("step"); } // the notch blinks
+    return sent;
   };
-  const repeat = (dir, wait) => {
-    step(dir);
-    s.timer = setTimeout(() => { if (s?.dir === dir) repeat(dir, Math.max(110, wait * 0.72)); }, wait);
+  const repeat = async (dir, wait) => { // the next step waits for the last one to be sent: a slow network never queues presses up
+    const held = s, sent = step(dir);
+    await Promise.all([sent, new Promise((ok) => { held.timer = setTimeout(ok, wait); })]);
+    if (s === held && s.dir === dir) repeat(dir, Math.max(110, wait * 0.72));
   };
   el.addEventListener("pointerdown", (e) => {
     if (e.button > 0 || e.target.closest(".vh")) return;

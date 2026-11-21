@@ -120,7 +120,8 @@ class Remote(unittest.TestCase):
         # the TV goes away: remotes hear it, and commands say it's off
         screen.close()
         t.close()
-        one.next("offline", timeout=tv.PING + 5)
+        while one.next("offline", timeout=tv.PING + 5)["tv"] != tid:  # another test's TV of this account may drop off first
+            pass
         r = self.owner.post(f"/api/tv/{tid}/do", json={"cmd": "toggle"})
         self.assertEqual(r.status_code, 409)
         self.assertIn("Den", r.json()["detail"])
@@ -150,6 +151,36 @@ class Remote(unittest.TestCase):
             theirs.next("state", timeout=1)
         for x in (screen, theirs, mine_only, everyone):
             x.close()
+
+    def test_a_command_is_numbered_and_the_tv_says_how_long_it_took(self):
+        t, tid = paired_tv(self.owner)
+        remote = Listen(self.owner)
+        remote.next("tvs")
+        screen = Listen(t)
+        remote.next("online")
+        n = self.owner.post(f"/api/tv/{tid}/do", json={"cmd": "key", "key": "up"}).json()["n"]
+        self.assertEqual(screen.next("do")["n"], n, "the TV gets the command's number")
+        time.sleep(0.06)
+        self.assertEqual(t.post("/api/tv/state", json={"state": {"ack": n, "took": 3, "paint": 40, "frame": 33}}).status_code, 200)
+        said = remote.next("state")["state"]
+        self.assertTrue(60 <= said["lag"] < 1000, f"from the press to the TV's answer, on the server's clock: {said}")
+        self.assertEqual((said["took"], said["paint"], said["frame"]), (3, 40, 33), "and the TV's own times with it")
+        t.post("/api/tv/state", json={"state": {"ack": n}})
+        self.assertNotIn("lag", remote.next("state")["state"], "a number answered already (or never sent) measures nothing")
+        m = self.owner.post(f"/api/tv/{tid}/do", json={"cmd": "key", "key": "down"}).json()["n"]
+        self.assertGreater(m, n, "numbers go up")
+        for x in (screen, remote):
+            x.close()
+
+    def test_the_stream_asks_proxies_not_to_hold_it_back(self):
+        t, _ = paired_tv(self.owner)
+        with t.stream("GET", "/api/tv/events", timeout=5) as r:
+            self.assertIn("no-transform", r.headers["cache-control"], "nothing in between may compress (and so buffer) it")
+            self.assertEqual(r.headers["x-accel-buffering"], "no")
+            self.assertTrue(r.headers["content-type"].startswith("text/event-stream"))
+            self.assertNotIn("content-encoding", r.headers)
+        me = t.get("/api/tv/me").json()
+        self.assertRegex(me["version"], r"^[0-9a-f]{12}$", "the page's version: a TV left on reloads itself when it changes")
 
     def test_what_a_command_may_say(self):
         t, tid = paired_tv(self.owner)

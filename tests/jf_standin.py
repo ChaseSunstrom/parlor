@@ -2,6 +2,7 @@
 media made with ffmpeg (a film, a show with two episodes, an album of two songs, an EPUB) with byte ranges. Importing
 it makes the media and starts the server at JF; point Parlor at it with point(core)."""
 import json
+import os
 import re
 import socket
 import subprocess
@@ -90,6 +91,20 @@ VIEWS = [{"Id": V_FILMS, "Name": "Films", "Type": "CollectionFolder", "Collectio
          {"Id": V_MUSIC, "Name": "Music", "Type": "CollectionFolder", "CollectionType": "music", "ImageTags": {"Primary": "p"}},
          {"Id": V_BOOKS, "Name": "Books", "Type": "CollectionFolder", "CollectionType": "books", "ImageTags": {"Primary": "p"}}]
 STATE: dict = {}  # item id -> UserData
+# JF_STANDIN_FILMS=40: a bigger film library, each film with its own poster and backdrop, some part-watched (the TV's home screen)
+_A = ["Salt", "Paper", "Glass", "Winter", "Copper", "Quiet", "Last", "Hollow", "Amber", "North"]
+_B = ["Harbour", "Orchard", "Signal", "Lantern", "Atlas", "Meridian", "Ferry", "Cathedral"]
+_C = ["0x2f6fa8", "0xa8452f", "0x3f8a5c", "0x7a3fa0", "0xc9892b", "0x1f8f9a", "0xb03a6b", "0x4a4fb8"]
+for _n in range(int(os.environ.get("JF_STANDIN_FILMS", 0))):
+    _id = hid(0x400 + _n)
+    picture(f"p{_n}.png", "400x600", _C[_n % 8])
+    ff("-f", "lavfi", "-i", f"gradients=s=1280x720:c0={_C[(_n + 3) % 8]}:c1={_C[_n % 8]}:c2=0x16141c:n=3:duration=1:speed=0:seed={_n + 1}", "-frames:v", "1", str(MEDIA / f"w{_n}.png"))
+    ITEMS[_id] = {"Id": _id, "Name": f"{_A[_n % 10]} {_B[(_n * 3) % 8]}", "Type": "Movie", "ProductionYear": 1990 + _n, "RunTimeTicks": (5400 + 240 * _n) * T,
+                  "Overview": "A town by the water keeps a promise it made a long time ago, and one summer somebody comes to collect.",
+                  "Genres": [["Drama", "Mystery", "Comedy", "Adventure"][_n % 4]], "CommunityRating": 6 + (_n % 30) / 10, "OfficialRating": ["G", "PG", "PG-13", "R"][_n % 4],
+                  "_file": "film.mp4", "_view": V_FILMS, "_poster": f"p{_n}.png", "_wide": f"w{_n}.png", **art}
+    if _n % 9 == 2:
+        STATE[_id] = {"PlaybackPositionTicks": (600 + 300 * _n) * T}
 SAVES: list = []
 DOWNLOADS: list = []  # (item, Range) for each original file asked for
 RANGES: list = []  # (file name, Range header) of every file asked for
@@ -181,7 +196,7 @@ class StandIn(BaseHTTPRequestHandler):
             if m[2] == "Download":  # the original file, as it is
                 DOWNLOADS.append((m[1], self.headers.get("Range")))
                 return self.file(MEDIA / i["_file"], "application/epub+zip" if i["_file"].endswith(".epub") else "video/mp4")
-            kind = "wide.png" if "Backdrop" in m[2] or i["Type"] == "Episode" else "square.png" if i["Type"] in ("MusicAlbum", "Audio", "MusicArtist") else "poster.png"
+            kind = i["_wide"] if "Backdrop" in m[2] and "_wide" in i else i["_poster"] if "_poster" in i else "wide.png" if "Backdrop" in m[2] or i["Type"] == "Episode" else "square.png" if i["Type"] in ("MusicAlbum", "Audio", "MusicArtist") else "poster.png"
             return self.file(MEDIA / kind, "image/png")
         if re.fullmatch(rf"/Videos/\w+/{MS}/Subtitles/\d+/Stream\.vtt", p):
             return self.send(200, body=VTT.encode(), ctype="text/vtt")

@@ -975,6 +975,12 @@ body.docked .updatebar { bottom: 100px; }
 
 /* ---------- TVs: the 10-foot layout, pairing, the remote ---------- */
 body.tv header .nav, body.tv .back-btn { display: none !important; } /* the sidebar is the TV's menu */
+/* a TV's graphics chip is the slowest in the house, and it fills a 4K screen: nothing blurs live, and nothing moves
+   until something was pressed (tests/perf_tv.py measures it) */
+body.tv .aurora { display: none; }
+body.tv *, body.tv *::before, body.tv *::after { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+body.tv .bar { background: var(--bg); }
+body.tv .bar::after, body.tv .hero::before, body.tv .hero::after, body.tv .dot.on, body.tv .dock-art img { animation: none !important; }
 body.tv :focus-visible, body.tv :focus { outline: 4px solid var(--accent); outline-offset: 4px; box-shadow: 0 0 0 10px color-mix(in oklab, var(--accent) 22%, transparent); }
 body.tv .vcard:focus-within, body.tv .jcard:focus-within, body.tv .tile:focus-within { transform: scale(1.04); transition: transform .18s ease; }
 body.tv .nav a:focus { background: color-mix(in oklab, var(--accent) 18%, transparent); }
@@ -1001,6 +1007,7 @@ body.tv .nav a:focus { background: color-mix(in oklab, var(--accent) 18%, transp
 .rline b { display: block; height: 100%; width: 0; background: var(--accent); transition: width .5s linear; }
 .rnow #hwLine { height: 14px; border-radius: 7px; cursor: pointer; }  /* pressed to jump: big enough for a thumb */
 .rhw .rnow { margin: 4px 0 10px; }
+.rwarn { margin: 0; padding: 10px 12px; border-radius: 10px; background: color-mix(in oklab, var(--bad) 16%, transparent); color: var(--text); font-size: .88rem; }
 /* the joystick: a well with four notches, and a knob that follows the thumb and springs back */
 .stick { position: relative; justify-self: center; width: min(270px, 74vw); aspect-ratio: 1; border-radius: 50%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
   background: radial-gradient(circle at 50% 38%, color-mix(in oklab, var(--raise) 82%, var(--accent)), var(--sunk) 74%);

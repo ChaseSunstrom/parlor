@@ -5,10 +5,13 @@ cookie, so they pass through the Android app and any reverse proxy unchanged. Pa
 session, so signing out everywhere, deleting the account or unpairing ends them. The live connections are held in this
 one process (Parlor runs a single worker)."""
 import asyncio
+import itertools
 import json
+import re
 import secrets
 import time
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal, Optional
 
@@ -18,6 +21,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 import core
+import pwa
 from core import _digest as _hash, db, me, one, rows  # the same digest as sessions.token, which tvs.session points at
 
 router = APIRouter(prefix="/api/tv")
@@ -100,9 +104,15 @@ def tv_of(token: str) -> Optional[dict]:
     return one("SELECT id, user_id, name FROM tvs WHERE session = ?", _hash(token)) if token else None
 
 
+@lru_cache(1)
+def version() -> str:
+    """the page's version (the service worker's): a TV left on reloads itself when a newer Parlor answers"""
+    return re.search(r'"([0-9a-f]{12})"', pwa.worker())[1]
+
+
 @router.get("/me")
 def whoami(request: Request):
-    return {"tv": tv_of(core.session_cookie(request))}
+    return {"tv": tv_of(core.session_cookie(request)), "version": version()}
 
 
 @router.get("")
@@ -144,6 +154,8 @@ class Hub:
         self.everyone: set = set()  # admins' queues from Settings → TVs
         self.state: dict = {}  # tv id -> what it last said it's doing
         self.seen: dict = {}  # tv id -> when it last said anything (it does every few seconds)
+        self.sent: dict = defaultdict(dict)  # tv id -> {a command's number: when it was passed on}, until the TV answers it
+        self.number = itertools.count(1)
 
     def online(self, tid: int) -> bool:
         """listening, and heard from lately: a TV switched off at the wall leaves its connection open for minutes"""
@@ -158,6 +170,7 @@ class Hub:
             _put(q, None)
         self.state.pop(tid, None)
         self.seen.pop(tid, None)
+        self.sent.pop(tid, None)
 
 
 def _put(q: asyncio.Queue, msg):
@@ -215,7 +228,7 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
                 hub.remotes[user["id"]].discard(q)
                 hub.everyone.discard(q)
 
-    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no"})  # a proxy passes each event on as it comes: no compressing, no buffering
 
 
 class Cast(BaseModel):
@@ -237,17 +250,22 @@ class Do(BaseModel):
 
 @router.post("/{tid}/do")
 async def do(tid: int, body: Do, everyone: bool = False, user=Depends(me)):
-    """A remote's command, or a cast: on to the TV, last one wins. A TV that isn't listening says so."""
+    """A remote's command, or a cast: on to the TV, in order. A TV that isn't listening says so. Each gets a number;
+    the TV answers with it in what it says next, which times the whole way there and back (state, below)."""
     t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
     if body.cmd == "cast" and not body.cast:
         raise HTTPException(422, "What to cast?")
     listening = hub.tvs.get(tid)
     if not listening or not hub.online(tid):
         raise HTTPException(409, f"{t['name']} is off or not showing Parlor")
-    msg = {"type": "do", **body.model_dump(exclude_none=True), "from": user["name"]}
+    n, waiting = next(hub.number), hub.sent[tid]
+    waiting[n] = time.monotonic()
+    for old in list(waiting)[:-50]:  # a TV that never answers: only the last few are kept
+        del waiting[old]
+    msg = {"type": "do", **body.model_dump(exclude_none=True), "from": user["name"], "n": n}
     for q in listening:
         _put(q, msg)
-    return {"ok": True}
+    return {"ok": True, "n": n}
 
 
 class State(BaseModel):
@@ -256,13 +274,16 @@ class State(BaseModel):
 
 @router.post("/state")
 async def state(body: State, request: Request, user=Depends(me)):
-    """The TV says what it's doing (title, playing or not, position, volume, page): every remote of its account hears it."""
+    """The TV says what it's doing (title, playing or not, position, volume, page): every remote of its account hears it.
+    With the number of the command it just acted on (`ack`), the server adds `lag`: milliseconds from that command
+    arriving here to this answer, the TV's own drawing included (it answers after the frame that shows the change)."""
     tv = await anyio.to_thread.run_sync(tv_of, core.session_cookie(request))
     if not tv:
         raise HTTPException(403, "Only a paired TV says what it's playing")
     if len(json.dumps(body.state)) > 4000:
         raise HTTPException(413, "Too much state")
-    hub.state[tv["id"]] = {**body.state, "seen": _now()}  # "at" is where it is in what's playing
+    sent = hub.sent[tv["id"]].pop(body.state.get("ack"), None) if isinstance(body.state.get("ack"), int) else None
+    hub.state[tv["id"]] = {**body.state, "seen": _now(), **({"lag": round((time.monotonic() - sent) * 1000)} if sent else {})}  # "at" is where it is in what's playing
     hub.seen[tv["id"]] = _now()
     hub.tell(tv["user_id"], {"type": "state", "tv": tv["id"], "state": hub.state[tv["id"]]})
     return {"ok": True}

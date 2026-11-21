@@ -151,6 +151,11 @@ with sync_playwright() as pw:
     screen.evaluate("location.hash = '#/'")
     screen.wait_for_timeout(1200)
     screen.screenshot(path=str(OUT / "tv-home.png"))
+    # a TV is left on: when a newer Parlor answers, it reloads itself (nothing is playing)
+    screen.wait_for_function("tvVersion", timeout=10000)
+    screen.evaluate("window.oldPage = true; tvVersion = '000000000000'; tvFresh()")
+    screen.wait_for_function("!window.oldPage && ME && tvMe && tvVersion && tvVersion !== '000000000000'", timeout=30000)
+    checks["a TV left on reloads itself when Parlor was updated"] = True
 
     if REMOTE:
         tid = phone.evaluate("fetch('/api/tv').then(r => r.json()).then(r => r.tvs[0].id)")
@@ -172,6 +177,11 @@ with sync_playwright() as pw:
         p95 = sorted(gaps)[int(len(gaps) * 0.95)]
         print(f"remote key to TV: p95 {p95} ms, worst {max(gaps)} ms; focus moved on {moved} of 20")
         checks["the remote's joystick moves the TV's focus, key to TV p95 under 300 ms"] = moved >= 18 and p95 < 300
+        # the TV answers each press after the frame that shows it; the remote says how long the whole way took
+        phone.wait_for_function("/answers in \\d+ ms/.test(document.querySelector('#rStatus').textContent)", timeout=5000)
+        said = phone.evaluate("remote.tv.state")
+        print(f"the remote says: {phone.inner_text('#rStatus')}; the TV took {said.get('took')} ms to act, {said.get('paint')} ms to its frame")
+        checks["the remote shows how fast the TV answers"] = said["lag"] < 400 and said.get("paint") is not None
         # held, it keeps going; pressed, it's OK
         heard = screen.evaluate("(() => { window.tvKeys = []; const was = tvDo; window.tvDo = (m) => { tvKeys.push(m.key || m.cmd); was(m); }; return true; })()")
         box = phone.locator("#rStick").bounding_box()
@@ -220,14 +230,23 @@ with sync_playwright() as pw:
         checks["a film cast from its page plays on the TV, and the remote seeks it"] = True
         # a TV that blocks playing without a press asks for OK: the arrows stay on it, Back closes it and stays put
         was = screen.evaluate("location.hash")
-        screen.evaluate("tvPlay({ play: () => Promise.reject(new Error('blocked')) })")
+        screen.evaluate("tvPlay({ paused: true, play: () => Promise.reject(new Error('blocked')) })")
         screen.wait_for_selector("#tvAsk")
+        phone.wait_for_function("!byId('rWarn').hidden && byId('rWarn').textContent.includes('key is pressed on the TV')", timeout=5000)  # the remote says why nothing plays
         press(screen, "ArrowLeft")
         press(screen, "ArrowUp")
         stays = screen.evaluate("document.activeElement.id") == "tvAskGo"
         press(screen, "Escape")
         screen.wait_for_timeout(300)
         checks["“Press OK to play” keeps the arrows, Back closes it"] = stays and screen.evaluate("!document.querySelector('#tvAsk')") and screen.evaluate("location.hash") == was
+        phone.wait_for_function("byId('rWarn').hidden", timeout=5000)
+        # a page that was muted says so on the remote, and turning the sound up takes the mute off
+        screen.evaluate("tvPlayer().muted = true; tvReport(true)")  # the film has ended by now: the music dock is what plays
+        phone.wait_for_function("!byId('rWarn').hidden && byId('rWarn').textContent.includes('muted')", timeout=5000)
+        phone.click("[data-r='volume:0.1']")
+        screen.wait_for_function("!tvPlayer().muted", timeout=5000)
+        phone.wait_for_function("byId('rWarn').hidden", timeout=5000)
+        checks["a TV that holds the sound back, or is muted, says so on the remote"] = True
         # typing: the remote's text goes into the TV's search
         phone.click("[data-r='key:back']")
         screen.wait_for_timeout(600)
@@ -251,6 +270,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (13 if REMOTE else 5) and all(checks.values()) and not errors
+ok = len(checks) == (16 if REMOTE else 6) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
