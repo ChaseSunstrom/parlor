@@ -274,7 +274,7 @@ def read(path: Path) -> bytes:
         raise WrongKey(f"{path.name} can't be opened with this key") from exc
 
 
-OWN = ("yeerr.db", "yeerr.db-wal", "yeerr.db-shm", "yeerr.db.plain-backup", "yt-downloads.json", "cookies", "cache", "covers", "key")
+OWN = ("yeerr.db", "yeerr.db-wal", "yeerr.db-shm", "yeerr.db.plain-backup", "yt-downloads.json", "cookies", "cache", "covers", "backups", "key")
 
 
 def lock_down(folder: Path):

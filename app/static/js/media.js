@@ -16,7 +16,7 @@ function pcard(x) {
   const st = statusOf(x);
   const askable = !st || st === "deleted";
   return `<article class="pcard" data-media="${mediaData(x)}">
-    <div class="poster"><a href="${href}" tabindex="-1" aria-hidden="true">${x.poster ? `<img src="${esc(x.poster)}" alt="" loading="lazy">` : `<span class="noart">${esc(x.title)}</span>`}</a>
+    <div class="poster"><a href="${href}" tabindex="-1" aria-hidden="true">${x.poster ? `<img src="${esc(artUrl(x.poster))}" alt="" loading="lazy">` : `<span class="noart">${esc(x.title)}</span>`}</a>
       ${st ? pill(st) : ""}<span class="kindtag">${x.type === "tv" ? "TV" : "FILM"}</span>
       ${askable ? `<button class="req" data-request>Request</button>` : ""}</div>
     <a class="t" href="${href}">${esc(x.title)}</a>
@@ -36,7 +36,7 @@ function dayLabel(iso) {
   return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 function ucard(x, label, progress) {
-  const art = `<div class="poster">${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy">` : `<span class="noart">${esc(x.title)}</span>`}
+  const art = `<div class="poster">${x.image ? `<img src="${esc(artUrl(x.image))}" alt="" loading="lazy">` : `<span class="noart">${esc(x.title)}</span>`}
     ${x.have ? pill("available") : ""}<span class="kindtag">${x.app === "sonarr" ? "TV" : "FILM"}</span>
     ${progress != null ? `<div class="meter"><i style="width:${(100 * progress).toFixed(1)}%"></i></div>` : ""}</div>`;
   return `<article class="pcard">${x.link ? `<a href="${esc(x.link)}" tabindex="-1" aria-hidden="true">${art}</a>` : art}

@@ -21,7 +21,7 @@ const gamePill = (st, label) => pill(GREQ_PILL[st] || "pending", label || GREQ_L
 function askCard(k, x) {
   const href = `${ASK[k].at}/${k}/${esc(x.id)}`;
   return `<article class="pcard" data-${k}="${esc(x.id)}" data-title="${esc(x.title)}">
-    <div class="poster"><a href="${href}" tabindex="-1" aria-hidden="true">${x.poster ? `<img src="${esc(x.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noart">${esc(x.title)}</span>`}</a>
+    <div class="poster"><a href="${href}" tabindex="-1" aria-hidden="true">${x.poster ? `<img src="${esc(artUrl(x.poster))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noart">${esc(x.title)}</span>`}</a>
       ${x.status ? gamePill(x.status, ASK[k].short[x.status]) : ""}
       ${askable(x.status) ? `<button class="req" data-ask="${k}">Request</button>` : ""}</div>
     <a class="t" href="${href}">${esc(x.title)}</a>

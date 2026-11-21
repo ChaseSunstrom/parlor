@@ -7,6 +7,8 @@
 - Every change needs an `X-Requested-With: parlor` header (formerly yeerr, still accepted), which other websites can't send, so a page you visit can't act for you.
 - Wrong passwords are throttled per name and per address. Behind a reverse proxy, set `FORWARDED_ALLOW_IPS` to the proxy's address so the address is each visitor's, not the proxy's (see [Settings](settings.md)).
 - Changing a password signs out your other devices; Settings also has **Sign out everywhere**.
+- **Signed-in devices**: **Settings → Signed-in devices** lists where your account is signed in (the device, when it signed in, when it was last used) and signs any of them out. You see and end only your own; another person's device is never found, and the page is never given the stored session token, only a made-up id. A paired TV shows there too, and signing it out unpairs it.
+- **Artwork comes through Parlor**: thumbnails and posters are fetched by Parlor (`/api/art`) from YouTube's and TMDB's image hosts only (`i.ytimg.com`, `yt3.ggpht.com`, `image.tmdb.org`), kept on disk (`cache/art`, 200 MB at most, the least recently used go first) and served to people who are signed in, so a screen with no internet still shows pictures it has shown before. It is not a proxy: https only, no other host, port or redirect, pictures only (no SVG), 5 MB at most, nothing is sent to the page but the picture.
 - Put Parlor behind HTTPS (a reverse proxy) if it's reachable from outside your home.
   The session cookie is marked secure when the proxy says the request came over HTTPS.
 - **The other apps' logins**:
@@ -34,6 +36,7 @@ Everything Parlor itself writes is encrypted at rest, all with one random 256-bi
   - After every restart Parlor stays locked, downloads and music apps included, until someone opens it in a browser and enters the passphrase (five wrong ones a minute, then it waits).
   - There's no recovery: forget the passphrase and only a backed-up key opens the data.
   - Turning it off puts the plain key back.
+- **A copy every night**: after 3 am Parlor writes a copy of the database to `backups/yeerr-YYYY-MM-DD.db` in the data folder and keeps the last 7. The copy is encrypted with the same key, so it opens only with `db.key`; back that up as above. To go back to one, stop Parlor and put the file in place of `yeerr.db`. It is on the same disk as the database, so it covers a mistake or a broken file, not a lost disk: copy `backups/` elsewhere for that.
 - `ENCRYPT=0` keeps a new install plain; a database that's already encrypted stays encrypted and keeps opening with its key.
 - **What it protects against:** a stolen disk, a copied backup or another user on the server reading Parlor's data. It doesn't protect against someone who controls the running server: an admin who changes Parlor's code can read what it opens.
 - **What isn't covered:** the apps' own configs and your media, which Jellyfin, the *arrs and qBittorrent read and write directly. Encrypt the disk they're on instead:

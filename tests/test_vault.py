@@ -1,6 +1,7 @@
 """Encryption at rest: Parlor's database (SQLCipher) and the files it keeps beside it (YouTube cookies,
 the download list) are unreadable without the key, kept in its own folder; an old plain database is
 converted once, safely; and the data folder is Parlor's alone."""
+import datetime
 import json
 import os
 import sqlite3
@@ -100,6 +101,60 @@ class Database(Place):
         self.fresh().execute("INSERT INTO settings(key, value) VALUES ('a', 'b')")
         with mock.patch.dict(os.environ, {"ENCRYPT": "0"}):
             self.assertEqual(self.fresh().execute("SELECT value FROM settings WHERE key = 'a'").fetchone()[0], "b")
+
+
+class Backups(Place):
+    """A copy of the database each night: encrypted with the same key, the last 7 kept, mode 0600."""
+
+    def test_a_copy_is_encrypted_opens_with_the_key_and_holds_the_rows(self):
+        core.db().execute("INSERT INTO settings(key, value) VALUES ('a', 'secret value')")
+        path = core.backup_db(datetime.date(2026, 3, 1))
+        self.assertEqual(path, self.data / "backups" / "yeerr-2026-03-01.db")
+        raw = path.read_bytes()
+        self.assertNotEqual(raw[:16], PLAIN)
+        self.assertNotIn(b"secret value", raw)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        with self.assertRaises(sqlite3.DatabaseError):
+            sqlite3.connect(path).execute("SELECT * FROM settings").fetchall()
+        copy = vault._keyed(vault.sqlcipher.connect(str(path)))
+        self.assertEqual(copy.execute("SELECT value FROM settings WHERE key = 'a'").fetchone()[0], "secret value")
+        copy.close()
+
+    def test_seven_nights_are_kept_and_a_second_run_the_same_day_is_harmless(self):
+        for day in range(1, 11):
+            core.backup_db(datetime.date(2026, 3, day))
+        core.backup_db(datetime.date(2026, 3, 10))
+        kept = sorted(p.name for p in (self.data / "backups").iterdir())
+        self.assertEqual(kept, [f"yeerr-2026-03-{d:02d}.db" for d in range(4, 11)])
+
+    def test_other_files_in_the_folder_are_left_alone(self):
+        (self.data / "backups").mkdir()
+        (self.data / "backups" / "notes.txt").write_text("mine")
+        for day in range(1, 10):
+            core.backup_db(datetime.date(2026, 3, day))
+        self.assertEqual((self.data / "backups" / "notes.txt").read_text(), "mine")
+
+    def test_a_failed_copy_leaves_no_half_file_and_keeps_the_old_ones(self):
+        core.backup_db(datetime.date(2026, 3, 1))
+        with mock.patch.object(core, "db", side_effect=RuntimeError("disk full")):
+            with self.assertRaises(RuntimeError):
+                core.backup_db(datetime.date(2026, 3, 2))
+        self.assertEqual([p.name for p in (self.data / "backups").iterdir()], ["yeerr-2026-03-01.db"])
+
+    def test_the_night_loop_copies_once_a_day_after_3_am(self):
+        night = lambda h: datetime.datetime(2026, 3, 5, h, 0)  # noqa: E731
+        self.assertFalse(core.backup_due(night(2)), "not before 3")
+        self.assertTrue(core.backup_due(night(3)))
+        core.backup_db(datetime.date(2026, 3, 5))
+        self.assertFalse(core.backup_due(night(4)), "today's is there")
+
+    def test_encrypt_0_makes_a_plain_copy_that_is_still_private(self):
+        with mock.patch.dict(os.environ, {"ENCRYPT": "0"}):
+            self.fresh().execute("INSERT INTO settings(key, value) VALUES ('a', 'b')")
+            path = core.backup_db(datetime.date(2026, 3, 1))
+        self.assertEqual(path.read_bytes()[:16], PLAIN)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(path.parent.stat().st_mode), 0o700)
 
 
 class Files(Place):

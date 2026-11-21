@@ -145,7 +145,9 @@ function setPref(key, value) { try { localStorage.setItem("parlor:" + key, JSON.
 
 /* ---------- building blocks ---------- */
 
-const img = (src, cls = "") => (src ? `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="blank ${cls}"></div>`);
+/** YouTube's and TMDB's pictures through Parlor (/api/art keeps them on disk: a screen with no internet still shows them); any other address as it is */
+const artUrl = (src) => (/^https:\/\/(i\.ytimg\.com|yt3\.ggpht\.com|image\.tmdb\.org)\//.test(src || "") ? `/api/art?u=${encodeURIComponent(src)}` : src);
+const img = (src, cls = "") => (src ? `<img class="${cls}" src="${esc(artUrl(src))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<div class="blank ${cls}"></div>`);
 const section = (title, body) => (body ? `<h2>${esc(title)}</h2>${body}` : "");
 const grid = (html, cls = "grid") => (html ? `<div class="${cls}">${html}</div>` : "");
 const shelf = (title, body, more) => (body ? `<div class="shelf-head"><h2>${esc(title)}</h2>${more ? `<a class="more" href="${more}">See all</a>` : ""}</div>${body}` : "");

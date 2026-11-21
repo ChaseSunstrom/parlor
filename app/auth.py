@@ -176,6 +176,34 @@ def logout_everywhere(response: Response, user=Depends(me)):
     return {"ok": True}
 
 
+def _device_id(digest: str) -> str:
+    return _digest("device:" + digest)[:16]  # what the page sees: never the stored session token itself
+
+
+@router.get("/me/sessions")
+def my_sessions(request: Request, user=Depends(me)):
+    """The devices signed in as you (newest use first), this one marked; a TV that was paired shows as one too."""
+    here = _digest(session_cookie(request))
+    return [{"id": _device_id(r["token"]), "agent": r["agent"], "created": r["created"], "seen": r["seen"], "current": r["token"] == here, "tv": bool(r["tv"])}
+            for r in rows("""SELECT s.token, s.agent, s.created, s.seen, t.id AS tv FROM sessions s LEFT JOIN tvs t ON t.session = s.token
+                             WHERE s.user_id = ? ORDER BY s.seen DESC""", user["id"])]
+
+
+@router.delete("/me/sessions/{device}")
+def sign_out_device(device: str, request: Request, response: Response, user=Depends(me)):
+    """Sign one of your own devices out. Another person's device is never found: the answer is the same as for no such one."""
+    mine = next((r["token"] for r in rows("SELECT token FROM sessions WHERE user_id = ?", user["id"]) if _device_id(r["token"]) == device), None)
+    if not mine:
+        raise HTTPException(404, "No such device")
+    db().execute("DELETE FROM sessions WHERE token = ? AND user_id = ?", (mine, user["id"]))
+    import private  # late: it imports this module
+    private.drop_digest(mine)
+    if mine == _digest(session_cookie(request)):  # this one: the same as signing out
+        response.delete_cookie(COOKIE, path="/")
+        response.delete_cookie(OLD_COOKIE, path="/")
+    return {"ok": True}
+
+
 @router.get("/me")
 def whoami(user=Depends(me)):
     from yt import has_cookies  # late: yt imports this module's neighbours

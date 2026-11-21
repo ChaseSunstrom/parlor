@@ -169,6 +169,20 @@ async function drawApiKeys(t, fresh) {
     confirm("Delete this key? Whatever uses it stops working at once.") && del(`/api/me/api-keys/${b.dataset.dropApi}`).then(() => drawApiKeys(t), (err) => toast(err.message))));
 }
 
+/* Settings → Signed-in devices: your sessions, each one can be signed out */
+const deviceName = (agent) => (agent || "").replace(/^Mozilla\/5\.0 \(([^)]*)\)/, "$1").replace(/\s+/g, " ").slice(0, 80) || "Unknown device";
+async function drawDevices(t) {
+  const list = await api("/api/me/sessions").catch(() => null);
+  const box = $("#deviceList");
+  if (!box || t !== ticket || !list) return;
+  box.innerHTML = `<ul class="svc-list">${list.map((d) => `<li class="svc two"><div><strong>${esc(d.tv ? "A paired TV" : deviceName(d.agent))}</strong>${d.current ? " <span class=\"dim\">(this one)</span>" : ""}
+      <small class="dim">signed in ${since(d.created)}, last used ${since(d.seen)}</small></div>
+      <button class="ghost danger" data-drop-device="${esc(d.id)}"${d.current ? " data-here" : ""}>Sign out</button></li>`).join("")}</ul>`;
+  box.querySelectorAll("[data-drop-device]").forEach((b) => b.addEventListener("click", () =>
+    confirm("Sign this device out? It has to sign in again.") && del(`/api/me/sessions/${b.dataset.dropDevice}`).then(
+      () => (b.hasAttribute("data-here") ? location.reload() : drawDevices(t)), (err) => toast(err.message))));
+}
+
 /* You: your lists, your library and settings in one place (the phone's "more" page) */
 async function showYou(t) {
   paint(t, `<section class="home">${aurora}<h1>${esc(ME?.name || "You")}</h1><p>Your lists, your library and your settings.</p></section>
@@ -254,6 +268,10 @@ async function showSettings(t) {
           <label class="field"><span class="vh">What it may do</span><select id="apiKeyScope"><option value="full">Search, download and request</option><option value="search">Search and read only</option></select></label>
           <button class="primary small">Make a key</button></form>
       </section>
+      <section class="panel" id="devices"><h3>Signed-in devices</h3>
+        <p>Where your account is signed in. Sign one out and it has to sign in again; only you can do this for your own devices.</p>
+        <div id="deviceList">${SPIN}</div>
+      </section>
       <section class="panel" id="devicePanel"></section>
       <section class="panel" id="privatePanel"></section>
       <section class="panel"><h3>Your account</h3>
@@ -279,6 +297,7 @@ async function showSettings(t) {
   }));
   drawAppKeys(t);
   drawApiKeys(t);
+  drawDevices(t);
   drawDevice();
   drawPrivatePanel();
   $("#apiKeyForm").addEventListener("submit", (e) => {
