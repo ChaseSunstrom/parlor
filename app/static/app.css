@@ -751,7 +751,11 @@ code.secret { font: .95rem ui-monospace, monospace; padding: 6px 10px; border-ra
 .jstrip > * { scroll-snap-align: start; }
 .jgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 28px 18px; }
 .jgrid.wide { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
-.jcard { min-width: 0; animation: rise .4s ease both; }
+.jcard { min-width: 0; animation: rise .4s ease both; position: relative; }
+.jcard .drop { position: absolute; right: 8px; top: 8px; width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgb(0 0 0 / .72); color: #fff; opacity: 0; transition: opacity .15s ease; cursor: pointer; }
+.jcard:hover .drop, .jcard .drop:focus-visible { opacity: 1; }
+.jcard .drop:hover { background: var(--accent); color: var(--accent-ink); }
+@media (hover: none) { .jcard .drop { opacity: 1; } }
 .jcard:nth-child(6n+2) { animation-delay: .03s; } .jcard:nth-child(6n+3) { animation-delay: .06s; } .jcard:nth-child(6n+4) { animation-delay: .09s; } .jcard:nth-child(6n+5) { animation-delay: .12s; } .jcard:nth-child(6n) { animation-delay: .15s; }
 .jart { position: relative; display: block; aspect-ratio: 2 / 3; border-radius: var(--radius); overflow: hidden; background: var(--sunk); isolation: isolate; }
 .jcard.square .jart, .jcard.round .jart { aspect-ratio: 1; border-radius: 8px; }
@@ -809,6 +813,9 @@ body:not(.dock-playing) .jtracks .row.now .eq i { animation-play-state: paused; 
 .jwatch .overlay .count { font-variant-numeric: tabular-nums; opacity: .8; }
 .jwatch .overlay strong { font-size: 1.3rem; }
 .jwatch .overlay .actions { justify-content: center; }
+.player .skip { position: absolute; right: 18px; bottom: 64px; z-index: 2; padding: 10px 18px; border: 1px solid rgb(255 255 255 / .6); border-radius: 8px; background: rgb(0 0 0 / .65); color: #fff; font: inherit; font-weight: 600; cursor: pointer; backdrop-filter: blur(6px); }
+.player .skip:hover, .player .skip:focus-visible { background: #fff; color: #000; }
+.player .skip[hidden] { display: none; }
 .jwatch .jover { max-width: 75ch; color: var(--dim); }
 .jwatch .wrap0 { margin-top: 10px; }
 .jwatch .ptools select[hidden] { display: none; }

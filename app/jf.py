@@ -293,6 +293,12 @@ def playback(iid: str, body: Play = Play(), user=Depends(me)):
         log.warning("Jellyfin's stream address isn't one Parlor serves: %s", (src.get("TranscodingUrl") or "").split("?")[0])  # the path only: the query has the key
         raise HTTPException(502, "Jellyfin sent a stream address Parlor won't serve")
     streams = src.get("MediaStreams") or []
+    try:  # Jellyfin 10.10+ finds intros and credits; an older server has no such route and nothing is offered
+        found = [] if audio else call("GET", f"/MediaSegments/{iid}").json().get("Items") or []
+    except HTTPException:
+        found = []
+    segments = sorted(({"type": s["Type"].lower(), "start": secs(s.get("StartTicks")), "end": secs(s.get("EndTicks"))} for s in found
+                       if s.get("Type") in ("Intro", "Outro") and secs(s.get("EndTicks")) > secs(s.get("StartTicks"))), key=lambda s: s["start"])
     return {"method": method, "url": url, "media_source": src["Id"], "play_session": info.get("PlaySessionId"),
             "runtime": secs(src.get("RunTimeTicks") or i.get("RunTimeTicks")), "position": position,
             "audio": [{"index": s["Index"], "language": s.get("Language"), "title": s.get("DisplayTitle"), "codec": s.get("Codec"),
@@ -301,7 +307,8 @@ def playback(iid: str, body: Play = Play(), user=Depends(me)):
                            "default": bool(s.get("IsDefault")),
                            "url": proxied(s["DeliveryUrl"]) if s.get("DeliveryMethod") == "External" and s.get("DeliveryUrl") else None}
                           for s in streams if s.get("Type") == "Subtitle"],
-            "chapters": [{"start": secs(c.get("StartPositionTicks")), "name": c.get("Name")} for c in i.get("Chapters") or []]}
+            "chapters": [{"start": secs(c.get("StartPositionTicks")), "name": c.get("Name")} for c in i.get("Chapters") or []],
+            "segments": segments}
 
 
 class Progress(BaseModel):

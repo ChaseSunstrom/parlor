@@ -43,7 +43,7 @@ function jsub(x, wide) {
   if (x.type === "MusicArtist") return "Artist";
   return [x.year, left(x) || (x.runtime && x.type === "Movie" ? clock(x.runtime) : "")].filter(Boolean).join(" · ");
 }
-function jcard(x, { wide = false, play = false } = {}) {
+function jcard(x, { wide = false, play = false, drop = false } = {}) {
   const shape = wide ? "wide" : x.type === "MusicArtist" ? "round" : SQUARE.has(x.type) ? "square" : x.type === "Episode" ? "wide" : "tall";
   const art = shape === "wide" ? x.backdrop || x.image : x.image;
   const href = jhref(x, play || wide);
@@ -54,7 +54,8 @@ function jcard(x, { wide = false, play = false } = {}) {
       ${done > 0.004 ? `<span class="meter"><i style="width:${(100 * done).toFixed(1)}%"></i></span>` : ""}
       ${VIDEO.has(x.type) || SQUARE.has(x.type) && x.type !== "MusicArtist" ? `<span class="jgo">${ICON.play}</span>` : ""}</a>
     <a class="t" href="${href}">${esc(wide && x.type === "Episode" ? x.series || x.name : x.name)}</a>
-    <span class="s">${esc(jsub(x, wide))}</span></article>`;
+    <span class="s">${esc(jsub(x, wide))}</span>
+    ${drop ? `<button class="drop" data-jf-drop="${esc(x.id)}" title="Remove from Continue watching" aria-label="Remove ${esc(x.name)} from Continue watching">${ICON.x}</button>` : ""}</article>`;
 }
 const jstrip = (items, opts) => (items?.length ? `<div class="jstrip${opts?.wide ? " wide" : ""}">${items.map((x) => jcard(x, opts)).join("")}</div>` : "");
 const jgrid = (items) => items.map((x) => jcard(x)).join("");
@@ -77,26 +78,31 @@ document.addEventListener("change", (e) => {
 
 /* ---------- home: carry on, then what's new in each library ---------- */
 
-async function showJfHome(t) {
+const jfShelves = (views) => views.filter((v) => v.collection !== "livetv" && v.collection !== "playlists");
+async function jfHomeLoad() {
   const [views, resume, next] = await Promise.all([api("/api/jf/views"), api("/api/jf/resume?limit=16").catch(() => []), api("/api/jf/nextup?limit=16").catch(() => [])]);
-  jfViews = views;
-  const shown = views.filter((v) => v.collection !== "livetv" && v.collection !== "playlists");
-  const latest = await Promise.all(shown.map((v) => api(`/api/jf/latest?parent=${v.id}&limit=16`).catch(() => [])));
+  const latest = await Promise.all(jfShelves(views).map((v) => api(`/api/jf/latest?parent=${v.id}&limit=16`).catch(() => [])));
+  return { views, resume, next, latest };
+}
+// drawn at once from the last visit's rows, and again if what Jellyfin says now differs
+const showJfHome = (t) => lastThen("jfhome", jfHomeLoad, ({ views, resume, next, latest }) => {
   if (t !== ticket) return;
+  jfViews = views;
+  const shown = jfShelves(views);
   const nextIds = new Set(resume.map((x) => x.id));
   const upNext = next.filter((x) => !nextIds.has(x.id));
   paint(t, `<section class="home">${aurora}<h1>Library</h1>
       <p>Everything in Jellyfin, played right here${jfStatus?.user ? `, as ${esc(jfStatus.user.name)} in Jellyfin` : ""}: where you stop is where you start, on any device.</p>
       ${subnav()}</section>
     <div class="wrap">
-      ${shelf("Continue watching", jstrip(resume, { wide: true }))}
+      ${shelf("Continue watching", jstrip(resume, { wide: true, drop: true }))}
       ${shelf("Next up", jstrip(upNext, { wide: true }))}
       ${shown.map((v, i) => shelf(`New in ${v.name}`, jstrip(latest[i]), `#/jf/view/${esc(v.id)}`)).join("")}
       ${shown.length ? shelf("Your libraries", `<div class="jstrip wide">${shown.map((v) => `<article class="jcard wide view">
           <a class="jart" href="#/jf/view/${esc(v.id)}">${v.image ? `<img src="${esc(v.image)}" alt="" loading="lazy">` : ""}<span class="vname">${esc(v.name)}</span></a></article>`).join("")}</div>`)
         : `<div class="empty-state"><strong>Jellyfin has no libraries yet</strong>${ME?.admin ? "Add one in Jellyfin's dashboard (Parlor's stack makes Films, Shows and Music for you)." : "Ask an admin to add one."}</div>`}
     </div>`);
-}
+});
 
 /* ---------- a whole library, or every film / show / album / book ---------- */
 
@@ -151,12 +157,13 @@ const jcredits = (people) => (people?.length ? `<div class="credits">${people.sl
 function episodeRows(eps, current) {
   return `<ol class="eps">${eps.map((e) => {
     const done = e.runtime && e.position && !e.played ? Math.min(1, e.position / e.runtime) : 0;
+    const hide = pref("spoilers") && !e.played && !e.position && e.id !== current; // the spoiler shield: a still and a summary tell what happens
     return `<li${e.id === current ? ' class="now"' : ""}><a href="#/jf/play/${esc(e.id)}">
-      <span class="ethumb">${e.image ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ""}<span class="jgo">${ICON.play}</span>
+      <span class="ethumb">${e.image && !hide ? `<img src="${esc(e.image)}" alt="" loading="lazy">` : ""}<span class="jgo">${ICON.play}</span>
         ${done > 0.004 ? `<span class="meter"><i style="width:${(100 * done).toFixed(1)}%"></i></span>` : ""}</span>
       <span class="ewhat"><span class="et">${esc(e.episode != null ? `${e.episode}. ` : "")}${esc(e.name)}${e.played ? ` <span class="tick" title="Watched">${ICON.ok}</span>` : ""}</span>
         <span class="es">${esc([e.runtime ? runtimeText(e.runtime) : "", left(e)].filter(Boolean).join(" · "))}</span>
-        ${e.overview ? `<span class="eo">${esc(e.overview)}</span>` : ""}</span></a></li>`;
+        ${e.overview && !hide ? `<span class="eo">${esc(e.overview)}</span>` : ""}</span></a></li>`;
   }).join("")}</ol>`;
 }
 
@@ -237,6 +244,15 @@ async function showJfItem(t, [id, , ...order]) {
   return showJfBrowse(t, { title: x.name, blurb: x.overview || "", query: `parent=${encodeURIComponent(x.id)}`, base: `#/jf/item/${x.id}/x` }, order);
 }
 let jfAlbum = null;
+
+/* Continue watching: the x on a card puts its place back at the start. It stays in the library, not marked watched. */
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-jf-drop]");
+  if (!b) return;
+  e.preventDefault();
+  b.disabled = true;
+  post("/api/jf/progress", { id: b.dataset.jfDrop, position: 0 }).then(() => { forgetLast("jfhome"); b.closest(".jcard").remove(); }, (err) => { b.disabled = false; toast(err.message); });
+});
 
 document.addEventListener("click", async (e) => {
   const played = e.target.closest("[data-jf-played]"), fav = e.target.closest("[data-jf-fav]");
@@ -377,7 +393,8 @@ async function showJfPlay(t, [id, from]) {
   paint(t, `<div class="jwatch">
     <div class="player" id="jfBox" style="${esc(`--photo:${cssUrl(x.backdrop || x.image)}`)}">
       <video id="jfVideo" playsinline controls autoplay preload="auto"${x.backdrop ? ` poster="${esc(x.backdrop)}"` : ""}></video>
-      <div class="overlay" id="jfOverlay">${SPIN}</div></div>
+      <div class="overlay" id="jfOverlay">${SPIN}</div>
+      <button class="skip" id="jfSkip" hidden></button></div>
     <div class="ptools">
       <select id="jfAudio" aria-label="Audio" hidden></select>
       <select id="jfSubs" aria-label="Subtitles" hidden></select>
@@ -463,7 +480,14 @@ async function showJfPlay(t, [id, from]) {
   $("#jfChapters").addEventListener("change", (e) => { if (e.target.value !== "") video.currentTime = +e.target.value; e.target.value = ""; });
   const full = () => (document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.().catch(() => {}));
   $("#jfFull").addEventListener("click", full);
-  box.addEventListener("dblclick", full);
+  doubleTap(box, (d) => (video.currentTime += d), full);
+  // Skip intro / Skip credits: only inside a part Jellyfin found (10.10 and later), and not once you've skipped it
+  const skip = $("#jfSkip");
+  video.addEventListener("timeupdate", () => {
+    const g = segmentAt(s.p?.segments, video.currentTime);
+    skip.hidden = !g;
+    if (g) { skip.textContent = SKIP_LABEL[g.type]; skip.onclick = () => { video.currentTime = g.end; skip.hidden = true; }; }
+  });
 
   s.save = (done = false) => {
     if (!s.p) return;

@@ -30,22 +30,23 @@ async function showDashboard(t) {
     stats.songs != null && stat("#/library", "var(--amber)", ICON.disc, compact.format(stats.songs), `${stats.songs === 1 ? "song" : "songs"} in your library`),
   ].filter(Boolean).join(""));
 
-  api("/api/me/history?unfinished=true&limit=12").then((r) => fill(t, "homeContinue", r.items.length
-    ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v)).join("")}</div>`, "#/yt/continue") : ""), () => fill(t, "homeContinue", ""));
+  // each row is drawn at once from its last answer, then again if the new one differs
+  lastThen("homeContinue", () => api("/api/me/history?unfinished=true&limit=12"), (r) => fill(t, "homeContinue", r.items.length
+    ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v, { forget: true })).join("")}</div>`, "#/yt/continue") : "")).catch(() => fill(t, "homeContinue", ""));
   api("/api/me/subs").then((s) => { stats.subs = s.length; drawStats(); }).catch(() => {});
   if (!closedTo("games")) api("/api/games/requests").then((r) => { stats.games = r.items.filter((x) => x.state === "pending").length; drawStats(); }).catch(() => {});
   api("/api/yt/library").then((r) => { stats.videos = r.items.length; stats.used = r.used; drawStats(); }).catch(() => {});
-  api("/api/yt/feed?limit=24").then((r) => fill(t, "homeSubs", r.channels
+  lastThen("homeSubs", () => api("/api/yt/feed?limit=24"), (r) => fill(t, "homeSubs", r.channels
     ? shelf("New from your subscriptions", `<div class="vstrip">${hideShorts(r.items).slice(0, 16).map((v) => vcard(v)).join("")}</div>`, "#/yt/subs")
-    : `<div class="shelf-head"><h2>${tag("var(--coral)", "Watch")}</h2></div><div class="empty-state" style="padding-top:0">Follow some YouTube channels and their new videos land here. <a href="#/yt/channels">Import your subscriptions</a>.</div>`),
-  () => fill(t, "homeSubs", ""));
+    : `<div class="shelf-head"><h2>${tag("var(--coral)", "Watch")}</h2></div><div class="empty-state" style="padding-top:0">Follow some YouTube channels and their new videos land here. <a href="#/yt/channels">Import your subscriptions</a>.</div>`))
+    .catch(() => fill(t, "homeSubs", ""));
   api("/api/seerr/status").then(async (s) => {
     if (!s.connected) return fill(t, "homeMedia", ME?.admin ? `<div class="shelf-head"><h2>${tag("var(--violet)", "Films & shows")}</h2></div><div class="empty-state" style="padding-top:0">Connect Seerr in <a href="#/settings">Settings</a> to discover and request films and shows.</div>` : "");
     const [d, mine] = await Promise.all([api("/api/seerr/discover"), api("/api/seerr/requests?filter=pending").catch(() => null)]);
     if (mine?.linked) { stats.requests = mine.items.length; drawStats(); }
     fill(t, "homeMedia", shelf("Trending films and shows", `<div class="pstrip">${(d.trending || []).filter((x) => x.type !== "person").map(pcard).join("")}</div>`, "#/media"));
   }).catch(() => fill(t, "homeMedia", ""));
-  api("/music/api/home").then((feed) => fill(t, "homeMusic",
+  lastThen("homeMusic", () => api("/music/api/home"), (feed) => fill(t, "homeMusic",
     shelf("New music this week", grid(feed.new.map((a) => tile("album", a, creditText(a.artists))).join(""), "strip"), "#/music"))).catch(() => fill(t, "homeMusic", ""));
   (libraryOnce ||= loadLibrary().catch(() => { libraryOnce = null; })).then((songs) => { if (songs?.length) { stats.songs = songs.length; drawStats(); } });
 }
@@ -223,6 +224,7 @@ async function showSettings(t) {
           .map(([v, l]) => `<option value="${v}"${pref("quality") === v ? " selected" : ""}>${l}</option>`).join("")}</select><small>Also the default for downloads.</small></label>
         ${check("pAutoplay", "Play the next video automatically", pref("autoplay"))}
         ${check("pShorts", "Hide Shorts in feeds", pref("hideShorts"))}
+        ${check("pSpoilers", "Spoiler shield", pref("spoilers"), "Episode lists hide the picture and summary of episodes you haven't watched.")}
         ${check("pCut", "Cut sponsors out of downloaded videos", pref("cutSponsors"), "Uses SponsorBlock when the download finishes.")}
         <label class="field"><span>Captions language</span><input id="pCaptions" value="${esc(pref("captions"))}" placeholder="for example en, or leave empty for off"></label>
       </section>
@@ -272,6 +274,7 @@ async function showSettings(t) {
   keep("#pAutoplay", "autoplay", (el) => el.checked);
   keep("#pShorts", "hideShorts", (el) => el.checked);
   keep("#pCut", "cutSponsors", (el) => el.checked);
+  keep("#pSpoilers", "spoilers", (el) => el.checked);
   keep("#pCaptions", "captions", (el) => el.value.trim());
   SB_CHOICES.forEach(([k]) => $(`#sb-${k}`).addEventListener("change", () => {
     setPref("skip", SB_CHOICES.map(([c]) => c).filter((c) => $(`#sb-${c}`).checked));

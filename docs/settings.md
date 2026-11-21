@@ -58,4 +58,4 @@ Parlor then takes each visitor's address from `X-Forwarded-For`, so the limits o
 
 music-fndr's own settings (`QUALITY`, `FORMAT`, `BITRATE`, `OUTPUT`, `THREADS`, `SYNC_HOURS`, `YT_DLP_ARGS`, `JELLYFIN_API_KEY`, `JELLYFIN_USER`) work as described in [its README](https://github.com/ChaseSunstrom/music-fndr#settings).
 
-Per-device choices (playback quality, autoplay, captions language, SponsorBlock categories, Shorts) are in Settings → Playing videos.
+Per-device choices (playback quality, autoplay, captions language, SponsorBlock categories, Shorts, the spoiler shield) are in Settings → Playing videos.
