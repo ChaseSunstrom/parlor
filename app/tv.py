@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
+import auth
 import core
 import pwa
 from core import _digest as _hash, db, me, one, rows  # the same digest as sessions.token, which tvs.session points at
@@ -100,8 +101,10 @@ def claim(body: Claim, request: Request, response: Response):
 
 
 def tv_of(token: str) -> Optional[dict]:
-    """the TV this session belongs to, if it's a TV's"""
-    return one("SELECT id, user_id, name FROM tvs WHERE session = ?", _hash(token)) if token else None
+    """the TV this session belongs to, if it's a TV's, with who it acts as now (viewer: None while that is its owner)"""
+    t = one("""SELECT t.id, t.user_id, t.name, v.id AS vid, v.name AS vname FROM tvs t
+               LEFT JOIN users v ON v.id = t.viewer_id AND v.household = 1 WHERE t.session = ?""", _hash(token)) if token else None
+    return t and {"id": t["id"], "user_id": t["user_id"], "name": t["name"], "viewer": {"id": t["vid"], "name": t["vname"]} if t["vid"] else None}
 
 
 @lru_cache(1)
@@ -115,32 +118,103 @@ def whoami(request: Request):
     return {"tv": tv_of(core.session_cookie(request)), "version": version()}
 
 
+def household(user_id: int) -> bool:
+    """an admin made this account part of the household"""
+    return bool(one("SELECT 1 AS x FROM users WHERE id = ? AND household = 1", user_id))
+
+
+def _viewer(tid: int) -> Optional[int]:
+    """who the TV acts as (a household account), None while it is its owner"""
+    v = one("SELECT v.id FROM tvs t JOIN users v ON v.id = t.viewer_id AND v.household = 1 WHERE t.id = ?", tid)
+    return v and v["id"]
+
+
+def audience(tid: int) -> set:
+    """the accounts that hear a TV and may drive it: its owner and the household (the viewer is always one of them)"""
+    t = one("SELECT user_id FROM tvs WHERE id = ?", tid)
+    return {r["id"] for r in rows("SELECT id FROM users WHERE household = 1 OR id = ?", t["user_id"] if t else 0)}
+
+
 @router.get("")
 def my_tvs(everyone: bool = False, user=Depends(me)):
-    """this account's TVs; an admin asks for everyone's (Settings → TVs)"""
-    found = rows("SELECT t.id, t.name, t.user_id, t.created, u.name AS owner FROM tvs t JOIN users u ON u.id = t.user_id"
-                 + ("" if everyone and user["admin"] else " WHERE t.user_id = ?") + " ORDER BY t.created",
-                 *(() if everyone and user["admin"] else (user["id"],)))
+    """this account's TVs, or all of them for a household account; an admin asks for everyone's (Settings → TVs)"""
+    every = everyone and user["admin"] or household(user["id"])
+    found = rows("""SELECT t.id, t.name, t.user_id, t.created, u.name AS owner, v.id AS vid, v.name AS vname FROM tvs t
+                    JOIN users u ON u.id = t.user_id LEFT JOIN users v ON v.id = t.viewer_id AND v.household = 1"""
+                 + ("" if every else " WHERE t.user_id = ?") + " ORDER BY t.created", *(() if every else (user["id"],)))
     for t in found:
-        t.update(online=hub.online(t["id"]), state=hub.state.get(t["id"]))
+        t.update(online=hub.online(t["id"]), state=hub.state.get(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
     return {"tvs": found}
 
 
-def _mine(tid: int, user: dict, everyone: bool = False) -> dict:
-    """one of this account's TVs; someone else's only for an admin asking from Settings → TVs (everyone)"""
+def _mine(tid: int, user: dict, everyone: bool = False, owner: bool = False) -> dict:
+    """a TV this account may drive: its owner's, its viewer's or a household account's; anyone else's only for an admin asking
+    from Settings → TVs (everyone). owner: only its owner (or that admin), for what a household account may not do"""
     t = one("SELECT id, user_id, name, session FROM tvs WHERE id = ?", tid)
-    if not t or (t["user_id"] != user["id"] and not (everyone and user["admin"])):
+    if not t or not (t["user_id"] == user["id"] or (everyone and user["admin"]) or (not owner and household(user["id"]))):
         raise HTTPException(404, "No such TV")
     return t
 
 
 @router.delete("/{tid}")
 async def unpair(tid: int, everyone: bool = False, user=Depends(me)):
-    t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
+    t = await anyio.to_thread.run_sync(_mine, tid, user, everyone, True)
+    people = await anyio.to_thread.run_sync(audience, tid)
     await anyio.to_thread.run_sync(lambda: db().execute("DELETE FROM sessions WHERE token = ?", (t["session"],)))  # the TV row goes with it
     hub.close_tv(tid)
-    hub.tell(t["user_id"], {"type": "gone", "tv": tid})
+    hub.tell(people, {"type": "gone", "tv": tid})
     return {"ok": True}
+
+
+# --- who the TV is for ----------------------------------------------------------------------
+
+@router.get("/{tid}/people")
+def people(tid: int, everyone: bool = False, user=Depends(me)):
+    """who this TV can act as: its owner and the household, and whether each has a PIN (the TV's own picker and a remote's)"""
+    t = _mine(tid, user, everyone)
+    found = rows("SELECT id, name, pin IS NOT NULL AS pin, id = ? AS owner FROM users WHERE household = 1 OR id = ? ORDER BY owner DESC, name",
+                 t["user_id"], t["user_id"])
+    return {"people": [{**p, "pin": bool(p["pin"]), "owner": bool(p["owner"])} for p in found], "viewer": _viewer(tid)}
+
+
+class Pick(BaseModel):
+    user_id: Optional[int] = None  # null (or the owner): back to the owner
+    pin: Optional[str] = Field(None, max_length=20)
+
+
+def _pick(t: dict, body: Pick, user: dict, by_tv: bool, address: str) -> Optional[dict]:
+    """switch the TV to the person picked, after their PIN if they have one (the PIN of the person it is already acting as, or
+    of the one asking from their own phone, isn't asked); who it acts as now, None for the owner"""
+    owner = t["user_id"]
+    target = body.user_id if body.user_id not in (None, owner) else owner
+    row = one("SELECT id, name, pin FROM users WHERE id = ? AND (household = 1 OR id = ?)", target, owner)
+    if not row:
+        raise HTTPException(404, "They aren't part of the household")
+    if row["pin"] and target != (_viewer(t["id"]) or owner) and (by_tv or user["id"] != target):
+        keys = (f"pin:{target}", f"pinip:{address}")  # wrong tries count against the person and against the address
+        if auth._throttled(*keys):
+            raise HTTPException(429, "Too many wrong PINs. Wait a few minutes and try again.")
+        if not body.pin:
+            raise HTTPException(403, f"{row['name']} has a PIN: enter it")
+        if not core.check_password(body.pin, row["pin"]):
+            auth._failed(*keys)
+            raise HTTPException(403, "That PIN isn't right")
+    db().execute("UPDATE tvs SET viewer_id = ? WHERE id = ?", (None if target == owner else target, t["id"]))
+    return None if target == owner else {"id": row["id"], "name": row["name"]}
+
+
+@router.post("/{tid}/viewer")
+async def pick_viewer(tid: int, body: Pick, request: Request, everyone: bool = False, user=Depends(me)):
+    """The TV acts as the person picked from now on: its owner, or a household account (with their PIN, if they set one).
+    The owner, the viewer and the household may pick, from a phone or the TV's own screen."""
+    token, address = core.session_cookie(request), request.client.host if request.client else "?"
+    t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
+    viewer = await anyio.to_thread.run_sync(lambda: _pick(t, body, user, bool(tv_of(token)), address))
+    msg = {"type": "viewer", "tv": tid, "viewer": viewer}
+    for q in hub.tvs.get(tid, ()):  # the TV reloads what it shows for the new person
+        _put(q, msg)
+    hub.tell(await anyio.to_thread.run_sync(audience, tid), msg)
+    return {"ok": True, "viewer": viewer}
 
 
 # --- the live part: casting and the remote --------------------------------------------
@@ -161,8 +235,9 @@ class Hub:
         """listening, and heard from lately: a TV switched off at the wall leaves its connection open for minutes"""
         return bool(self.tvs.get(tid)) and _now() - self.seen.get(tid, 0) < 3 * PING
 
-    def tell(self, user_id: int, msg: dict):
-        for q in [*self.remotes.get(user_id, ()), *self.everyone]:
+    def tell(self, users, msg: dict):
+        """to the remotes of these accounts (a TV's audience) and Settings → TVs"""
+        for q in [*(q for u in users for q in self.remotes.get(u, ())), *self.everyone]:
             _put(q, msg)
 
     def close_tv(self, tid: int):
@@ -194,7 +269,7 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
     if tv:
         hub.tvs[tv["id"]].add(q)
         hub.seen[tv["id"]] = _now()
-        hub.tell(tv["user_id"], {"type": "online", "tv": tv["id"], "name": tv["name"]})
+        hub.tell(await anyio.to_thread.run_sync(audience, tv["id"]), {"type": "online", "tv": tv["id"], "name": tv["name"]})
     else:
         (hub.everyone.add(q) if everyone and user["admin"] else hub.remotes[user["id"]].add(q))
         _put(q, {"type": "tvs", "tvs": (await anyio.to_thread.run_sync(lambda: my_tvs(everyone, user)))["tvs"]})
@@ -223,7 +298,7 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
                 hub.tvs[tv["id"]].discard(q)
                 if not hub.tvs[tv["id"]]:
                     hub.tvs.pop(tv["id"], None)
-                    hub.tell(tv["user_id"], {"type": "offline", "tv": tv["id"]})
+                    hub.tell(audience(tv["id"]), {"type": "offline", "tv": tv["id"]})  # not awaited: this runs while a closed stream is cancelled
             else:
                 hub.remotes[user["id"]].discard(q)
                 hub.everyone.discard(q)
@@ -284,5 +359,5 @@ async def state(body: State, request: Request, user=Depends(me)):
     sent = hub.sent[tv["id"]].pop(body.state.get("ack"), None) if type(body.state.get("ack")) is int else None
     hub.state[tv["id"]] = {**body.state, "seen": _now(), **({"lag": round((time.monotonic() - sent) * 1000)} if sent else {})}  # "at" is where it is in what's playing
     hub.seen[tv["id"]] = _now()
-    hub.tell(tv["user_id"], {"type": "state", "tv": tv["id"], "state": hub.state[tv["id"]]})
+    hub.tell(await anyio.to_thread.run_sync(audience, tv["id"]), {"type": "state", "tv": tv["id"], "state": hub.state[tv["id"]]})
     return {"ok": True}

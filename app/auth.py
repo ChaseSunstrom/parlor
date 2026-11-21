@@ -210,7 +210,9 @@ def whoami(user=Depends(me)):
 
     import acl
 
-    return {**user, "jellyfin": bool(user["jellyfin_id"]), "youtube_cookies": has_cookies(user["id"]), **acl.view(user)}
+    mine = one("SELECT household, pin IS NOT NULL AS has_pin FROM users WHERE id = ?", user["id"])
+    return {**user, "jellyfin": bool(user["jellyfin_id"]), "youtube_cookies": has_cookies(user["id"]), **acl.view(user),
+            "household": bool(mine["household"]), "has_pin": bool(mine["has_pin"])}
 
 
 class PasswordChange(BaseModel):
@@ -230,6 +232,22 @@ def confirm_password(user: dict, password: str) -> bool:
     if not ok:
         _failed(*keys)
     return ok
+
+
+class PinChange(BaseModel):
+    pin: Optional[str] = None  # 4 to 8 digits; null clears it
+    password: str
+
+
+@router.put("/me/pin")
+def set_pin(body: PinChange, user=Depends(me)):
+    """The PIN that guards switching a TV to you. Setting or clearing it takes your password (a TV acting as you doesn't have it)."""
+    if body.pin is not None and not re.fullmatch(r"[0-9]{4,8}", body.pin):
+        raise HTTPException(422, "A PIN is 4 to 8 digits")
+    if not confirm_password(user, body.password):
+        raise HTTPException(403, "Your password isn't right")
+    db().execute("UPDATE users SET pin = ? WHERE id = ?", (body.pin and hash_password(body.pin), user["id"]))
+    return {"ok": True}
 
 
 @router.post("/me/password")
@@ -262,11 +280,12 @@ def create_user(name, password, is_admin) -> int:
 @router.get("/users")
 def list_users(_=Depends(admin)):
     people = rows("""SELECT u.id, u.name, u.admin, u.jellyfin_id IS NOT NULL AS jellyfin, u.seerr_id, u.jf_user, u.created,
-                            u.blocked, u.libraries, (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
+                            u.blocked, u.libraries, u.household, u.pin IS NOT NULL AS has_pin, (SELECT MAX(seen) FROM sessions s WHERE s.user_id = u.id) AS seen
                      FROM users u ORDER BY u.name""")
     for p in people:
         p["blocked"] = [s for s in (p["blocked"] or "").split(",") if s]
         p["libraries"] = None if p["libraries"] is None else json.loads(p["libraries"])
+        p["household"], p["has_pin"] = bool(p["household"]), bool(p["has_pin"])
     return people
 
 
@@ -287,6 +306,8 @@ class UserChange(BaseModel):
     seerr_id: Optional[int] = None
     unlink_seerr: bool = False
     jf_user: Optional[str] = None  # the Jellyfin user they play as; "" clears it
+    household: Optional[bool] = None  # a TV can act as them (tv.py)
+    clear_pin: bool = False  # forgot theirs: the TV PIN goes
 
 
 def _admins_left_without(user_id: int) -> int:
@@ -317,6 +338,10 @@ def change_user(user_id: int, body: UserChange, _=Depends(admin)):
         db().execute("UPDATE users SET seerr_id = ? WHERE id = ?", (None if body.unlink_seerr else body.seerr_id, user_id))
     if body.jf_user is not None:
         db().execute("UPDATE users SET jf_user = ? WHERE id = ?", (_jf_user(body.jf_user) or None, user_id))
+    if body.household is not None:
+        db().execute("UPDATE users SET household = ? WHERE id = ?", (int(body.household), user_id))
+    if body.clear_pin:
+        db().execute("UPDATE users SET pin = NULL WHERE id = ?", (user_id,))
     return {"ok": True}
 
 

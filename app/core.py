@@ -208,6 +208,9 @@ COLUMNS = [
     ("users", "jf_own", "INTEGER NOT NULL DEFAULT 0"),  # 1: jf_user is a Jellyfin user Parlor made for them alone
     ("users", "steam_id", "TEXT"),  # their Steam profile's 17-digit id, for Games (games.py)
     ("users", "steam_token", "TEXT"),  # their sign-in to Steam, made by QR code (games.py): read only there, never sent out
+    ("users", "household", "INTEGER NOT NULL DEFAULT 0"),  # 1: an admin made them part of the household: a TV can act as them (tv.py)
+    ("users", "pin", "TEXT"),  # scrypt hash of the PIN that guards switching a TV to them; NULL: none
+    ("tvs", "viewer_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL"),  # who the TV acts as; NULL: its owner
 ]
 
 _local = threading.local()
@@ -355,8 +358,11 @@ def new_session(user_id: int, agent: str = "") -> str:
 def session_user(token: str):
     if not token:
         return None
+    # a TV acts as its viewer while that person is still in the household, else as its owner (the session's own account)
     row = one("""SELECT u.id, u.name, u.admin, u.jellyfin_id, u.seerr_id, u.pw IS NOT NULL AS local, s.seen, t.id AS tv
-                 FROM sessions s JOIN users u ON u.id = s.user_id LEFT JOIN tvs t ON t.session = s.token WHERE s.token = ?""", _digest(token))
+                 FROM sessions s LEFT JOIN tvs t ON t.session = s.token
+                 JOIN users u ON u.id = COALESCE((SELECT id FROM users WHERE id = t.viewer_id AND household = 1), s.user_id)
+                 WHERE s.token = ?""", _digest(token))
     if not row:
         return None
     now = time.time()

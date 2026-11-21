@@ -16,6 +16,16 @@ The first account is the admin, created on first visit. Nobody can sign in, not 
 
 Each account has its own subscriptions, history, resume points, watch later and YouTube cookies. Downloads and the music library are shared.
 
+## The household and profiles on a TV
+
+A TV acts as one person, so each person's history, resume points, limits and Jellyfin library follow them onto the TV, and nobody types a password on it.
+
+- **The household**: an admin marks accounts as part of it (Settings → People, `household` on `PATCH /api/users/{id}`). A profile is a household account; there are no sub-profiles inside one account.
+- **Who a TV acts as**: its owner (the account that paired it) until someone else in the household is picked. Then every request from the TV is answered as that person: their sections, their libraries, their history. It is never an admin, even when that person is.
+- **Falling back**: if the person is deleted or taken out of the household, the TV acts as its owner again. Put back into the household, they are picked again.
+- **Who may pick and drive**: the TV's owner, the person it is acting as, and any household account, from a phone or the TV's own screen (`GET /api/tv/{id}/people`, `POST /api/tv/{id}/viewer`). A household account sees and drives every TV, including ones paired by accounts outside the household. Only the owner (or an admin from Settings → TVs) unpairs a TV.
+- **PINs**: anyone can set a 4 to 8 digit PIN with their password (`PUT /api/me/pin`, `null` clears it; an admin can clear a forgotten one). Switching a TV to a person with a PIN asks for it, from a TV or someone else's phone, including going back to an owner who has one. Their own phone, and a TV already acting as them, aren't asked. Wrong PINs are throttled like wrong passwords: 8 in 15 minutes per person and per address, after which even the right PIN waits. A PIN is stored hashed.
+
 ## Seerr users
 
 Requests go to Seerr as the person's own Seerr user, so Seerr's quotas, permissions and approvals apply.

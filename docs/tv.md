@@ -85,6 +85,7 @@ A TV left on reloads itself when Parlor was updated, as soon as nothing is playi
 - A TV that's off or not showing Parlor shows as off; it comes back by itself.
 - **Unpair** signs it out. Signing out everywhere unpairs every TV.
 - A TV is never signed in as an admin, even an admin's, so only enter a code you see on a TV in front of you.
+- A TV can act as another person in the household instead of its owner, after their PIN if they set one; see [the household and profiles on a TV](accounts.md#the-household-and-profiles-on-a-tv).
 - Admins see every account's TVs, and a remote for each, in **Settings → TVs**.
 
 ## The TV set itself: power, input and volume
