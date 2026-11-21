@@ -50,7 +50,10 @@ addEventListener("online", pwaCheck);
 function keepMe() {
   try { localStorage.setItem("parlor:me", JSON.stringify({ id: ME.id, name: ME.name, admin: ME.admin, sections: ME.sections })); } catch { /* private mode */ }
 }
-function forgetMe() { try { localStorage.removeItem("parlor:me"); } catch { /* private mode */ } }
+function forgetMe() {
+  try { localStorage.removeItem("parlor:me"); } catch { /* private mode */ }
+  forgetLast(); // and the rows kept for the next visit: they're theirs
+}
 
 function bootOffline() {
   let me = null;

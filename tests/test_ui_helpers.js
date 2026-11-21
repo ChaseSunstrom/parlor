@@ -39,6 +39,128 @@ assert.deepStrictEqual([...css.matchAll(/(?:@import|url\()\s*["']?((?:https?:)?\
 for (const m of css.matchAll(/url\("(vendor\/[^"]+)"\)/g)) assert.ok(fs.existsSync(path.join(__dirname, "..", "app", "static", m[1])), m[1]);
 console.log("only Parlor's own files ok");
 
+// Skip intro: the button shows inside a segment the server found, with its own words, and nowhere else
+{
+  const { segmentAt, SKIP_LABEL } = require("vm").runInNewContext(`(() => { ${grab(core, "const segmentAt =", ";\n")} ${grab(core, "const SKIP_LABEL =", ";\n")} return { segmentAt, SKIP_LABEL }; })()`);
+  const segs = [{ type: "intro", start: 30, end: 90 }, { type: "outro", start: 600, end: 700 }];
+  assert.strictEqual(segmentAt(segs, 10), null, "before the intro");
+  assert.strictEqual(segmentAt(segs, 30).type, "intro");
+  assert.strictEqual(segmentAt(segs, 89.5), null, "the last second isn't worth a button");
+  assert.strictEqual(segmentAt(segs, 650).type, "outro");
+  assert.strictEqual(segmentAt([], 40), null, "a server with none: no button");
+  assert.strictEqual(segmentAt(undefined, 40), null);
+  assert.strictEqual(SKIP_LABEL.intro, "Skip intro");
+  assert.strictEqual(SKIP_LABEL.outro, "Skip credits");
+  assert.ok(grab(js("library.js"), 'id="jfSkip"', ">").includes("hidden"), "the film player has the button, hidden until a segment");
+  console.log("skip intro ok");
+}
+
+// Double-tap: on a touch screen two quick taps skip 10 s on a side or take full screen in the middle; a mouse keeps its double-click
+{
+  const { doubleTap } = require("vm").runInNewContext(`(() => { ${grab(core, "function doubleTap(", "\n}\n")} return { doubleTap }; })()`);
+  const rig = () => {
+    const on = {}, calls = [];
+    const el = { addEventListener: (k, f) => { on[k] = f; }, getBoundingClientRect: () => ({ left: 100, width: 300, bottom: 400 }) };
+    doubleTap(el, (d) => calls.push(d), () => calls.push("full"));
+    const tap = (x, at, o = {}) => on.pointerup({ pointerType: "touch", clientX: x, clientY: 100, timeStamp: at, ...o });
+    return { on, calls, tap };
+  };
+  let r = rig();
+  r.tap(120, 1000); assert.deepStrictEqual(r.calls, [], "one tap does nothing");
+  r.tap(120, 1200); assert.deepStrictEqual(r.calls, [-10], "left: back");
+  r.tap(380, 5000); r.tap(380, 5100); assert.deepStrictEqual(r.calls, [-10, 10], "right: forward");
+  r.tap(250, 8000); r.tap(250, 8100); assert.deepStrictEqual(r.calls, [-10, 10, "full"], "middle: full screen");
+  r.tap(120, 9000); r.tap(120, 9200); r.tap(120, 9300);
+  assert.deepStrictEqual(r.calls.slice(3), [-10], "a third tap starts over");
+  r = rig(); r.tap(120, 1000); r.tap(120, 1500); assert.deepStrictEqual(r.calls, [], "too slow");
+  r = rig(); r.tap(120, 1000, { pointerType: "mouse" }); r.tap(120, 1100, { pointerType: "mouse" }); assert.deepStrictEqual(r.calls, [], "a mouse isn't a touch");
+  r = rig(); r.tap(120, 1000, { clientY: 390 }); r.tap(120, 1100, { clientY: 390 }); assert.deepStrictEqual(r.calls, [], "the control bar is the browser's");
+  r = rig(); r.tap(250, 1000); r.tap(250, 1100); r.on.dblclick({ timeStamp: 1150 });
+  assert.deepStrictEqual(r.calls, ["full"], "the click the browser adds after a double-tap doesn't toggle it back");
+  r.on.dblclick({ timeStamp: 9000 }); assert.deepStrictEqual(r.calls, ["full", "full"], "a mouse double-click: full screen");
+  assert.ok(grab(js("library.js"), "doubleTap(", ")").includes("box"), "the film player uses it");
+  console.log("double tap ok");
+}
+
+// Spoiler shield: with it on, an episode you haven't watched shows no still and no summary; with it off, or once watched, it does
+{
+  const rows = (spoilers) => require("vm").runInNewContext(`(() => { ${grab(js("library.js"), "function episodeRows(", "\n}\n")} return episodeRows; })()`,
+    { esc, ICON: { play: "", ok: "" }, runtimeText: () => "", left: () => "", pref: (k) => (k === "spoilers" ? spoilers : undefined) });
+  const eps = [{ id: "a", name: "One", image: "/a.jpg", overview: "Plot A", played: true }, { id: "b", name: "Two", image: "/b.jpg", overview: "Plot B" },
+    { id: "c", name: "Three", image: "/c.jpg", overview: "Plot C", position: 60, runtime: 600 }, { id: "d", name: "Four", image: "/d.jpg", overview: "Plot D" }];
+  const off = rows(false)(eps, "d"), on = rows(true)(eps, "d");
+  for (const f of ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg", "Plot A", "Plot B", "Plot C", "Plot D"]) assert.ok(off.includes(f), `off shows ${f}`);
+  for (const f of ["/a.jpg", "/c.jpg", "/d.jpg", "Plot A", "Plot C", "Plot D"]) assert.ok(on.includes(f), `on still shows ${f}: watched, started, or the one playing`);
+  for (const f of ["/b.jpg", "Plot B"]) assert.ok(!on.includes(f), `on hides ${f}`);
+  assert.ok(on.includes("Two"), "the name stays");
+  assert.ok(grab(js("home.js"), 'check("pSpoilers"', ")").length > 10 && /keep\("#pSpoilers", "spoilers"/.test(js("home.js")), "a setting turns it on");
+  assert.strictEqual(require("vm").runInNewContext(`(() => { ${grab(core, "const PREF_DEFAULTS =", "};\n")} return PREF_DEFAULTS.spoilers; })()`), false, "off until asked");
+  console.log("spoiler shield ok");
+}
+
+// Continue watching: one title goes without leaving the library. A film or episode in Jellyfin goes back to the start, a video loses its history row
+{
+  const lib = js("library.js");
+  const jcard = require("vm").runInNewContext(`(() => { ${grab(lib, "function jcard(", "\n}\n")} return jcard; })()`,
+    { esc, ICON: { ok: "", play: "", x: "x" }, SQUARE: new Set(), VIDEO: new Set(["Movie"]), jhref: () => "#/x", jsub: () => "" });
+  const film = { id: "ab12", type: "Movie", name: "Heat", position: 60, runtime: 600 };
+  assert.ok(jcard(film, { wide: true, drop: true }).includes('data-jf-drop="ab12"'), "a Continue watching card has the button");
+  assert.ok(!jcard(film, { wide: true }).includes("data-jf-drop"), "other cards don't");
+  assert.ok(grab(lib, 'shelf("Continue watching"', ")").includes("drop: true"), "the library's Continue watching asks for it");
+  const sent = [];
+  let click, removed = 0, toasted = "";
+  require("vm").runInNewContext(grab(lib, "/* Continue watching: the x", "\n});\n"), {
+    document: { addEventListener: (_, f) => { click = f; } }, post: (url, body) => { sent.push([url, body]); return Promise.resolve({}); }, forgetLast: (k) => sent.push(k), toast: (m) => { toasted = m; } });
+  const b = { dataset: { jfDrop: "ab12" }, closest: () => ({ remove: () => { removed++; } }) };
+  click({ preventDefault() {}, target: { closest: (sel) => (sel === "[data-jf-drop]" ? b : null) } });
+  click({ preventDefault() {}, target: { closest: () => null } });
+  Promise.resolve().then(() => Promise.resolve()).then(() => {
+    assert.strictEqual(JSON.stringify(sent), JSON.stringify([["/api/jf/progress", { id: "ab12", position: 0 }], "jfhome"]),"position 0, not 'watched', and the kept row is dropped");
+    assert.strictEqual(removed, 1, "the card goes");
+  }).catch((err) => { console.error(err); process.exit(1); });
+  assert.ok(grab(js("home.js"), 'shelf("Continue watching"', '"#/yt/continue"').includes("forget: true"), "a video's Continue watching on the home page");
+  assert.ok(grab(watch, "async function ytContinue", "\n}\n").includes("forget: true"), "and its own page");
+  assert.ok(/forgetLast\("homeContinue"\)/.test(watch), "a forgotten video leaves the kept row too");
+  console.log("continue watching ok");
+}
+
+// Rows from the last visit: drawn at once from the last answer, again only if the new one differs, the old one stays if the server can't answer
+(async () => {
+  const store = {};
+  const methods = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = v; }, removeItem: (k) => { delete store[k]; } };
+  const ls = new Proxy(store, { get: (t, p) => methods[p] || t[p] }); // like the browser's: its keys are the stored ones, the methods aren't keys
+  const mk = (me) => require("vm").runInNewContext(`(() => { ${grab(core, "async function lastThen(", "\n}\n")} ${grab(core, "function forgetLast(", "\n}\n")} return { lastThen, forgetLast }; })()`,
+    { localStorage: ls, ME: { id: me }, JSON, Object });
+  const { lastThen, forgetLast } = mk(1);
+  const drawn = [];
+  const draw = (x) => drawn.push(x);
+  await lastThen("row", async () => ["a"], draw);
+  assert.deepStrictEqual(drawn, [["a"]], "first visit: once, when it arrives");
+  drawn.length = 0;
+  await lastThen("row", async () => ["a"], draw);
+  assert.deepStrictEqual(drawn, [["a"]], "the same answer isn't drawn twice");
+  drawn.length = 0;
+  let release; const slow = new Promise((r) => { release = r; });
+  const p = lastThen("row", () => slow, draw);
+  assert.deepStrictEqual(drawn, [["a"]], "the last answer is on the page before the new one arrives");
+  release(["a", "b"]); await p;
+  assert.deepStrictEqual(drawn, [["a"], ["a", "b"]], "and the new one replaces it");
+  drawn.length = 0;
+  await lastThen("row", async () => { throw new Error("down"); }, draw);
+  assert.deepStrictEqual(drawn, [["a", "b"]], "a server that can't answer leaves what was drawn");
+  await assert.rejects(lastThen("other", async () => { throw new Error("down"); }, draw), /down/, "nothing to show: the error goes on");
+  drawn.length = 0;
+  await mk(2).lastThen("row", async () => ["z"], draw);
+  assert.deepStrictEqual(drawn, [["z"]], "another account on this device doesn't see the first one's rows");
+  store["parlor:last:1:bad"] = "{not json";
+  await lastThen("bad", async () => [1], draw);
+  forgetLast("row"); assert.ok(!("parlor:last:1:row" in store) && "parlor:last:2:row" in store, "one row of this account");
+  forgetLast(); assert.deepStrictEqual(Object.keys(store), [], "signing out: every account's");
+  assert.ok(grab(js("pwa.js"), "function forgetMe()", "\n}\n").includes("forgetLast()"), "signing out forgets them");
+  assert.ok(/lastThen\("jfhome"/.test(js("library.js")) && /lastThen\("homeContinue"/.test(js("home.js")), "the Library and Home draw with it");
+  console.log("rows from the last visit ok");
+})().catch((err) => { console.error(err); process.exit(1); });
+
 // On TV: from a player on the page, the film or video goes from where it is and this one pauses; from a details page,
 // from where it was left
 {

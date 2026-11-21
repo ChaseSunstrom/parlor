@@ -96,7 +96,7 @@ document.addEventListener("click", (e) => {
   const sub = e.target.closest("[data-sub]");
   if (sub) toggleSub(sub);
   const forget = e.target.closest("[data-forget]");
-  if (forget && v) del(`/api/me/history/${v.id}`).then(() => card.remove(), (err) => toast(err.message));
+  if (forget && v) del(`/api/me/history/${v.id}`).then(() => { forgetLast("homeContinue"); card.remove(); }, (err) => toast(err.message));
   const keep = e.target.closest("[data-vkeep]");
   if (keep && v) {
     keep.disabled = true;
@@ -247,7 +247,7 @@ async function ytRec(t) {
 
 async function ytContinue(t) {
   const r = await api("/api/me/history?unfinished=true&limit=60");
-  paint(t, watchHead("continue", "Continue watching", "Videos you started, right where you left off.") + `<div class="wrap">${vgrid(r.items) || `<div class="empty-state"><strong>Nothing half-watched</strong>Videos you stop partway through show up here.</div>`}</div>`);
+  paint(t, watchHead("continue", "Continue watching", "Videos you started, right where you left off.") + `<div class="wrap">${vgrid(r.items, { forget: true }) || `<div class="empty-state"><strong>Nothing half-watched</strong>Videos you stop partway through show up here.</div>`}</div>`);
 }
 
 async function ytLater(t) {

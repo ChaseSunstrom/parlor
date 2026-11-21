@@ -134,6 +134,7 @@ const PREF_DEFAULTS = {
   quality: "1080", // player and download quality
   skip: ["sponsor", "selfpromo", "interaction"], // SponsorBlock categories skipped automatically
   autoplay: true, captions: "", hideShorts: false, theater: false, volume: 1, speed: 1, cutSponsors: false,
+  spoilers: false, // episode lists hide the still and summary of what you haven't watched
 };
 function pref(key) {
   try {
@@ -142,6 +143,48 @@ function pref(key) {
   } catch { return PREF_DEFAULTS[key]; }
 }
 function setPref(key, value) { try { localStorage.setItem("parlor:" + key, JSON.stringify(value)); } catch { /* private mode */ } }
+
+/* ---------- rows from the last visit ---------- */
+
+// Draws a row from its last answer (this account, this device) at once, then loads the new one and draws again only if it
+// differs. A server that can't answer leaves what was drawn; with nothing drawn the error goes on.
+async function lastThen(key, load, draw) {
+  const k = `parlor:last:${ME?.id}:${key}`;
+  let old = null;
+  try { old = JSON.parse(localStorage.getItem(k)); } catch { /* nothing kept, or damaged */ }
+  if (old) draw(old);
+  const fresh = await load().catch((err) => { if (old) return old; throw err; });
+  try { localStorage.setItem(k, JSON.stringify(fresh)); } catch { /* storage full */ }
+  if (JSON.stringify(fresh) !== JSON.stringify(old)) draw(fresh);
+}
+// one row of this account (after one of its titles was removed), or with no key every account's (signing out)
+function forgetLast(key) {
+  try {
+    if (key) localStorage.removeItem(`parlor:last:${ME?.id}:${key}`);
+    else Object.keys(localStorage).filter((k) => k.startsWith("parlor:last:")).forEach((k) => localStorage.removeItem(k));
+  } catch { /* private mode */ }
+}
+
+/* ---------- playing ---------- */
+
+// the part to skip (intro, credits) that second t is inside, from what Jellyfin found; null when it found none
+const segmentAt = (segs, t) => (segs || []).find((g) => t >= g.start && t < g.end - 1) || null;
+const SKIP_LABEL = { intro: "Skip intro", outro: "Skip credits" };
+// Touch: two taps within 300 ms. A side skips 10 s that way, the middle goes full screen, the bar at the bottom is the
+// browser's own. A mouse's double-click is full screen, and the click a browser adds after a double-tap is ignored.
+function doubleTap(el, skip, full) {
+  let last = 0, touched = -1e9;
+  el.addEventListener("pointerup", (e) => {
+    if (e.pointerType !== "touch") return;
+    touched = e.timeStamp;
+    const r = el.getBoundingClientRect();
+    if (e.timeStamp - last > 300 || e.clientY > r.bottom - 60) { last = e.timeStamp; return; }
+    last = 0;
+    const side = (e.clientX - r.left) / r.width;
+    if (side < 0.33) skip(-10); else if (side > 0.67) skip(10); else full();
+  });
+  el.addEventListener("dblclick", (e) => { if (e.timeStamp - touched > 600) full(); });
+}
 
 /* ---------- building blocks ---------- */
 

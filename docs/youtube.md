@@ -27,7 +27,7 @@ The player streams through your server:
 
 You don't need links or an account to find something to watch. **Watch → For you** has:
 
-- **Continue watching**, and **Because you watched …**: the videos YouTube suggests beside the ones you watched last.
+- **Continue watching**, and **Because you watched …**: the videos YouTube suggests beside the ones you watched last. The **x** on a continue-watching video takes it out of the row (and out of History).
 - **New from your subscriptions**, and a row of **Recommended** (**See all** opens the whole page).
 - **Topics**: a shelf of this week's most-watched videos for each topic you pick (Music, Gaming, Science… to start; **Edit topics** to change them). YouTube retired its Trending page, so this stands in for it. Each account has its own topics.
 

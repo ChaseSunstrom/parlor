@@ -18,6 +18,9 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 - **Filters**: the **Show** menu beside it: new to you, in progress, favourites.
 - **Play**: **Play** resumes where you stopped; **From the start** doesn't.
 - **Your place**: it's saved every few seconds and when you pause. Near the end it's marked watched and the next episode starts after a countdown.
+- **Continue watching**: the **x** on a card takes that title out of the row. Its place goes back to the start and it isn't marked watched; it stays in the library.
+- **Spoiler shield**: Settings → Playing videos → **Spoiler shield** hides the picture and summary of episodes you haven't watched in a show's episode list (the title stays). It's per device.
+- **Rows from the last visit**: Library and Home draw their rows at once from what this device saw last time, then update them when the server answers; a server that's down leaves the last rows. Signing out forgets them.
 - **Films & shows** (under Request) shows **Play** (or **Watch**, for a show) on a title Jellyfin has, straight into the Library.
 
 ## Playback
@@ -27,6 +30,8 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 - **Quality**: the quality menu asks for a lower bitrate when you're away from home.
 - **Menus**: audio tracks, subtitles and chapters have menus.
 - **Keys**: Space or K, J and L or ← and → for 10 s, F for full screen, M to mute, Shift+N for the next episode.
+- **Skip intro**: on Jellyfin 10.10 or later, which finds intros and credits itself, a **Skip intro** or **Skip credits** button shows while one plays and jumps past it. An older Jellyfin, or a title it found none in, shows no button.
+- **Double-tap**: on a touch screen, double-tap the left or right of the picture to go back or forward 10 s, and the middle for full screen. The bar at the bottom is the browser's own. With a mouse, double-click is full screen.
 
 ## Music and audiobooks
 

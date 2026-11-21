@@ -46,6 +46,10 @@ ITEMS = {MOVIE: MOVIE_JSON, EP: EP_JSON, TRACK: TRACK_JSON,
          BOOK: {"Id": BOOK, "Name": "A Book", "Type": "Book", "MediaType": "Book", "ImageTags": {"Primary": "bk"}, "UserData": {}}}
 
 
+SEGMENTS = [{"Type": "Outro", "StartTicks": 160 * 60 * T, "EndTicks": 170 * 60 * T}, {"Type": "Intro", "StartTicks": 30 * T, "EndTicks": 90 * T},
+            {"Type": "Commercial", "StartTicks": 5 * T, "EndTicks": 6 * T}, {"Type": "Intro", "StartTicks": 50 * T, "EndTicks": 50 * T}]
+
+
 class Resp:
     def __init__(self, status=200, data=None, body=None, headers=None):
         self.status_code, self.headers = status, CaseInsensitiveDict(headers or {})
@@ -108,6 +112,7 @@ class FakeJellyfin:
             ("GET", "/Items/\\w+/Similar", listing([TRACK_JSON])),
             ("GET", "/Shows/\\w+/Seasons", listing([ITEMS[SEASON]])),
             ("GET", "/Shows/\\w+/Episodes", listing([EP_JSON])),
+            ("GET", "/MediaSegments/(?P<id>\\w+)", lambda m, q, b, h: {"Items": SEGMENTS} if m["id"] == MOVIE else Resp(404)),  # 10.10+; before it, no route
             ("POST", "/Items/(?P<id>\\w+)/PlaybackInfo", self.playback),
             ("POST", "/UserItems/(?P<id>\\w+)/UserData", user_data),
             ("POST", uid + "/Items/(?P<id>\\w+)/UserData", user_data),
@@ -339,6 +344,13 @@ class Playback(Base):
         self.play(MOVIE, hevc=True)
         self.assertIn("hevc", str(self.fake.last(f"/Items/{MOVIE}/PlaybackInfo")["json"]["DeviceProfile"]["DirectPlayProfiles"]))
 
+    def test_skippable_segments_only_when_the_server_has_them(self):
+        p = self.play(MOVIE).json()
+        self.assertEqual(p["segments"], [{"type": "intro", "start": 30, "end": 90}, {"type": "outro", "start": 9600, "end": 10200}],
+                         "intros and credits, in order; an ad break and an empty one aren't offered")
+        self.assertEqual(self.play(EP).json()["segments"], [], "a Jellyfin without the route (before 10.10) or an item with none: nothing to skip")
+        self.assertEqual(self.play(EP).status_code, 200)
+
     def test_transcodes_to_hls_through_the_proxy(self):
         p = self.play(EP, media_source=MS, audio_index=2, max_bitrate=4_000_000).json()
         self.assertEqual(p["method"], "transcode")
@@ -398,6 +410,8 @@ class Progress(Base):
         self.assertEqual(self.fake.last(f"/UserItems/{MOVIE}/UserData")["json"], {"IsFavorite": True})
         self.post(id=MOVIE, favourite=False)
         self.assertEqual(self.fake.last(f"/UserItems/{MOVIE}/UserData")["json"], {"IsFavorite": False})
+        self.post(id=MOVIE, position=0)
+        self.assertEqual(self.fake.last(f"/UserItems/{MOVIE}/UserData")["json"], {"PlaybackPositionTicks": 0}, "position 0 leaves Continue watching and doesn't mark it watched")
         self.assertEqual(self.post(id=MOVIE).status_code, 422, "nothing to save")
         self.assertEqual(self.post(id="x", played=True).status_code, 422)
         self.assertEqual(self.post(id=MOVIE, position=-5).status_code, 422)
