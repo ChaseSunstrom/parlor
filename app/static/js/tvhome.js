@@ -106,7 +106,7 @@ function tvhFocus(r, i, take = true) {
   TVH.ids[row.key] = row.items[i].id;
   for (const other of stack.children) other.classList.toggle("on", other === el);
   stack.style.transform = `translate3d(0,${-el.offsetTop}px,0)`;
-  track.style.transform = `translate3d(${-Math.min(tile.offsetLeft, Math.max(0, track.scrollWidth - el.clientWidth))}px,0,0)`;
+  track.style.transform = `translate3d(${-Math.min(tile.offsetLeft, Math.max(0, track.scrollWidth - el.clientWidth + 48))}px,0,0)`; // + the left margin at the end too: the last tile lifted and glowing stays whole
   if (take) tile.focus({ preventScroll: true });
   clearTimeout(TVH.timer); // the hero waits for the focus to rest: a held arrow doesn't load a picture per tile
   TVH.timer = setTimeout(() => tvhHero(row, row.items[i]), TVH.shown ? 240 : 0);

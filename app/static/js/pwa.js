@@ -15,6 +15,7 @@ if (SECURE && !APPED && "serviceWorker" in navigator) { // the app has its page 
 }
 
 function pwaUpdated() {
+  if (document.body.classList.contains("tv")) { tvStale = true; if (!tvMe) location.reload(); return; } // nobody presses a bar with a remote: tv.js reloads it once nothing plays
   if ($("#updateBar")) return;
   document.body.insertAdjacentHTML("beforeend", `<div class="updatebar" id="updateBar" role="status"><span>Parlor was updated</span><button class="primary small" id="updateNow">Reload</button></div>`);
   $("#updateNow").addEventListener("click", () => location.reload());

@@ -1026,16 +1026,16 @@ body.tv .side .side-head:focus .i { color: var(--g); }
 .tvh-amb img.on, .tvh-art img.on { opacity: 1; }
 .tvh.lite .tvh-amb img { transition: none; } /* a screen that can't keep up with a whole-screen fade (tvhPace): the wash changes at once */
 .tvh.lite .tvh-art img { transition-duration: .25s; }
-.tvh-hero { position: absolute; left: calc(var(--rail) + 48px); top: 70px; width: 580px; will-change: transform, opacity; }
+.tvh-hero { position: absolute; left: calc(var(--rail) + 48px); bottom: calc(100% - 362px); width: 580px; will-change: transform, opacity; } /* it grows up from the rows: Resume stays in one place and a long title never reaches them */
 .tvh-hero.in { animation: tvhin .32s cubic-bezier(.2, .8, .2, 1); }
 @keyframes tvhin { from { opacity: 0; transform: translate3d(0, 8px, 0); } }
 .tvh-kind { margin: 0; font-size: 15px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
 .tvh-hero h1 { margin: 10px 0 12px; font-size: 56px; line-height: 1.02; font-weight: 800; letter-spacing: -.02em; text-wrap: balance;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding-bottom: .08em; }
-.tvh-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 20px; font-weight: 600; color: var(--dim); min-height: 1.3em; }
+.tvh-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; max-height: 1.3em; overflow: hidden; font-size: 20px; font-weight: 600; color: var(--dim); min-height: 1.3em; }
 .tvh-meta span + span::before { content: "·"; margin-right: 16px; opacity: .6; }
 .tvh-over { margin: 12px 0 0; font-size: 19px; line-height: 1.45; color: color-mix(in oklab, var(--text) 82%, var(--dim));
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .tvh-go { margin: 18px 0 0; display: flex; align-items: center; gap: 18px; }
 .tvh-go b { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 20px; background: var(--accent); color: var(--accent-ink); font-size: 18px; }
 .tvh-go b .i { width: 18px; height: 18px; }

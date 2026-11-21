@@ -127,6 +127,27 @@ with sync_playwright() as pw:
         scroll: getComputedStyle(document.documentElement).overflowY === 'hidden', onScreen: box.left >= 0 && box.right <= innerWidth + 2, clock: document.querySelector('#tvhClock')?.textContent }; })()""")
     print("home:", home)
     screen.screenshot(path=str(OUT / "tv-home.png"))
+    # the hero's tallest form (a two-line title, three facts, three lines of overview, Resume and its progress) ends above the
+    # rows and starts on the screen: a long title once put the first row's name on the Resume button
+    screen.evaluate("""tvhHero({ title: 'Continue watching', accent: 'var(--amber)' }, { title: 'Spider-Man: Far From Home, the Extended Fan Cut', kind: 'Film',
+      meta: ['2019', '1:55:34 left', 'PG-13', 'Action'], over: 'Peter Parker and his friends go on a summer trip to Europe. ' .repeat(8), go: 'Resume', pct: 0.4, href: '#/' })""")
+    screen.wait_for_timeout(500)
+    fit = screen.evaluate("""(() => { const h = document.querySelector('#tvhHero').getBoundingClientRect(), r = document.querySelector('.tvh-rows').getBoundingClientRect(),
+      go = document.querySelector('#tvhHero .tvh-go').getBoundingClientRect(), clock = document.querySelector('#tvhClock').getBoundingClientRect();
+      return { top: Math.round(h.top), bottom: Math.round(h.bottom), go: Math.round(go.bottom), rows: Math.round(r.top), clock: Math.round(clock.bottom),
+               lines: Math.round(document.querySelector('#tvhHero h1').clientHeight / parseFloat(getComputedStyle(document.querySelector('#tvhHero h1')).lineHeight)) }; })()""")
+    print("tallest hero:", fit)
+    screen.screenshot(path=str(OUT / "tv-home-long.png"))
+    checks["On a TV's Home the hero's tallest form ends above the rows and starts on the screen"] = fit["top"] >= 36 * 1.5 and fit["go"] <= fit["bottom"] <= fit["rows"] - 8 and fit["lines"] == 2
+    # a newer Parlor on a TV: nobody presses a bar with a remote, so with nothing playing it reloads by itself, back on Home
+    barless = screen.evaluate("window.oldPage = 1; pwaUpdated(); !document.querySelector('#updateBar')")
+    try:
+        screen.wait_for_function("!window.oldPage && document.querySelector('#tvh .tvt:focus')", timeout=30000)
+        reloaded = True
+    except Exception:
+        reloaded = False
+    checks["A TV takes a newer Parlor by itself when nothing plays"] = barless and reloaded
+    screen.wait_for_timeout(700)
     checks["Home on a TV is a hero from the focused title over rows of posters, with no top bar"] = bool(home["hero"]) and home["hero"] == home["tile"] and home["rows"] >= 3 \
         and home["bar"] == "none" and home["rail"] < 200 and home["lifted"] and home["scroll"] and bool(home["clock"])
     # mash the arrows: after every press the focus is on a tile in sight or on the menu, and the hero ends on the tile
@@ -138,7 +159,11 @@ with sync_playwright() as pw:
         lost += not screen.evaluate("document.activeElement.matches('#tvh .tvt, #side a')")  # at once: the focus is on a tile or the menu
         if n % 6 == 5:  # and when the slide has come to rest, that tile is whole on the screen
             screen.wait_for_timeout(450)
-            lost += not screen.evaluate(in_sight)
+            if not screen.evaluate(in_sight):  # a loaded machine can stall a 0.3 s slide: give it once more to come to rest
+                screen.wait_for_timeout(900)
+            if not screen.evaluate(in_sight):
+                lost += 1
+                print("  out of sight after", n + 1, "presses:", screen.evaluate("(() => { const a = document.activeElement, b = a.getBoundingClientRect(); return [a.tagName, a.className, a.getAttribute('aria-label'), Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom), innerWidth, innerHeight, scrollY]; })()"))
     for end, away in (("ArrowDown", "ArrowUp"), ("ArrowUp", "ArrowDown")):  # past the last row and the first, the focus stays on its tile
         press(screen, end, 10)
         press(screen, "ArrowRight", 2)
@@ -520,6 +545,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (33 if REMOTE else 11) and all(checks.values()) and not errors
+ok = len(checks) == (35 if REMOTE else 13) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

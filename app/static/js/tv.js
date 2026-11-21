@@ -157,8 +157,7 @@ async function tvFresh() {
   const v = (await api("/api/tv/me").catch(() => ({}))).version;
   if (v && tvVersion && v !== tvVersion) tvStale = true;
   tvVersion ??= v || null;
-  const p = tvPlayer();
-  if (tvStale && !(p && !p.paused)) location.reload();
+  if (tvStale && !tvBusy()) location.reload();
 }
 
 /** what's playing on this TV, if anything: a video on the page, else the dock */
@@ -166,6 +165,8 @@ function tvPlayer() {
   const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
   return v || (dock.queue.length ? dock.audio : null);
 }
+/** not to be reloaded now: a song playing, or a film or video open, paused or not (it keeps its place until it is left) */
+const tvBusy = (p = tvPlayer()) => !!p && (p.tagName === "VIDEO" || !p.paused);
 
 /** OK: press what the focus is on. A list of choices (sound, subtitles, quality) moves to its next one: its own
     menu wants a mouse, and a phone's press can't open it */
@@ -316,7 +317,7 @@ addEventListener("hashchange", () => tvReport());
 setInterval(() => { // idle, every 10 s: still on
   if (!tvMe) return;
   const playing = tvPlayer() && !tvPlayer().paused;
-  if (tvStale && !playing) return location.reload();
+  if (tvStale && !tvBusy()) return location.reload();
   if (tvSleep || tvSleepEnd) tvDoze(tvPlayer());
   if (playing || Date.now() - tvSaid > 10000) tvReport();
 }, 2000);
