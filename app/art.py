@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 from urllib.parse import urlsplit
 
 import requests
@@ -23,6 +24,7 @@ TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}  # no SV
 MAX_BYTES, CACHE_BYTES, CHUNK = 5 * 1024 * 1024, 200 * 1024 * 1024, 64 * 1024
 _PATH = re.compile(r"/[\w\-./~%+@=,]*")  # what image addresses on these hosts hold; no spaces, controls or backslashes
 _lock = threading.Lock()  # one eviction at a time
+_total = None  # bytes kept, once the folder was read; counted up from there
 
 
 def folder():
@@ -65,11 +67,13 @@ def fetch(url: str):
             raise HTTPException(415, "That isn't a picture Parlor keeps")
         if (r.headers.get("Content-Length") or "").isdigit() and int(r.headers["Content-Length"]) > MAX_BYTES:
             raise HTTPException(413, "That picture is too big")
-        data = bytearray()
+        data, until = bytearray(), time.monotonic() + 30
         for chunk in r.iter_content(chunk_size=CHUNK):
             data += chunk
             if len(data) > MAX_BYTES:
                 raise HTTPException(413, "That picture is too big")
+            if time.monotonic() > until:  # a trickle would hold a worker thread for as long as it liked
+                raise HTTPException(502, "Couldn't fetch that picture")
         return bytes(data), ext
     except requests.RequestException:
         raise HTTPException(502, "Couldn't fetch that picture") from None
@@ -90,14 +94,19 @@ def keep(name: str, data: bytes, ext: str):
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+    global _total
     with _lock:
-        files = sorted((p for p in d.iterdir() if p.is_file()), key=lambda p: p.stat().st_mtime)
-        total = sum(p.stat().st_size for p in files)
-        for p in files[:-1]:  # the one just written always stays
-            if total <= CACHE_BYTES:
+        if _total is not None and _total + len(data) <= CACHE_BYTES:  # the folder is read only when it may be over
+            _total += len(data)
+            return final
+        files = sorted(((p, p.stat()) for p in d.iterdir() if p.is_file()), key=lambda x: x[1].st_mtime)
+        _total = sum(st.st_size for _, st in files)
+        for p, st in files:
+            if _total <= CACHE_BYTES:
                 break
-            total -= p.stat().st_size
-            p.unlink(missing_ok=True)
+            if p != final:  # the one just written always stays
+                _total -= st.st_size
+                p.unlink(missing_ok=True)
     return final
 
 
@@ -106,9 +115,11 @@ def artwork(u: str = ""):
     url = clean(u)
     name = hashlib.sha256(url.encode()).hexdigest()
     path = kept(name)
-    if path:
-        os.utime(path)  # used just now: the last to be evicted
-    else:
-        path = keep(name, *fetch(url))
+    try:
+        if path:
+            os.utime(path)  # used just now: the last to be evicted
+    except FileNotFoundError:  # evicted this moment
+        path = None
+    path = path or keep(name, *fetch(url))
     kind = next(k for k, v in TYPES.items() if v == path.suffix[1:])
     return FileResponse(path, media_type=kind, headers={"Cache-Control": "private, max-age=604800", "X-Content-Type-Options": "nosniff"})

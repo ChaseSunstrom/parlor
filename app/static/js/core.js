@@ -153,7 +153,12 @@ async function lastThen(key, load, draw) {
   let old = null;
   try { old = JSON.parse(localStorage.getItem(k)); } catch { /* nothing kept, or damaged */ }
   if (old) draw(old);
-  const fresh = await load().catch((err) => { if (old) return old; throw err; });
+  let fresh;
+  try { fresh = await load(); } catch (err) {
+    if (old && (!err.status || err.status >= 500)) return; // no network, or the server's own trouble: what was drawn stays
+    try { localStorage.removeItem(k); } catch { /* private mode */ } // signed out, locked or no longer allowed: not theirs to keep
+    throw err;
+  }
   try { localStorage.setItem(k, JSON.stringify(fresh)); } catch { /* storage full */ }
   if (JSON.stringify(fresh) !== JSON.stringify(old)) draw(fresh);
 }
@@ -175,7 +180,7 @@ const SKIP_LABEL = { intro: "Skip intro", outro: "Skip credits" };
 function doubleTap(el, skip, full) {
   let last = 0, touched = -1e9;
   el.addEventListener("pointerup", (e) => {
-    if (e.pointerType !== "touch") return;
+    if (e.pointerType !== "touch" || e.target?.closest?.("button, a, select")) return; // a tap on Skip intro is not half a double-tap
     touched = e.timeStamp;
     const r = el.getBoundingClientRect();
     if (e.timeStamp - last > 300 || e.clientY > r.bottom - 60) { last = e.timeStamp; return; }
