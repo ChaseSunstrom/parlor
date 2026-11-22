@@ -251,7 +251,7 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   e.preventDefault();
   b.disabled = true;
-  post("/api/jf/progress", { id: b.dataset.jfDrop, position: 0 }).then(() => { forgetLast("jfhome"); b.closest(".jcard").remove(); }, (err) => { b.disabled = false; toast(err.message); });
+  post("/api/jf/progress", { id: b.dataset.jfDrop, position: 0 }).then(() => { forgetLast("jfhome"); forgetLast("tvhome"); b.closest(".jcard").remove(); }, (err) => { b.disabled = false; toast(err.message); });
 });
 
 document.addEventListener("click", async (e) => {

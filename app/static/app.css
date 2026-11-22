@@ -1037,8 +1037,8 @@ body.tv .side .side-head:focus .i { color: var(--g); }
 .tvh-over { margin: 12px 0 0; font-size: 19px; line-height: 1.45; color: color-mix(in oklab, var(--text) 82%, var(--dim));
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .tvh-go { margin: 18px 0 0; display: flex; align-items: center; gap: 18px; }
-.tvh-go b { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 20px; background: var(--accent); color: var(--accent-ink); font-size: 18px; }
-.tvh-go b .i { width: 18px; height: 18px; }
+.tvh-go :is(b, a) { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 20px; background: var(--accent); color: var(--accent-ink); font-size: 18px; }
+.tvh-go :is(b, a) .i { width: 18px; height: 18px; }
 .tvh-prog, .tvt-bar { display: block; height: 6px; border-radius: 3px; background: rgb(255 255 255 / .2); overflow: hidden; }
 .tvh-prog { width: 240px; }
 .tvh-prog i, .tvt-bar i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
@@ -1105,6 +1105,50 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .tvidle b { font-size: 96px; font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .tvidle span { font-size: 24px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .tvh-stack, .tvh-track, .tvt, .tvh-amb img, .tvh-art img { transition: none; } .tvh-hero.in { animation: none; } }
+/* Home off a TV (home.js): the same hero, rows and tiles on a page that scrolls. A row scrolls sideways by itself; the
+   tile under the pointer or the keyboard lifts and glows as the TV's focused one does, and the hero shows it. */
+.hh { position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: flex-end; min-height: clamp(330px, 48vh, 470px); padding: clamp(32px, 8vh, 80px) var(--edge) 10px; }
+.hh .tvh-amb { z-index: -2; opacity: .42; -webkit-mask-image: linear-gradient(#000 35%, transparent); mask-image: linear-gradient(#000 35%, transparent); }
+.hh .tvh-amb img { filter: blur(36px); transform: scale(1.15); } /* each picture is blurred once and only its opacity moves */
+.hh .tvh-art { z-index: -1; width: min(66%, 980px); height: 100%; }
+.hh .tvh-hero { position: static; width: auto; min-width: 0; max-width: 36rem; min-height: 11rem; }
+.hh .tvh-prog { flex: 0 1 240px; min-width: 0; background: color-mix(in oklab, var(--text) 18%, transparent); } /* a track the light page shows too */
+.hh .tvh-hero h1 { font-size: clamp(2rem, 4.4vw, 3.5rem); }
+.hh .tvh-kind { font-size: .82rem; } .hh .tvh-meta { font-size: 1.05rem; max-height: none; } .hh .tvh-over { font-size: 1.05rem; -webkit-line-clamp: 3; } /* off a TV the facts wrap and the overview has its third line: no overscan, and the page scrolls */
+.hh .tvh-go a { font-weight: 700; text-decoration: none; transition: transform .2s cubic-bezier(.2, .8, .2, 1); }
+.hh .tvh-go a:hover { transform: scale(1.05); }
+.hh-rows { padding-top: 14px; }
+.hh-rows .tvh-row { padding-bottom: 0; }
+.hh-rows .tvh-row h2 { display: flex; align-items: baseline; gap: 14px; padding: 0 var(--edge); font-size: 1.3rem; color: var(--text); }
+.hh-rows .tvh-row h2::before { content: ""; align-self: center; width: 8px; height: 8px; margin-right: -4px; border-radius: 50%; background: var(--accent); }
+.hh-rows .tvh-row h2 .more { color: var(--dim); font-weight: 600; font-size: .95rem; }
+.hh-rows .tvh-track { overflow-x: auto; padding: 16px var(--edge) 44px; margin-bottom: -20px; scroll-snap-type: x proximity; scroll-padding-left: var(--edge); scrollbar-width: none; transition: none; will-change: auto; }
+.hh-rows .tvh-track::-webkit-scrollbar { display: none; }
+.hh-rows .tvt { position: relative; scroll-snap-align: start; }
+.tvt-drop { position: absolute; z-index: 3; right: 8px; top: 8px; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: rgb(0 0 0 / .72); color: #fff; opacity: 0; transition: opacity .15s ease; cursor: pointer; }
+.tvt:hover .tvt-drop, .tvt:focus-visible .tvt-drop { opacity: 1; }
+.tvt-drop:hover { background: var(--accent); color: var(--accent-ink); }
+@media (hover: none) { .tvt-drop { opacity: 1; right: 2px; top: 2px; width: 44px; height: 44px; background: none; } .tvt-drop .i { padding: 6px; width: 30px; height: 30px; border-radius: 50%; background: rgb(0 0 0 / .72); } } /* a finger's 44 px, the same small round mark */
+.hh-rows .tvt-cap { font-size: .98rem; transition: color .2s ease; } .hh-rows .tvt-sub { font-size: .88rem; }
+.hh-rows .tvt:focus-visible { outline: none; box-shadow: none; position: relative; z-index: 2; transform: scale(1.06); }
+@media (hover: hover) {
+  .hh-rows .tvt:hover { position: relative; z-index: 2; transform: scale(1.06); }
+  .hh-rows .tvt:hover .tvt-art::after { opacity: 1; }
+  .hh-rows .tvt:hover .tvt-cap { color: var(--text); }
+}
+.hh-hint:empty { display: none; }
+@media (prefers-reduced-motion: reduce) { .hh .tvh-go a, .hh-rows .tvt, .hh-rows .tvt-cap { transition: none; } }
+@media (prefers-color-scheme: light) { .hh .tvh-kind { color: color-mix(in oklab, var(--accent) 50%, var(--text)); } }
+.hh-rows ~ .wrap .stats-row { margin: 8px 0 40px; }
+@media (max-width: 700px) {
+  .hh { min-height: 0; padding-top: 44vw; }
+  .hh .tvh-art { width: 100%; height: 64vw; -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+  .hh .tvh-hero { height: 16rem; display: flex; flex-direction: column; justify-content: flex-end; overflow: hidden; } /* the tallest form's height: a swipe that rests on a shorter title never moves the rows under the finger */
+  .hh .tvh-meta { max-height: 1.3em; }
+  .hh .tvh-over { -webkit-line-clamp: 2; }
+  .hh-rows .tvh-track { gap: 12px; }
+  .hh-rows .tvt { width: 224px; } .hh-rows .tall > .tvt { width: 122px; } .hh-rows .square > .tvt { width: 140px; }
+}
 .tvpair .gate-card { width: min(640px, 100%); text-align: center; }
 .tvcode { margin: 22px 0 10px; font: 700 3.6rem/1 ui-monospace, "SF Mono", monospace; letter-spacing: .14em; color: var(--text);
   display: flex; justify-content: center; align-items: center; gap: 18px; text-shadow: 0 0 30px color-mix(in oklab, var(--accent) 45%, transparent); }

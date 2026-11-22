@@ -32,7 +32,7 @@ function tvhFromYoutube(v) {
 }
 
 async function tvhLoad() {
-  const watch = !closedTo("watch"), quiet = (p) => p.catch(() => null);
+  const watch = !closedTo("watch"), quiet = (p) => Promise.race([p, new Promise((ok) => setTimeout(ok, 8000, null))]).catch(() => null); // one slow service never holds back the rest
   const [jf, cont, feed, later, mine] = await Promise.all([
     libraryOpen() ? quiet(jfHomeLoad()) : null,
     watch ? quiet(api("/api/me/history?unfinished=true&limit=12")) : null,
@@ -40,27 +40,27 @@ async function tvhLoad() {
     watch ? quiet(api("/api/me/later")) : null,
     libraryOpen() ? quiet(api("/api/jf/items?filters=IsFavorite&types=Movie,Series&sort=SortName&limit=24")) : null, // the hearts: this person's list
   ]);
-  return { jf, cont: cont?.items || [], feed: feed?.channels ? hideShorts(feed.items).slice(0, 16) : [], later: (later?.items || []).slice(0, 16), mine: mine?.items || [] };
+  return { jf, follows: feed ? !!feed.channels : null, cont: cont?.items || [], feed: feed?.channels ? hideShorts(feed.items).slice(0, 16) : [], later: (later?.items || []).slice(0, 16), mine: mine?.items || [] };
 }
 
 function tvhRows({ jf, cont = [], feed = [], later = [], mine = [] }) {
   const rows = [], lib = "var(--sky)", yt = "var(--coral)";
-  const add = (key, title, accent, shape, items) => { if (items.length) rows.push({ key, title, accent, shape, items }); };
+  const add = (key, title, accent, shape, items, more) => { if (items.length) rows.push({ key, title, accent, shape, items, more }); }; // more: the row's own page, linked from its name off a TV
   add("continue", "Continue watching", "var(--amber)", "wide", [...(jf?.resume || []).map((x) => tvhFromLibrary(x, true)), ...cont.map(tvhFromYoutube)]);
-  add("next", "Next up", lib, "wide", (jf?.next || []).map((x) => tvhFromLibrary(x, true)));
+  add("next", "Next up", lib, "wide", (jf?.next || []).map((x) => tvhFromLibrary(x, true)), "#/jf");
   add("mine", "My list", "var(--coral)", "tall", mine.map((x) => tvhFromLibrary(x, false)));
   jfShelves(jf?.views || []).forEach((v, n) => add(`new:${v.id}`, `New in ${v.name}`, v.collection === "music" ? "var(--amber)" : lib,
-    v.collection === "music" ? "square" : "tall", (jf.latest[n] || []).map((x) => tvhFromLibrary(x, false))));
-  add("subs", "New from your subscriptions", yt, "wide", feed.map(tvhFromYoutube));
-  add("later", "Watch later", yt, "wide", later.map(tvhFromYoutube));
+    v.collection === "music" ? "square" : "tall", (jf.latest[n] || []).map((x) => tvhFromLibrary(x, false)), `#/jf/view/${esc(v.id)}`));
+  add("subs", "New from your subscriptions", yt, "wide", feed.map(tvhFromYoutube), "#/yt/subs");
+  add("later", "Watch later", yt, "wide", later.map(tvhFromYoutube), "#/yt/later");
   add("libraries", "Your libraries", lib, "wide", jfShelves(jf?.views || []).map((v) => ({ ...tvhFromLibrary(v, false), img: v.image, kind: "Library", go: "Open" })));
   return rows;
 }
 
 /* ---------- drawing ---------- */
 
-const tvhTile = (x, i) => `<a class="tvt" href="${x.href}" tabindex="-1" data-i="${i}" aria-label="${esc(x.title)}">
-  <span class="tvt-art"><span class="tvt-name">${esc(x.title)}</span>${x.img ? `<img src="${esc(x.img)}" alt="" loading="${i < 7 ? "eager" : "lazy"}" decoding="async" onerror="this.remove()">` : ""}
+const tvhTile = (x, i) => `<a class="tvt" href="${x.href}" tabindex="${onTv() || i ? -1 : 0}" data-i="${i}" aria-label="${esc(x.title)}">
+  <span class="tvt-art"><span class="tvt-name">${esc(x.title)}</span>${x.img ? `<img src="${esc(x.img)}" alt="" loading="${i < 7 && onTv() ? "eager" : "lazy"}" decoding="async" onerror="this.remove()">` : ""}
     ${x.pct > 0.004 ? `<span class="tvt-bar"><i style="width:${(100 * x.pct).toFixed(1)}%"></i></span>` : ""}</span>
   <span class="tvt-cap">${esc(x.title)}</span>${x.sub ? `<span class="tvt-sub">${esc(x.sub)}</span>` : ""}</a>`;
 
@@ -120,7 +120,7 @@ function tvhHero(row, x) {
   hero.innerHTML = `<p class="tvh-kind">${esc([row.title, x.kind].filter(Boolean).join(" · "))}</p><h1>${esc(x.title)}</h1>
     <p class="tvh-meta">${[x.sub && x.kind === "Episode" ? x.sub : "", ...x.meta].filter(Boolean).map((m) => `<span>${esc(m)}</span>`).join("")}</p>
     ${x.over ? `<p class="tvh-over">${esc(x.over)}</p>` : ""}
-    <p class="tvh-go"><b>${x.go === "Open" ? "" : ICON.play}${esc(x.go)}</b>${x.pct > 0.004 ? `<span class="tvh-prog"><i style="width:${(100 * x.pct).toFixed(1)}%"></i></span>` : ""}</p>`;
+    <p class="tvh-go">${onTv() ? "<b>" : `<a href="${x.href}" tabindex="-1">`}${x.go === "Open" ? "" : ICON.play}${esc(x.go)}${onTv() ? "</b>" : "</a>"}${x.pct > 0.004 ? `<span class="tvh-prog"><i style="width:${(100 * x.pct).toFixed(1)}%"></i></span>` : ""}</p>`;
   hero.classList.remove("in");
   void hero.offsetWidth; // the entrance plays again
   hero.classList.add("in");
@@ -130,7 +130,7 @@ function tvhHero(row, x) {
 
 /** cross-fade a layer's two pictures: the new one is fetched and decoded first, so the fade never stutters on it */
 async function tvhSwap(sel, src = "", alt = "") {
-  const box = $(sel, $("#tvh"));
+  const box = $(sel); // the TV's Home or the site's (home.js): one of them is on the page
   if (!box || box.dataset.src === src) return;
   box.dataset.src = src;
   const [a, b] = box.querySelectorAll("img"), cur = a.classList.contains("on") ? a : b, next = cur === a ? b : a;
@@ -147,7 +147,7 @@ async function tvhSwap(sel, src = "", alt = "") {
 /** a screen drawn with no graphics chip's help can't fade a whole 4K picture: count the frames of a fade of the wash,
     and when two fades running come slower than 24 a second, the wash changes at once from then on (.lite, app.css) */
 function tvhPace() {
-  if (TVH.lite || TVH.pacing) return;
+  if (TVH.lite || TVH.pacing || !onTv()) return;
   TVH.pacing = true;
   const t0 = performance.now();
   let n = 0;

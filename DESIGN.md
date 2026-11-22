@@ -37,12 +37,22 @@ One list (`NAV` in `app/static/js/nav.js`) draws all of it, so a new section or 
 - **Pages off the menu:** a page reached from a menu page (Request's four kinds, Collections, Recommended, Playlists, Continue watching) is listed in `UNDER` beside `NAV`: it lights its menu page and gets **Back**.
 - **Choices on a page** (a list's order, a filter) are small menus (`pick()`), never another row of chips.
 
+## Home
+
+Home is one design on every screen: a hero for one title over rows of posters (`tvhome.js` holds the rows, the tile and the hero; `home.js` lays them out off a TV).
+
+- **The hero:** the row's name and the kind in the row's colour, the title, facts, up to three lines about it (two on a phone or a TV, where the facts keep to one line and the hero keeps its tallest height so the rows never move) and one pill (Resume, Play or Open). The title's backdrop sits top right, masked into the page, over a blurred wash of the same picture.
+- **Which title:** the first of the first row, then the one the pointer rests on, the keyboard focus is on, or (on a touch screen) a swiped row comes to rest on, after 240 ms.
+- **Rows:** each scrolls sideways by itself and snaps; its name carries a dot in its colour and **See all** where it has a page. The tile under the pointer or the focus lifts (`scale(1.06)`) and a ring with a glow in the row's colour fades in. Tab goes from row to row, the arrows move inside them.
+- **Under the rows:** the counts (channels, saved videos, requests waiting, songs).
+- **Phones:** the backdrop spans the top and the hero's text sits over its faded lower half.
+
 ## On a TV
 
 A TV (`body.tv`, set by `tv.js`) is the same app laid out for a couch: a 1280×720 canvas that `zoom` scales to the screen, always dark, no top bar. `tvhome.js` and the `body.tv` rules at the end of `app.css` hold all of it.
 
 - **The rail:** the sections as icons down the left (76 px), Search first. Their names and a soft panel fade in while the focus is in it. A section's pages are its row of links (`#pages`) along the top of each page.
-- **Home:** one fixed screen. A hero (the focused title: kind in the row's colour, the name at 56 px in up to two lines, the facts on one line, two lines about it, one pill) over rows of posters. It grows up from the rows, so the pill stays in one place and a long title never reaches them. The title's backdrop sits top right, masked into the page; a 64-pixel copy of it stretched across the whole screen is the colour wash behind (a blur that costs nothing to draw).
+- **Home:** the same hero and rows as everywhere (see Home), as one fixed screen. A hero (the focused title: kind in the row's colour, the name at 56 px in up to two lines, the facts on one line, two lines about it, one pill) over rows of posters. It grows up from the rows, so the pill stays in one place and a long title never reaches them. The title's backdrop sits top right, masked into the page; a 64-pixel copy of it stretched across the whole screen is the colour wash behind (a blur that costs nothing to draw).
 - **Focus:** on Home it is a row and a place in it, never "the nearest thing": the tile lifts (`scale(1.08)`) and a ring with a glow in the row's colour fades in. The rows slide so the focused tile is always in the same spot. Everywhere else it is the 4 px outline.
 - **Sizes for ten feet:** body text 19–21 px on the 720-line canvas (about 30 px on a 1080 screen), captions never under 15 px, row names 22 px, 48 px of margin from the screen's edge.
 - **Motion, for the slowest graphics chip in the house at 4K:** only `transform` and `opacity` animate, 0.2–0.3 s, ease. No `backdrop-filter`, no blur drawn live, no shadow that animates (the glow is drawn once and faded). A picture is decoded before it fades in. `tests/perf_tv.py` measures it; a frame over 34 ms fails it.

@@ -96,7 +96,7 @@ document.addEventListener("click", (e) => {
   const sub = e.target.closest("[data-sub]");
   if (sub) toggleSub(sub);
   const forget = e.target.closest("[data-forget]");
-  if (forget && v) del(`/api/me/history/${v.id}`).then(() => { forgetLast("homeContinue"); card.remove(); }, (err) => toast(err.message));
+  if (forget && v) del(`/api/me/history/${v.id}`).then(() => { forgetLast("tvhome"); card.remove(); }, (err) => toast(err.message));
   const keep = e.target.closest("[data-vkeep]");
   if (keep && v) {
     keep.disabled = true;

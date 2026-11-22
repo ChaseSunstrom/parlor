@@ -125,12 +125,17 @@ console.log("only Parlor's own files ok");
   click({ preventDefault() {}, target: { closest: (sel) => (sel === "[data-jf-drop]" ? b : null) } });
   click({ preventDefault() {}, target: { closest: () => null } });
   Promise.resolve().then(() => Promise.resolve()).then(() => {
-    assert.strictEqual(JSON.stringify(sent), JSON.stringify([["/api/jf/progress", { id: "ab12", position: 0 }], "jfhome"]),"position 0, not 'watched', and the kept row is dropped");
+    assert.strictEqual(JSON.stringify(sent), JSON.stringify([["/api/jf/progress", { id: "ab12", position: 0 }], "jfhome", "tvhome"]), "position 0, not 'watched', and the kept rows (the Library's and Home's) are dropped");
     assert.strictEqual(removed, 1, "the card goes");
   }).catch((err) => { console.error(err); process.exit(1); });
-  assert.ok(grab(js("home.js"), 'shelf("Continue watching"', '"#/yt/continue"').includes("forget: true"), "a video's Continue watching on the home page");
+  const home = js("home.js"), calls = [], tile = { dataset: { i: 0 }, closest: () => ({ dataset: { r: 0 } }) };
+  assert.ok(/row\.key === "continue" \? tvhTile\(x, i\)\.replace\(.*hhDrop\(x\)/.test(home), "Home's Continue watching tiles carry the x");
+  const ctx = { HH: { rows: [] }, del: (u) => (calls.push(u), Promise.resolve()), post: (u, b) => (calls.push([u, b]), Promise.resolve()), forgetLast() {}, route() {}, toast() {} };
+  require("vm").runInNewContext(grab(home, "function hhForget", "\n}\n") + "this.hhForget = hhForget;", ctx);
+  for (const x of [{ href: "#/watch/vid1", id: "vid1" }, { href: "#/jf/play/ab12", id: "ab12" }]) { ctx.HH.rows = [{ items: [x] }]; ctx.hhForget(tile); }
+  assert.strictEqual(JSON.stringify(calls), JSON.stringify(["/api/me/history/vid1", ["/api/jf/progress", { id: "ab12", position: 0 }]]), "from Home a video leaves the history and a film starts over");
   assert.ok(grab(watch, "async function ytContinue", "\n}\n").includes("forget: true"), "and its own page");
-  assert.ok(/forgetLast\("homeContinue"\)/.test(watch), "a forgotten video leaves the kept row too");
+  assert.ok(/forgetLast\("tvhome"\)/.test(watch), "a forgotten video leaves Home's kept rows too");
   console.log("continue watching ok");
 }
 
@@ -170,7 +175,7 @@ console.log("only Parlor's own files ok");
   forgetLast("row"); assert.ok(!("parlor:last:1:row" in store) && "parlor:last:2:row" in store, "one row of this account");
   forgetLast(); assert.deepStrictEqual(Object.keys(store), [], "signing out: every account's");
   assert.ok(grab(js("pwa.js"), "function forgetMe()", "\n}\n").includes("forgetLast()"), "signing out forgets them");
-  assert.ok(/lastThen\("jfhome"/.test(js("library.js")) && /lastThen\("homeContinue"/.test(js("home.js")), "the Library and Home draw with it");
+  assert.ok(/lastThen\("jfhome"/.test(js("library.js")) && /lastThen\("tvhome"/.test(js("home.js")), "the Library and Home draw with it");
   console.log("rows from the last visit ok");
 })().catch((err) => { console.error(err); process.exit(1); });
 

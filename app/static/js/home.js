@@ -8,19 +8,85 @@ const slot = (id, title, body = skeletons(4)) => `<div id="${id}">${title ? `<di
 const fill = (t, id, html) => { const el = $(`#${id}`); if (t === ticket && el) el.innerHTML = html; };
 const tag = (color, label) => `<span class="section-tag" style="--c:${color}"><i></i>${esc(label)}</span>`;
 
+/* Home off a TV is the TV's Home (tvhome.js: the same rows, tiles and hero) on a page that scrolls: the hero shows the
+   title the pointer, the keyboard or a swiped row rests on, and each row scrolls sideways by itself. */
+const HH = { rows: [], html: [], rest: 0 };
+const hhFilm = (x) => ({ id: `${x.type}${x.id}`, title: x.title, sub: "", kind: x.type === "tv" ? "Show" : "Film", href: `#/${x.type}/${esc(x.id)}`, img: artUrl(x.poster),
+  back: artUrl(x.backdrop || x.poster) || "", amb: artUrl((x.poster || "").replace(/\/w\d+\//, "/w92/")), meta: [x.year, x.rating ? `★ ${x.rating}` : ""].filter(Boolean), over: x.overview || "", pct: 0, go: "Open" });
+const hhAlbum = (a) => ({ id: a.id, title: a.name, sub: creditText(a.artists), kind: "Album", href: `#/album/${esc(a.id)}`, img: a.image, back: a.image, amb: a.image,
+  meta: [creditText(a.artists)].filter(Boolean), over: "", pct: 0, go: "Open" });
+
+/** the rows the TV's Home doesn't have: what to ask for, and this week's music */
+async function hhLoad() {
+  const quiet = (p) => p.catch(() => null), music = quiet(api("/music/api/home")), seerr = await quiet(api("/api/seerr/status"));
+  const found = seerr?.connected ? await quiet(api("/api/seerr/discover")) : null;
+  return { seerr: seerr ? !!seerr.connected : null, trend: (found?.trending || []).filter((x) => x.type !== "person").map(hhFilm), music: ((await music)?.new || []).map(hhAlbum) };
+}
+
+function hhDraw(data) {
+  const box = $("#hhRows"), hero = $("#tvhHero");
+  if (!box) return;
+  const rows = HH.rows = tvhRows(data);
+  if (data.trend?.length) rows.push({ key: "trend", title: "Trending films and shows", accent: "var(--violet)", shape: "tall", items: data.trend, more: "#/media" });
+  if (data.music?.length) rows.push({ key: "music", title: "New music this week", accent: "var(--amber)", shape: "square", items: data.music, more: "#/music" });
+  const html = rows.map((row, r) => `<section class="tvh-row on" data-r="${r}" style="--accent:${row.accent}">
+    <h2>${esc(row.title)}${row.more ? `<a class="more" href="${row.more}">See all</a>` : ""}</h2><div class="tvh-track ${row.shape}">${row.items.map((x, i) => (row.key === "continue" ? tvhTile(x, i).replace(/<\/a>$/, `${hhDrop(x)}</a>`) : tvhTile(x, i))).join("")}</div></section>`);
+  html.forEach((h, r) => { // a row that didn't change stays as it is, scrolled where it was
+    if (HH.html[r] === h) return;
+    if (box.children[r]) box.children[r].outerHTML = h; else box.insertAdjacentHTML("beforeend", h);
+  });
+  while (box.children.length > html.length) box.lastElementChild.remove();
+  HH.html = html;
+  const first = rows[0]?.items[0];
+  if (!first) {
+    TVH.shown = null;
+    hero.innerHTML = `<p class="tvh-kind">Parlor</p><h1>${esc(greeting())}, ${esc(ME?.name || "")}</h1><p class="tvh-over">Your videos, films, shows and music, in one place and without ads.</p>`;
+  } else if (TVH.shown?.id !== first.id && !(HH.picked && rows.some((row) => row.items.some((x) => x.id === TVH.shown?.id)))) tvhHero(rows[0], first); // the first title, until one is chosen
+  $("#homeHint").innerHTML = [data.follows === false && !closedTo("watch") && `Follow some YouTube channels and their new videos land here. <a href="#/yt/channels">Import your subscriptions</a>.`,
+    ME?.admin && data.seerr === false && `Connect Seerr in <a href="#/settings">Settings</a> to discover and request films and shows.`].filter(Boolean).join("<br>");
+}
+
+/* Continue watching's x: a film or an episode starts over, a video leaves the history; then Home is drawn again from what the server says */
+const hhDrop = (x) => `<button class="tvt-drop" data-hh-drop tabindex="-1" title="Remove from Continue watching (Delete)" aria-label="Remove ${esc(x.title)} from Continue watching">${ICON.x}</button>`;
+function hhForget(tile) {
+  const x = HH.rows[tile.closest(".tvh-row").dataset.r]?.items[tile.dataset.i];
+  if (x) (x.href.startsWith("#/watch/") ? del(`/api/me/history/${x.id}`) : post("/api/jf/progress", { id: x.id, position: 0 }))
+    .then(() => { forgetLast("tvhome"); forgetLast("jfhome"); route(); }, (err) => toast(err.message));
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-hh-drop]");
+  if (b) { e.preventDefault(); hhForget(b.closest("a.tvt")); }
+});
+
+/** the hero follows the tile: after the same rest as on the TV, so a sweep across a row doesn't load a picture per tile */
+function hhShow(tile) {
+  const row = HH.rows[tile?.closest(".tvh-row").dataset.r], x = row?.items[tile.dataset.i];
+  clearTimeout(HH.rest);
+  if (x) HH.rest = setTimeout(() => $("#hhRows") && (HH.picked = true, tvhHero(row, x)), 240);
+}
+document.addEventListener("pointermove", (e) => { // a move, not pointerover: a page that scrolls under a still pointer isn't the pointer choosing
+  const tile = e.pointerType === "mouse" ? e.target.closest?.("#hhRows a.tvt") : null;
+  if (tile !== HH.over) hhShow(HH.over = tile);
+});
+document.addEventListener("focusin", (e) => hhShow(e.target.closest?.("#hhRows a.tvt")));
+document.addEventListener("scroll", (e) => { // a finger has nothing to hover with: the hero shows the tile a swiped row rests on
+  const track = e.target.closest?.("#hhRows .tvh-track");
+  if (track === e.target && matchMedia("(hover: none)").matches) hhShow([...track.children].find((a) => a.offsetLeft + a.offsetWidth / 2 > track.scrollLeft + track.children[0].offsetLeft));
+}, true);
+document.addEventListener("keydown", (e) => { // the arrows move in the rows, as on the TV; Tab goes from row to row
+  const tile = e.target.closest?.("#hhRows a.tvt"), row = tile?.closest(".tvh-row");
+  if (!tile || e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.key === "Delete" && tile.querySelector("[data-hh-drop]")) return e.preventDefault(), hhForget(tile);
+  const to = { ArrowLeft: tile.previousElementSibling, ArrowRight: tile.nextElementSibling,
+    ArrowUp: row.previousElementSibling?.querySelector("a.tvt"), ArrowDown: row.nextElementSibling?.querySelector("a.tvt") }[e.key];
+  if (to) { e.preventDefault(); to.focus(); }
+});
+
 async function showDashboard(t) {
   if (onTv()) try { return await showTvHome(t); } catch (err) { console.error(err); } // a TV has its own home (tvhome.js); if that can't draw, the one below
-  paint(t, `<section class="home">${aurora}
-      <h1>${greeting()}, ${esc(ME?.name || "")}</h1>
-      <p>Your videos, films, shows and music, in one place and without ads.</p>
-      <div class="stats-row" id="stats"></div>
-    </section>
-    <div class="wrap">
-      ${slot("homeContinue", "")}
-      ${slot("homeSubs", "")}
-      ${slot("homeMedia", "", skeletons(6, "p", "pstrip"))}
-      ${slot("homeMusic", "", "")}
-    </div>`);
+  paint(t, `<section class="hh"><div class="tvh-amb"><img alt=""><img alt=""></div><div class="tvh-art"><img alt=""><img alt=""></div><div class="tvh-hero" id="tvhHero"></div></section>
+    <div class="hh-rows" id="hhRows"><section class="tvh-row"><h2>&nbsp;</h2><div class="tvh-track">${'<span class="tvt"><span class="tvt-art skel"></span></span>'.repeat(6)}</div></section></div>
+    <div class="wrap"><p class="empty-state hh-hint" id="homeHint"></p><div class="stats-row" id="stats"></div></div>`);
   const stat = (href, color, icon, n, label) => `<a class="stat-card" href="${href}" style="--c:${color}"><span class="ic">${icon}</span><span><b>${n}</b><span>${esc(label)}</span></span></a>`;
   const stats = {};
   const drawStats = () => fill(t, "stats", [
@@ -31,24 +97,17 @@ async function showDashboard(t) {
     stats.songs != null && stat("#/library", "var(--amber)", ICON.disc, compact.format(stats.songs), `${stats.songs === 1 ? "song" : "songs"} in your library`),
   ].filter(Boolean).join(""));
 
-  // each row is drawn at once from its last answer, then again if the new one differs
-  lastThen("homeContinue", () => api("/api/me/history?unfinished=true&limit=12"), (r) => fill(t, "homeContinue", r.items.length
-    ? shelf("Continue watching", `<div class="vstrip">${r.items.map((v) => vcard(v, { forget: true })).join("")}</div>`, "#/yt/continue") : "")).catch(() => fill(t, "homeContinue", ""));
+  // drawn at once from the last visit's answers, then again where the new ones differ
+  const data = {};
+  const draw = (more, first) => { if (Object.assign(data, more, first && { first }).first && t === ticket) hhDraw(data); }; // the rows under the TV's wait for the TV's: nothing is pushed down
+  Object.assign(HH, { html: [], picked: false, over: null });
+  TVH.shown = null;
+  lastThen("tvhome", tvhLoad, (rows) => draw(rows, true)).catch(() => draw({}, true));
+  lastThen("homeMore", hhLoad, draw).catch(() => {});
   api("/api/me/subs").then((s) => { stats.subs = s.length; drawStats(); }).catch(() => {});
   if (!closedTo("games")) api("/api/games/requests").then((r) => { stats.games = r.items.filter((x) => x.state === "pending").length; drawStats(); }).catch(() => {});
   api("/api/yt/library").then((r) => { stats.videos = r.items.length; stats.used = r.used; drawStats(); }).catch(() => {});
-  lastThen("homeSubs", () => api("/api/yt/feed?limit=24"), (r) => fill(t, "homeSubs", r.channels
-    ? shelf("New from your subscriptions", `<div class="vstrip">${hideShorts(r.items).slice(0, 16).map((v) => vcard(v)).join("")}</div>`, "#/yt/subs")
-    : `<div class="shelf-head"><h2>${tag("var(--coral)", "Watch")}</h2></div><div class="empty-state" style="padding-top:0">Follow some YouTube channels and their new videos land here. <a href="#/yt/channels">Import your subscriptions</a>.</div>`))
-    .catch(() => fill(t, "homeSubs", ""));
-  api("/api/seerr/status").then(async (s) => {
-    if (!s.connected) return fill(t, "homeMedia", ME?.admin ? `<div class="shelf-head"><h2>${tag("var(--violet)", "Films & shows")}</h2></div><div class="empty-state" style="padding-top:0">Connect Seerr in <a href="#/settings">Settings</a> to discover and request films and shows.</div>` : "");
-    const [d, mine] = await Promise.all([api("/api/seerr/discover"), api("/api/seerr/requests?filter=pending").catch(() => null)]);
-    if (mine?.linked) { stats.requests = mine.items.length; drawStats(); }
-    fill(t, "homeMedia", shelf("Trending films and shows", `<div class="pstrip">${(d.trending || []).filter((x) => x.type !== "person").map(pcard).join("")}</div>`, "#/media"));
-  }).catch(() => fill(t, "homeMedia", ""));
-  lastThen("homeMusic", () => api("/music/api/home"), (feed) => fill(t, "homeMusic",
-    shelf("New music this week", grid(feed.new.map((a) => tile("album", a, creditText(a.artists))).join(""), "strip"), "#/music"))).catch(() => fill(t, "homeMusic", ""));
+  api("/api/seerr/requests?filter=pending").then((mine) => { if (mine?.linked) { stats.requests = mine.items.length; drawStats(); } }).catch(() => {});
   (libraryOnce ||= loadLibrary().catch(() => { libraryOnce = null; })).then((songs) => { if (songs?.length) { stats.songs = songs.length; drawStats(); } });
 }
 

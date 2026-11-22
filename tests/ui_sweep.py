@@ -2,7 +2,7 @@
 no page error and no sideways scroll, show at most one row of links to other pages, and repeat no link the sidebar
 already shows. The outside services are the README pictures' stand-ins (tests/readme_shots.py), YouTube's feeds are
 answered here, and nothing leaves this machine. Screenshots, and contact sheets to look through, land in OUT:
-   python tests/ui_sweep.py [OUT_DIR]   (needs Playwright and its Chromium)"""
+   python tests/ui_sweep.py [OUT_DIR [PAGE ...]]   (needs Playwright and its Chromium; PAGE names keep the run to those pages)"""
 import json
 import socket
 import sys
@@ -44,6 +44,9 @@ PAGES = [("home", "#/", "main h1"), ("search", "#/search/night", ".vcard"),
          ("you", "#/you", ".you-tile"), ("continue", "#/yt/continue", "main h1"), ("later", "#/yt/later", "main h1"), ("history", "#/yt/history", "main h1"),
          ("saved", "#/yt/downloads", "main h1"), ("offline", "#/offline", "main h1"), ("tvs", "#/tvs", "main h1"), ("channels", "#/yt/channels", "main h1"),
          ("settings", "#/settings", "main h1")]
+PAGES = [x for x in PAGES if not sys.argv[2:] or x[0] in sys.argv[2:]]
+if not PAGES:
+    sys.exit(f"no page is called {' or '.join(sys.argv[2:])}")  # a mistyped name would check nothing and say ok
 # what the browser reads off a page: its width, its rows of links to other pages, and links the sidebar shows too
 LOOK = """() => {
   const seen = (e) => !!e.offsetParent && getComputedStyle(e).visibility !== "hidden";
@@ -130,6 +133,40 @@ def main():
                         bad.append(f"{label} {name}: {len(saw['rows'])} rows of page links: {saw['rows']}")
                     if saw["twice"]:
                         bad.append(f"{label} {name}: links the sidebar already shows: {saw['twice']}")
+                    if name == "home":  # the rows stay put whatever the hero shows: its tallest form and its shortest
+                        tall = """tvhHero({ title: 'Continue watching', accent: 'var(--amber)' }, { title: 'Spider-Man: Far From Home, the Extended Fan Cut', kind: 'Film',
+                          meta: ['2019', '2h 9m', 'PG-13', 'Action · Adventure · Science Fiction'], over: 'Peter Parker and his friends go on a summer trip to Europe. '.repeat(6),
+                          go: 'Resume', pct: .4, href: '#/' })"""
+                        short = "tvhHero({ title: 'Trending' }, { title: 'Owl', kind: 'Video', meta: [], go: 'Play', href: '#/' })"
+                        tops = []
+                        for draw in (tall, short):
+                            p.evaluate(draw)
+                            p.wait_for_timeout(450)
+                            tops.append(round(p.evaluate("document.querySelector('#hhRows').getBoundingClientRect().top + scrollY")))
+                        if tops[0] != tops[1]:
+                            bad.append(f"{label} home: the rows moved {tops[0] - tops[1]} px when the hero changed")
+                        p.evaluate("route()")  # and back to the page's own first title
+                        p.wait_for_function("document.querySelector('#tvhHero h1')?.textContent !== 'Owl'", timeout=5000)
+                    if name == "home" and not mobile:  # Home's hero shows the title the pointer rests on, then the one the keyboard moves to
+                        hero = "document.querySelector('#tvhHero h1')?.textContent"
+                        try:
+                            p.hover("#hhRows a.tvt >> nth=1")
+                            p.wait_for_function(f"{hero} === document.querySelectorAll('#hhRows a.tvt')[1].getAttribute('aria-label')", timeout=3000)
+                            p.focus("#hhRows a.tvt >> nth=0")
+                            p.keyboard.press("ArrowDown")
+                            p.wait_for_function(f"document.activeElement.matches('#hhRows .tvh-row:nth-child(2) a.tvt') && {hero} === document.activeElement.getAttribute('aria-label')", timeout=3000)
+                            asked = []  # Continue watching's x asks the server and stays on Home (answered here, so the row is still there for the next width)
+                            p.route("**/api/jf/progress", lambda r: (asked.append(r.request.post_data_json), r.fulfill(json={})))
+                            p.hover("#hhRows a.tvt >> nth=0")
+                            p.click("#hhRows a.tvt >> nth=0 >> .tvt-drop")
+                            p.wait_for_timeout(400)
+                            p.unroute("**/api/jf/progress")
+                            if not (asked and asked[0].get("position") == 0 and p.url.endswith("#/")):
+                                bad.append(f"{label} home: Continue watching's x asked {asked} and left the page at {p.url.split('#')[-1]}")
+                            p.wait_for_selector("#hhRows a.tvt")
+                            p.mouse.move(0, 0)
+                        except Exception as err:
+                            bad.append(f"{label} home: the hero didn't follow the pointer and the arrow keys ({str(err).splitlines()[0][:90]}; hero {p.evaluate(hero)!r})")
                     for scheme in ("dark", "light"):
                         p.emulate_media(color_scheme=scheme)
                         p.wait_for_timeout(150)
