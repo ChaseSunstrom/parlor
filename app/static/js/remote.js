@@ -128,6 +128,7 @@ async function showRemote(t, id, everyone) {
   paint(t, `<div class="wrap remote" id="remote" data-tv="${id}">
     <header><span class="dot" id="rDot"></span><div><h1 id="rName">${esc(tvKnown.find((x) => x.id === id)?.name || "TV")}</h1><small class="dim" id="rStatus">Connecting…</small></div>
       <select id="rTvs" aria-label="Another TV" hidden></select><button class="who" id="rWho" hidden></button></header>
+    <button class="rhold" id="rHold" aria-pressed="false" hidden>Keep the remote</button>
     <div class="rnow" id="rNow" aria-live="polite"><img id="rArt" alt="" hidden>
       <div class="rtitle"><small class="dim" id="rWhere"></small><b id="rTitle">Nothing playing</b><span class="dim" id="rBy"></span></div>
       <div class="rline"><span id="rAt">0:00</span><input type="range" id="rSeek" min="0" max="0" value="0" step="1" disabled aria-label="Where it is: drag to jump"><span id="rLen">0:00</span></div>
@@ -212,6 +213,11 @@ async function showRemote(t, id, everyone) {
     const sleepAt = s.sleep && new Date(s.sleep * 1000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     $("#rSleepAt").textContent = s.sleepEnd ? `The TV goes dark when this ends, about ${sleepAt}.` : s.sleep ? `The TV pauses and goes dark at ${sleepAt}.` : "The sound fades, what plays pauses and the screen goes dark.";
     const here = on && s.kind === "video" && /^#\/(jf\/play\/[0-9a-f]{32}|watch\/[\w-]{11})/.exec(at); // a film or a video: this phone can carry on with it
+    const h = x?.hold, mine = !!h && !!ME && h.id === ME.id, outranks = everyone || x?.user_id === ME?.id; // one person keeps the remote; the owner outranks
+    $("#rHold").textContent = mine ? "You have the remote · let go" : h ? `${h.name} has the remote${outranks ? " · take it" : ""}` : "Keep the remote";
+    $("#rHold").setAttribute("aria-pressed", String(mine));
+    $("#rHold").disabled = !!h && !mine && !outranks;
+    $("#remote").classList.toggle("held", !!h && !mine && !outranks);
     $("#rHere").hidden = !here;
     if (here) $("#rHere").href = `${here[0]}/${Math.max(0, Math.floor(r.now()) - 3)}`;
     tick();
@@ -219,7 +225,9 @@ async function showRemote(t, id, everyone) {
   /** who the TV is acting as, when its household has more than one person */
   const who = async () => {
     const p = await api(`/api/tv/${id}/people${all}`).catch(() => null);
-    if (t !== ticket || !$("#rWho") || !p || p.people.length < 2) return;
+    if (t !== ticket || !$("#rWho") || !p) return;
+    $("#rHold").hidden = p.people.length < 2; // keeping the remote matters once someone else can work it
+    if (p.people.length < 2) return;
     const now = p.people.find((x) => x.id === p.viewer) || p.people.find((x) => x.owner) || p.people[0];
     $("#rWho").hidden = false;
     $("#rWho").innerHTML = `${avatar(now.name)}<span class="vh">Watching as ${esc(now.name)}: change who</span>`;
@@ -239,7 +247,8 @@ async function showRemote(t, id, everyone) {
     else if (m.type === "online") r.tv.online = true;
     else if (m.type === "offline") r.tv.online = false;
     else if (m.type === "state") { r.tv.state = m.state; r.heardAt = Date.now(); } // on or off is the server's word alone: a TV whose stream dropped still says what it shows
-    else if (m.type === "viewer") who();
+    else if (m.type === "viewer" || m.type === "people") who(); // someone switched who's watching, or was added or taken off
+    else if (m.type === "hold") r.tv.hold = m.hold;
     else if (m.type === "gone") r.tv = null;
     draw();
   };
@@ -254,6 +263,8 @@ async function showRemote(t, id, everyone) {
   for (const k of ["online", "offline"]) addEventListener(k, draw, { signal: gone.signal });
   const send = (body) => tvSend(id, body, all);
   touchpad(byId("rPad"), (key) => send({ cmd: "key", key }));
+  $("#rHold").addEventListener("click", () => post(`/api/tv/${id}/hold${all}`, { on: !(r.tv?.hold && ME && r.tv.hold.id === ME.id) })
+    .then((got) => { if (r.tv) r.tv.hold = got.hold; draw(); }, (err) => toast(err.message)));
   who();
   api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(id, sets), () => {});
   $("#rTvs").addEventListener("change", (e) => go(`#/tvs/${e.target.value}${everyone ? "/all" : ""}`));

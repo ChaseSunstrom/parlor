@@ -9,6 +9,7 @@ import itertools
 import json
 import re
 import secrets
+import threading
 import time
 from collections import defaultdict
 from functools import lru_cache
@@ -175,7 +176,7 @@ def my_tvs(everyone: bool = False, user=Depends(me)):
     for t in found:
         if every or t["user_id"] == user["id"]:  # the owner sees who added themselves, to take them off
             t["remotes"] = rows("SELECT u.id, u.name FROM tv_remotes r JOIN users u ON u.id = r.user_id WHERE r.tv_id = ? ORDER BY u.name", t["id"])
-        t.update(linked=bool(t["linked"]) and t["user_id"] != user["id"], online=hub.online(t["id"]), state=hub.state.get(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
+        t.update(linked=bool(t["linked"]) and t["user_id"] != user["id"], online=hub.online(t["id"]), state=hub.state.get(t["id"]), hold=held(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
     return {"tvs": found}
 
 
@@ -301,6 +302,7 @@ def unlink(tid: int, uid: int, everyone: bool = False, user=Depends(me)):
     hub.tell_tv(tid, {"type": "people", "tv": tid}, {uid})
     if db().execute("UPDATE tvs SET viewer_id = NULL WHERE id = ? AND viewer_id = ?", (tid, uid)).rowcount:
         hub.tell_tv(tid, {"type": "viewer", "tv": tid, "viewer": None}, {uid})  # the TV stops showing their rows
+    held(tid)  # their hold goes with them, and the remotes hear it
     return {"ok": True}
 
 
@@ -355,12 +357,65 @@ async def pick_viewer(tid: int, body: Pick, request: Request, everyone: bool = F
     The owner, the viewer and the household may pick, from a phone or the TV's own screen."""
     token, address = core.session_cookie(request), request.client.host if request.client else "?"
     t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
+    if not tv_of(token):
+        await anyio.to_thread.run_sync(_not_held, t, user, everyone)
     viewer = await anyio.to_thread.run_sync(lambda: _pick(t, body, user, bool(tv_of(token)), address))
     await anyio.to_thread.run_sync(hub.tell_tv, tid, {"type": "viewer", "tv": tid, "viewer": viewer})  # the TV reloads what it shows for the new person
     return {"ok": True, "viewer": viewer}
 
 
 # --- the live part: casting and the remote --------------------------------------------
+
+HOLD_QUIET = 15 * 60  # a hold nobody presses for this long lets go
+
+
+_holding = threading.RLock()  # the endpoints run in a thread pool: one change to the holds at a time
+
+
+def held(tid: int) -> Optional[dict]:
+    """who holds this TV's remote, while they are still one of its people and pressed within the last 15 minutes"""
+    h = hub.hold.get(tid)
+    if h and (_now() - h["at"] > HOLD_QUIET or h["id"] not in audience(tid)):
+        with _holding:
+            if hub.hold.get(tid) is not h:  # taken or let go meanwhile: theirs stands
+                return held(tid)
+            hub.hold.pop(tid, None)
+        hub.tell_tv(tid, {"type": "hold", "tv": tid, "hold": None})
+        h = None
+    return h and {"id": h["id"], "name": h["name"]}
+
+
+def _not_held(t: dict, user: dict, everyone: bool = False):
+    """someone else holds the remote: refused, unless this is its owner (or an admin from Settings → TVs), who outranks;
+    the holder's own press keeps the hold. A TV's own session never asks: the couch remote is never held off (its callers skip it for a TV's session)."""
+    h = held(t["id"])
+    if not h or h["id"] == user["id"]:
+        if h and (now := hub.hold.get(t["id"])):
+            now["at"] = _now()
+        return
+    if t["user_id"] != user["id"] and not (everyone and user["admin"]):
+        raise HTTPException(409, f"{h['name']} has the remote: they let go, or it's free after 15 minutes without a press")
+
+
+class HoldBody(BaseModel):
+    on: bool
+
+
+@router.post("/{tid}/hold")
+def hold(tid: int, body: HoldBody, request: Request, everyone: bool = False, user=Depends(me)):
+    """keep this TV's remote (on), or let go (off): the holder or the owner lets go, the owner can take it from anyone"""
+    t = _mine(tid, user, everyone)
+    if tv_of(core.session_cookie(request)):
+        raise HTTPException(403, "The remote is kept from a phone")
+    _not_held(t, user, everyone)
+    with _holding:
+        if body.on:
+            hub.hold[tid] = {"id": user["id"], "name": user["name"], "at": _now()}
+        else:
+            hub.hold.pop(tid, None)
+    hub.tell_tv(tid, {"type": "hold", "tv": tid, "hold": held(tid)})
+    return {"hold": held(tid)}
+
 
 class Hub:
     """Who's listening: each TV's event streams, and each account's remotes (admins may listen to every TV)."""
@@ -372,7 +427,9 @@ class Hub:
         self.state: dict = {}  # tv id -> what it last said it's doing
         self.seen: dict = {}  # tv id -> when it last said anything (it does every few seconds)
         self.sent: dict = defaultdict(dict)  # tv id -> {a command's number: when it was passed on}, until the TV answers it
+        self.hold: dict = {}  # tv id -> {"id", "name", "at"}: who keeps the remote, and their last press (in memory: a restart lets go)
         self.number = itertools.count(1)
+        self.loop = None  # the loop the event streams run on (set by the first stream)
 
     def online(self, tid: int) -> bool:
         """listening, and heard from lately: a TV switched off at the wall leaves its connection open for minutes"""
@@ -390,6 +447,7 @@ class Hub:
         self.tell(audience(tid) | set(also), msg)
 
     def close_tv(self, tid: int):
+        self.hold.pop(tid, None)
         for q in self.tvs.pop(tid, ()):
             _put(q, None)
         self.state.pop(tid, None)
@@ -398,6 +456,21 @@ class Hub:
 
 
 def _put(q: asyncio.Queue, msg):
+    """onto a listener's queue. From a worker thread (a sync endpoint, or to_thread) it goes through the streams' loop: a bare
+    put_nowait there doesn't wake the loop, and the TV would hear it only at its next keep-alive, up to 15 seconds later"""
+    loop = hub.loop
+    if loop and not loop.is_closed():
+        try:
+            here = asyncio.get_running_loop() is loop
+        except RuntimeError:
+            here = False
+        if not here:
+            loop.call_soon_threadsafe(_put_now, q, msg)
+            return
+    _put_now(q, msg)
+
+
+def _put_now(q: asyncio.Queue, msg):
     try:
         q.put_nowait(msg)
     except asyncio.QueueFull:  # a listener that stopped reading: it misses this one
@@ -410,6 +483,7 @@ hub = Hub()
 @router.get("/events")
 async def events(request: Request, everyone: bool = False, user=Depends(me)):
     """The event stream: a TV hears commands; a remote hears its TVs come and go and what they're playing."""
+    hub.loop = asyncio.get_running_loop()
     token = core.session_cookie(request)
     if not token:
         raise HTTPException(403, "Event streams are for signed-in pages, not keys")
@@ -437,6 +511,8 @@ async def events(request: Request, everyone: bool = False, user=Depends(me)):
                         return  # signed out (everywhere, or unpaired), or no longer an admin, since: stop at once
                     if tv and not hub.online(tv["id"]):
                         return  # the TV went quiet (switched off, say): its remotes hear it's off
+                    if tv and tv["id"] in hub.hold:
+                        await anyio.to_thread.run_sync(held, tv["id"])  # a hold that ran out: its remotes hear it's free
                     yield ": still here\n\n"
                     continue
                 if msg is None:
@@ -474,10 +550,12 @@ class Do(BaseModel):
 
 
 @router.post("/{tid}/do")
-async def do(tid: int, body: Do, everyone: bool = False, user=Depends(me)):
+async def do(tid: int, body: Do, request: Request, everyone: bool = False, user=Depends(me)):
     """A remote's command, or a cast: on to the TV, in order. A TV that isn't listening says so. Each gets a number;
     the TV answers with it in what it says next, which times the whole way there and back (state, below)."""
     t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
+    if not await anyio.to_thread.run_sync(tv_of, core.session_cookie(request)):
+        await anyio.to_thread.run_sync(_not_held, t, user, everyone)
     if body.cmd == "cast" and not body.cast:
         raise HTTPException(422, "What to cast?")
     listening = hub.tvs.get(tid)

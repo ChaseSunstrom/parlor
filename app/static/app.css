@@ -1187,6 +1187,10 @@ body.tvdimmed .tvdim { opacity: .55; transition-duration: 3s; }
 #rType { align-items: end; margin: 0; }
 #rType .field { margin-top: 0; }
 .remote.off .pad, .remote.off > .rrow { opacity: .5; }  /* the TV is off: the keys still say so when pressed */
+.remote.held .pad, .remote.held > .rrow { opacity: .45; }  /* someone else has the remote: a press says who */
+.rhold { justify-self: start; min-height: 36px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; font-size: 14px; }
+.rhold[aria-pressed="true"] { background: color-mix(in oklab, var(--accent) 22%, transparent); border-color: var(--accent); }
+.rhold:disabled { opacity: 1; color: var(--dim); }
 .remote input[type="range"] { width: 100%; min-width: 0; height: 28px; margin: 0; accent-color: var(--accent); touch-action: pan-y; }
 /* a person's round picture: their initial on a colour of their own */
 .avatar { display: inline-grid; place-items: center; flex: none; width: 2.4em; height: 2.4em; border-radius: 50%; font-weight: 800; color: var(--accent-ink); background: oklch(.82 .13 calc(var(--h) * 1deg)); }

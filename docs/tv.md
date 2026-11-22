@@ -68,6 +68,14 @@ Every key acts the moment it is touched, not when the finger lifts, and dips so 
 
 With more than one TV, a list beside the name switches between them. With more than one person in the household, a round picture beside the name says who the TV is acting as; press it to change (see [accounts](accounts.md)).
 
+**Keeping the remote.** When more than one person can work a TV, the remote shows **Keep the remote** under the name. Press it, and while you have it other people's phones can't press keys, play something on that TV or switch who's watching. Their remote says **<you> has the remote**, and their presses are refused with that notice.
+
+- You let go with the same button (**You have the remote · let go**).
+- It lets go by itself after 15 minutes without a press from you, when you're taken off the TV, or when Parlor restarts.
+- The TV's owner always outranks: their presses still go through, and their button says **take it**.
+- The TV's own remote, in the room, is never held off.
+- It covers Parlor on that TV; a TV set an admin added under **TV sets** (its power, input and volume buttons) isn't held.
+
 While a TV plays, Parlor's other pages show a small **On TV** bar: what plays, a button to pause it, and a press on it opens the remote.
 
 - **Two phones** can drive the same TV; both see what it does.

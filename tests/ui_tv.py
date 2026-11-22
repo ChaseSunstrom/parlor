@@ -627,6 +627,24 @@ with sync_playwright() as pw:
         print("add a remote:", len(link), "letters, square:", qr, "| who's watching:", listed, "| owner sees:", owner_sees)
         checks["a TV's Add a remote: a guest's phone scans its square, signs in and lands on its remote; Who's watching lists them"] = \
             len(link) == 8 and qr and "guest" in listed and bool(asked) and "family's TV" in asked[0] and owner_sees and screen.evaluate("!!document.querySelector('#tvWho .tvwho-add')")
+        # keeping the remote: the guest keeps it, the owner's phone says so and takes it, and then the guest's presses are refused
+        guest.reload()
+        guest.wait_for_selector("#rHold:not([hidden])", timeout=15000)
+        guest.click("#rHold")
+        guest.wait_for_function("document.querySelector('#rHold').getAttribute('aria-pressed') === 'true'", timeout=10000)
+        phone.goto(BASE + f"/#/tvs/{tid}")
+        phone.wait_for_function("/guest has the remote · take it/.test(document.querySelector('#rHold')?.textContent || '')", timeout=15000)
+        phone.screenshot(path=str(OUT / "remote-held.png"))
+        phone.click("#rHold")
+        guest.wait_for_function("/family has the remote/.test(document.querySelector('#rHold').textContent) && document.querySelector('#rHold').disabled"
+                                " && document.querySelector('#remote').classList.contains('held')", timeout=15000)
+        refused = guest.evaluate(f"post('/api/tv/{tid}/do', {{ cmd: 'key', key: 'down' }}).then(() => 'sent', (e) => e.message)")
+        guest.screenshot(path=str(OUT / "guest-held-off.png"))
+        phone.wait_for_function("document.querySelector('#rHold').getAttribute('aria-pressed') === 'true'", timeout=10000)  # the phone's own answer is in
+        phone.click("#rHold")  # the owner lets go
+        guest.wait_for_function("document.querySelector('#rHold').textContent === 'Keep the remote' && !document.querySelector('#rHold').disabled", timeout=15000)
+        print("hold:", refused)
+        checks["one phone keeps the remote: the others see who has it and their presses are refused; the owner takes it and lets go"] = "family has the remote" in refused
         gctx.close()
     b.close()
 server.should_exit = True
@@ -635,6 +653,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (39 if REMOTE else 14) and all(checks.values()) and not errors
+ok = len(checks) == (40 if REMOTE else 14) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

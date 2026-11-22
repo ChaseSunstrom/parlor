@@ -50,7 +50,7 @@ function tvhRows({ jf, cont = [], feed = [], later = [], mine = [] }) {
   add("next", "Next up", lib, "wide", (jf?.next || []).map((x) => tvhFromLibrary(x, true)), "#/jf");
   add("mine", "My list", "var(--coral)", "tall", mine.map((x) => tvhFromLibrary(x, false)));
   jfShelves(jf?.views || []).forEach((v, n) => add(`new:${v.id}`, `New in ${v.name}`, v.collection === "music" ? "var(--amber)" : lib,
-    v.collection === "music" ? "square" : "tall", (jf.latest[n] || []).map((x) => tvhFromLibrary(x, false)), `#/jf/view/${esc(v.id)}`));
+    v.collection === "music" ? "square" : "tall", [].concat(jf.latest?.[n] || []).filter((x) => x?.id).map((x) => tvhFromLibrary(x, false)), `#/jf/view/${esc(v.id)}`));
   add("subs", "New from your subscriptions", yt, "wide", feed.map(tvhFromYoutube), "#/yt/subs");
   add("later", "Watch later", yt, "wide", later.map(tvhFromYoutube), "#/yt/later");
   add("libraries", "Your libraries", lib, "wide", jfShelves(jf?.views || []).map((v) => ({ ...tvhFromLibrary(v, false), img: v.image, kind: "Library", go: "Open" })));
