@@ -186,15 +186,28 @@ with sync_playwright() as pw:
     press(screen, "Escape")
     screen.wait_for_selector("#tvh .tvt:focus", timeout=10000)
     checks["Back from a title returns to the tile it was opened from"] = screen.evaluate("[document.activeElement.getAttribute('href'), document.activeElement.closest('.tvh-row').dataset.r]") == tile
-    # nobody presses anything: the screen goes dark with a clock; the first key only wakes it
+    # nobody presses anything: the household's pictures, one after another, with their name and a clock in a corner that
+    # changes with each; with no pictures the screen goes dark with a clock; the first key only wakes it, where it was
     screen.evaluate("tvIdleAfter = 400; tvAwake()")
-    screen.wait_for_selector("#tvIdle", timeout=5000)
-    screen.wait_for_timeout(1300)
+    screen.wait_for_selector("#tvIdle:not(.bare) .tvidle-art img.on", timeout=8000)
+    screen.wait_for_timeout(2700)
     screen.screenshot(path=str(OUT / "tv-idle.png"))
+    was = screen.evaluate("[tvSlide.now.back, document.querySelector('#tvIdle small').textContent, document.querySelector('#tvIdle .tvidle-card').style.transform]")
+    screen.evaluate("clearTimeout(tvSlideTimer); tvSlide(1)")  # the next picture, without the 12 seconds
+    screen.wait_for_function(f"tvSlide.now.back !== {was[0]!r} && document.querySelectorAll('#tvIdle .tvidle-art img').length <= 2", timeout=8000)
+    slid = screen.evaluate("[document.querySelector('#tvIdle small').textContent, document.querySelector('#tvIdle .tvidle-card').style.transform]")
     press(screen, "ArrowRight")
     woke = screen.evaluate("!document.querySelector('#tvIdle') && [document.activeElement.getAttribute('href'), document.activeElement.closest('.tvh-row')?.dataset.r]")
-    screen.evaluate("tvIdleAfter = 5 * 60e3; tvAwake()")
-    checks["an idle TV goes dark with a clock, and the first key only wakes it"] = woke == tile
+    screen.evaluate("window.keepPics = tvSlidePics; tvSlidePics = () => []; tvAwake()")  # nothing to show
+    screen.wait_for_selector("#tvIdle.bare", timeout=5000)
+    screen.wait_for_timeout(1300)
+    screen.screenshot(path=str(OUT / "tv-idle-bare.png"))
+    bare = screen.evaluate("!document.querySelector('#tvIdle img') && /\\d/.test(document.querySelector('#tvIdle b').textContent) && !document.querySelector('#tvIdle small').textContent")
+    press(screen, "ArrowRight")
+    screen.evaluate("tvSlidePics = keepPics; tvIdleAfter = 5 * 60e3; tvAwake()")
+    print("idle:", was[1], "→", slid[0], "| card", was[2], "→", slid[1], "| bare clock:", bare)
+    checks["an idle TV shows the household's pictures with their name and a clock that move, a dark clock with none, and the first key only wakes it"] = \
+        woke == tile and bool(was[1]) and slid[1] != was[2] and bare
     # search: the remote's green key opens a keyboard on the screen; letters with the arrows and OK find a film; Right reaches it
     screen.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF1Green', bubbles: true }))")
     screen.wait_for_selector("#tvSearch [data-k]:focus", timeout=10000)

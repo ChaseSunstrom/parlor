@@ -45,7 +45,7 @@ Parlor on a TV is laid out for a couch and a remote: everything is bigger, there
 - **A film that stutters**: the TV asks for a lighter stream by itself when it drops more than 15 in 100 frames for ten seconds, and says so. Quality in the options puts it back.
 - **Search** has a keyboard on the screen: pick letters with the arrows and OK, and what's in the library shows beside it as you go. **Search YouTube and everything else** under the keyboard takes the same words to the full search. Text typed on a phone's remote lands here too.
 - **Colour keys** on a remote that has them: red is Home, green is Search, yellow is the Library, blue is play or pause.
-- **Left alone for 5 minutes** with nothing playing on the screen, the TV goes dark and shows a dim clock (and the song, when music plays) that sits somewhere else each minute, so nothing burns in. Any key wakes it and does nothing else.
+- **Left alone for 5 minutes** with nothing playing on the screen, the TV shows your own films' and shows' pictures one after another, dimmed and slowly moving, with the title, the time and the date (or the song, when music plays) small in a corner that changes with each picture, so nothing burns in. Before Home has loaded once on that TV there are no pictures yet, and it goes dark with a dim clock that moves each minute. Any key wakes it and does nothing else.
 
 ## Play on TV
 

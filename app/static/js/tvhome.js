@@ -327,12 +327,14 @@ function tvType(text, enter) {
   else go(`#/tvsearch/${encodeURIComponent(text)}`);
 }
 
-/* ---------- a TV nobody is using: the picture goes dark, with a clock that moves (an OLED keeps what stands still) ---------- */
+/* ---------- a TV nobody is using: the household's own pictures, slowly, with a clock that moves (an OLED keeps what stands
+   still); with no pictures, the dark screen and the clock ---------- */
 
-let tvIdleAfter = 5 * 60e3, tvIdleTimer = 0;
+let tvIdleAfter = 5 * 60e3, tvIdleTimer = 0, tvSlideTimer = 0;
 const tvTime = () => new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 function tvAwake() {
   clearTimeout(tvIdleTimer);
+  clearTimeout(tvSlideTimer);
   if (!onTv()) return false;
   tvIdleTimer = setTimeout(tvIdle, tvIdleAfter);
   const idle = $("#tvIdle");
@@ -342,12 +344,53 @@ function tvAwake() {
 function tvIdle() {
   const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
   if (!onTv() || $("#gate")?.childElementCount || (v && !v.paused)) return tvAwake(); // a film playing is not idle
-  if (!$("#tvIdle")) document.body.insertAdjacentHTML("beforeend", `<div class="tvidle" id="tvIdle"><div><b></b><span></span></div></div>`);
-  const card = $("#tvIdle div"), song = dock.queue.length && !dock.audio.paused ? dock.queue[dock.at] : null;
+  if (!$("#tvIdle")) {
+    document.body.insertAdjacentHTML("beforeend", `<div class="tvidle bare" id="tvIdle"><div class="tvidle-art"></div><div class="tvidle-card"><small></small><b></b><span></span></div></div>`);
+    tvSlide.pics = null;
+    tvSlide(0);
+  }
+  tvIdleCard(true);
+  tvIdleTimer = setTimeout(tvIdle, 60e3);
+}
+/** the clock, the date (or the song playing) and the picture's name; moved to somewhere else each minute and each picture */
+function tvIdleCard(move) {
+  const box = $("#tvIdle"), card = $("#tvIdle .tvidle-card"), song = dock.queue.length && !dock.audio.paused ? dock.queue[dock.at] : null, x = tvSlide.now;
+  if (!card) return;
+  $("small", card).textContent = x && !box.classList.contains("bare") ? [x.title, x.meta?.[0]].filter(Boolean).join(" · ") : "";
   $("b", card).textContent = tvTime();
   $("span", card).textContent = song ? [song.title, song.by].filter(Boolean).join(" · ") : new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
-  card.style.transform = `translate3d(${Math.round((Math.random() - 0.5) * 560)}px,${Math.round((Math.random() - 0.5) * 300)}px,0)`; // somewhere else each minute
-  tvIdleTimer = setTimeout(tvIdle, 60e3);
+  if (!move) return;
+  const r = (n) => Math.round((Math.random() - 0.5) * n);
+  card.style.transform = box.classList.contains("bare") ? `translate3d(${r(560)}px,${r(300)}px,0)` // the middle, give or take
+    : `translate3d(${r(40) + (Math.random() < 0.5 ? -300 : 300)}px,${r(30) + (Math.random() < 0.5 ? -220 : 220)}px,0)`; // a corner, give or take: never the same pixels for long
+}
+/** the pictures: the backdrops on this TV's Home (its last answer, kept on the device), shuffled, each decoded before it fades in */
+function tvSlidePics() {
+  let data = null;
+  const seen = new Set();
+  try { data = JSON.parse(localStorage.getItem(`parlor:last:${ME?.id}:tvhome`)); } catch { /* nothing kept */ }
+  const pics = (data ? tvhRows(data) : []).flatMap((row) => row.items).filter((x) => x.back && x.kind !== "Library" && !seen.has(x.back) && seen.add(x.back));
+  for (let i = pics.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pics[i], pics[j]] = [pics[j], pics[i]]; }
+  return pics;
+}
+async function tvSlide(n) {
+  const box = $("#tvIdle .tvidle-art"), pics = (tvSlide.pics ||= tvSlidePics());
+  if (!box || !pics.length) return;
+  const x = pics[n % pics.length], img = new Image();
+  img.alt = "";
+  img.src = x.back;
+  try { await img.decode(); } catch { pics.splice(n % pics.length, 1); return tvSlide(n); } // a picture that won't load is left out
+  if (!box.isConnected) return;
+  const r = () => `${Math.round((Math.random() - 0.5) * 6)}%`;
+  img.style.cssText = `--fx:${r()};--fy:${r()};--tx:${r()};--ty:${r()}`; // each pans its own way
+  box.append(img);
+  void img.offsetWidth;
+  img.classList.add("on");
+  setTimeout(() => [...box.children].slice(0, -1).forEach((o) => o.remove()), 2600); // the one under it, once it is covered
+  tvSlide.now = x;
+  $("#tvIdle").classList.remove("bare");
+  tvIdleCard(true);
+  tvSlideTimer = setTimeout(() => tvSlide(n + 1), 12e3);
 }
 if (TV_MODE) tvAwake();
 setInterval(() => { const c = $("#tvhClock"), now = tvTime(); if (c && c.textContent !== now) c.textContent = now; }, 15e3);
