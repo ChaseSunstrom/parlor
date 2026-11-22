@@ -256,6 +256,42 @@ def link(body: Link, request: Request, user=Depends(me)):
     return {"tv": {"id": t["id"], "name": t["name"]}}
 
 
+class Add(BaseModel):
+    user_id: int
+
+
+def _addable(t: dict, user: dict) -> list:
+    """the accounts an owner may add by name: only an admin sees the accounts (anyone else adds people with the TV's code)"""
+    if not user["admin"]:
+        return []
+    them = audience(t["id"])
+    return [dict(p) for p in rows("SELECT id, name FROM users ORDER BY name") if p["id"] not in them]
+
+
+@router.get("/{tid}/addable")
+def addable(tid: int, everyone: bool = False, user=Depends(me)):
+    """who the TV's owner can add as a remote from their phone (TVs → Add a person)"""
+    return {"people": _addable(_mine(tid, user, everyone, owner=True), user)}
+
+
+@router.post("/{tid}/remotes")
+def add(tid: int, body: Add, request: Request, everyone: bool = False, user=Depends(me)):
+    """The TV's owner, an admin, adds an account by name: it hears this TV, drives it and is one of its people, as if it had
+    entered the TV's code. Picking them on the TV still takes their PIN or their own phone when they're a guest (_pick)."""
+    t = _mine(tid, user, everyone, owner=True)
+    if tv_of(core.session_cookie(request)):
+        raise HTTPException(403, "People are added from a phone or a computer, not from the TV")
+    if not user["admin"]:
+        raise HTTPException(403, "Only an admin adds people by name: on the TV, open You → Add a remote and let them scan its square")
+    if not one("SELECT 1 AS x FROM users WHERE id = ?", body.user_id):
+        raise HTTPException(404, "No such account")
+    if body.user_id in audience(tid):
+        raise HTTPException(409, "They can use this TV already")
+    db().execute("INSERT OR IGNORE INTO tv_remotes(tv_id, user_id, created) VALUES (?, ?, ?)", (tid, body.user_id, _now()))
+    hub.tell_tv(tid, {"type": "people", "tv": tid})  # the TV's Who's watching, and the new person's phone
+    return {"ok": True}
+
+
 @router.delete("/{tid}/remotes/{uid}")
 def unlink(tid: int, uid: int, everyone: bool = False, user=Depends(me)):
     """an account takes itself off a TV it was added to; the TV's owner (or an admin from Settings → TVs) takes anyone off"""

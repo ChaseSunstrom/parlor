@@ -177,6 +177,48 @@ class Links(unittest.TestCase):
         self.owner.delete(f"/api/tv/{self.tid}", headers=H)
         self.assertEqual(core.one("SELECT COUNT(*) AS n FROM tv_remotes")["n"], 0, "unpairing the TV ends its links")
 
+    def test_an_admin_who_owns_a_tv_adds_a_person_from_their_phone(self):
+        """the user's case: the TV was paired with the admin's account, outside the household; their own account gets it
+        without the TV's code, is one of its people, and the TV is never theirs to unpair"""
+        core.db().execute("UPDATE users SET admin = 1 WHERE name = 'lowner'")
+        core.db().execute("UPDATE users SET household = 1 WHERE name = 'lpal'")
+        self.assertEqual(self.pal.get("/api/tv").json()["tvs"], [], "a household account doesn't get a TV of an owner outside it")
+        can = self.owner.get(f"/api/tv/{self.tid}/addable").json()["people"]
+        self.assertIn({"id": self.uid["lpal"], "name": "lpal"}, can)
+        self.assertNotIn(self.uid["lowner"], [p["id"] for p in can], "not the owner")
+        q = tv.asyncio.Queue()
+        tv.hub.tvs[self.tid].add(q)
+        try:
+            r = self.owner.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lpal"]}, headers=H)
+            self.assertEqual(r.status_code, 200, r.text)
+            sent = [q.get_nowait() for _ in range(q.qsize())]
+        finally:
+            tv.hub.tvs[self.tid].discard(q)
+        self.assertIn({"type": "people", "tv": self.tid}, sent, "the TV's Who's watching hears it")
+        self.assertEqual([t["id"] for t in self.pal.get("/api/tv").json()["tvs"]], [self.tid])
+        self.assertIn(self.uid["lpal"], [p["id"] for p in self.pal.get(f"/api/tv/{self.tid}/people").json()["people"]])
+        self.assertEqual(self.pal.post(f"/api/tv/{self.tid}/do", json={"cmd": "toggle"}, headers=H).status_code, 409, "allowed: just not listening")
+        self.assertEqual(self.pal.post(f"/api/tv/{self.tid}/viewer", json={"user_id": self.uid["lpal"]}, headers=H).status_code, 200, "picks themselves")
+        self.assertEqual(self.tv.get("/api/me").json()["name"], "lpal", "the TV now acts as them, not the admin")
+        self.assertFalse(self.tv.get("/api/me").json()["admin"])
+        self.assertNotIn(self.uid["lpal"], [p["id"] for p in self.owner.get(f"/api/tv/{self.tid}/addable").json()["people"]], "added already")
+        self.assertEqual(self.owner.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lpal"]}, headers=H).status_code, 409)
+        self.assertEqual(self.pal.delete(f"/api/tv/{self.tid}", headers=H).status_code, 404, "unpairing stays the owner's")
+
+    def test_only_an_admin_owner_adds_people_by_name(self):
+        for bad in (self.pal, self.other):  # not the owner: no such TV
+            self.assertEqual(bad.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lother"]}, headers=H).status_code, 404)
+            self.assertEqual(bad.get(f"/api/tv/{self.tid}/addable").status_code, 404)
+        r = self.owner.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lpal"]}, headers=H)
+        self.assertEqual(r.status_code, 403, "an owner who isn't an admin doesn't see the accounts: the TV's code does it")
+        self.assertIn("Add a remote", r.json()["detail"])
+        self.assertEqual(self.owner.get(f"/api/tv/{self.tid}/addable").json()["people"], [])
+        core.db().execute("UPDATE users SET admin = 1 WHERE name = 'lowner'")
+        self.assertEqual(self.owner.post(f"/api/tv/{self.tid}/remotes", json={"user_id": 999999}, headers=H).status_code, 404)
+        self.assertEqual(self.owner.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lowner"]}, headers=H).status_code, 409, "the owner has it")
+        r = self.tv.post(f"/api/tv/{self.tid}/remotes", json={"user_id": self.uid["lpal"]}, headers=H)
+        self.assertEqual((r.status_code, "not from the TV" in r.json()["detail"]), (403, True), "never from the TV's own session")
+
 
 if __name__ == "__main__":
     unittest.main()

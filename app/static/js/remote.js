@@ -33,10 +33,16 @@ async function showTvs(t, [id, all] = []) {
       ${tvs.length ? `<ul class="tvlist">${tvs.map((x) => `<li data-tv="${x.id}"><span class="dot${x.online ? " on" : ""}"></span>
         <div><a href="#/tvs/${x.id}"><b>${esc(x.name)}</b></a><small class="dim">${x.online ? (x.state?.title ? `Playing ${esc(x.state.title)}` : "On") : "Off, or not showing Parlor"}</small></div>
         <a class="ghost" href="#/tvs/${x.id}">${ICON.tv}Remote</a>${x.linked ? `<button class="ghost danger" data-tv-unlink="${x.id}">Remove</button>` : `<button class="ghost danger" data-tv-drop="${x.id}">Unpair</button>`}
-        ${x.remotes?.length ? `<p class="tvguests dim">Added by its code: ${x.remotes.map((g) => `<span class="chip">${esc(g.name)}<button class="ghost-round" data-tv-unlink="${x.id}" data-who="${g.id}" data-name="${esc(g.name)}" title="Take ${esc(g.name)} off ${esc(x.name)}" aria-label="Take ${esc(g.name)} off ${esc(x.name)}">${ICON.x}</button></span>`).join(" ")}</p>` : ""}</li>`).join("")}</ul>`
-        : `<div class="empty-state"><strong>No TVs yet</strong>Add one above.</div>`}
+        ${x.remotes?.length ? `<p class="tvguests dim">Also works it: ${x.remotes.map((g) => `<span class="chip">${esc(g.name)}<button class="ghost-round" data-tv-unlink="${x.id}" data-who="${g.id}" data-name="${esc(g.name)}" title="Take ${esc(g.name)} off ${esc(x.name)}" aria-label="Take ${esc(g.name)} off ${esc(x.name)}">${ICON.x}</button></span>`).join(" ")}</p>` : ""}${x.remotes && ME?.admin ? `<form class="tvguests tvaddp" data-tv-add="${x.id}" hidden></form>` : ""}</li>`).join("")}</ul>`
+        : `<div class="empty-state"><strong>No TVs yet</strong>Add one above. A TV someone else paired shows here once they add you (an admin can, from their TVs page), or when you scan the square in the TV's You → Add a remote.</div>`}
       <div class="rhw" id="rHw" hidden></div>
     </div>`);
+  for (const f of document.querySelectorAll("[data-tv-add]")) // an admin's own TVs: add a person by name, no code read off the TV
+    api(`/api/tv/${f.dataset.tvAdd}/addable`).then(({ people }) => {
+      if (t !== ticket || !people.length) return;
+      f.innerHTML = `<label class="dim" for="tvAddWho${f.dataset.tvAdd}">Add a person</label><select id="tvAddWho${f.dataset.tvAdd}">${people.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select><button class="ghost small">Add</button>`;
+      f.hidden = false;
+    }, () => {});
   api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(0, sets), () => {});  // the sets themselves need no paired screen
   if (id === "pair" && all) { $("#tvAddCode").value = all.toUpperCase().slice(0, 8); $("#tvAddName").focus(); } // the TV's square was scanned: only its name is left to type
   if (id === "link" && all) { $("#tvAddCode").value = all.toUpperCase().slice(0, 8); tvLink(all).catch((err) => toast(err.message)); } // a TV's Add a remote square, scanned (after signing in, if this phone wasn't): asked first, by name
@@ -65,10 +71,21 @@ async function tvLink(code) {
   location.replace(`#/tvs/${r.tv.id}`);
 }
 
+document.addEventListener("submit", (e) => {
+  const f = e.target.closest("[data-tv-add]");
+  if (!f) return;
+  e.preventDefault();
+  const who = f.querySelector("select");
+  if (f.querySelector("button").disabled) return; // a double tap adds once
+  if (confirm(`Let ${who.selectedOptions[0].text} use this TV? Their phone works it as a remote, and it can act as them when they're picked in Who's watching.`))
+    (f.querySelector("button").disabled = true) && post(`/api/tv/${f.dataset.tvAdd}/remotes`, { user_id: +who.value })
+      .then(() => { toast(`${who.selectedOptions[0].text} can use it now`); route(); }, (err) => { f.querySelector("button").disabled = false; toast(err.message); });
+});
+
 document.addEventListener("click", (e) => {
   const off = e.target.closest("[data-tv-unlink]");
   const who = off?.dataset.who; // the owner taking a guest off, or this account taking itself off
-  if (off && confirm(who ? `Take ${off.dataset.name} off this TV? They can't work it or be picked on it until they enter a new code.` : "Take this account off that TV? Its code adds it again."))
+  if (off && confirm(who ? `Take ${off.dataset.name} off this TV? They can't work it or be picked on it until they're added again.` : "Take this account off that TV? Its code adds it again."))
     del(`/api/tv/${off.dataset.tvUnlink}/remotes/${who || ME.id}`).then(route, (err) => toast(err.message));
   const drop = e.target.closest("[data-tv-drop]");
   if (drop && confirm("Unpair this TV? It signs out, and shows a new code.")) del(`/api/tv/${drop.dataset.tvDrop}${drop.hasAttribute("data-tv-all") ? "?everyone=true" : ""}`).then(route, (err) => toast(err.message));

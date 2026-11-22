@@ -607,6 +607,23 @@ with sync_playwright() as pw:
         phone.wait_for_selector(".tvguests [data-who]", timeout=10000)
         owner_sees = phone.evaluate("document.querySelector('.tvguests').textContent.includes('guest')")
         phone.screenshot(path=str(OUT / "owner-guests.png"))
+        # the owner, an admin, takes the guest off and adds them back by name from the phone: no code read off the TV
+        core.db().execute("UPDATE users SET admin = 1 WHERE name = 'family'")  # the user's case: the admin's TV
+        phone.reload()
+        phone.wait_for_selector(".tvguests [data-who]", timeout=10000)
+        phone.once("dialog", lambda d: d.accept())
+        phone.click(".tvguests [data-who]")
+        phone.wait_for_selector(".tvaddp:not([hidden]) select", timeout=10000)
+        phone.select_option(".tvaddp select", label="guest")
+        phone.once("dialog", lambda d: d.accept())
+        phone.click(".tvaddp button")
+        phone.wait_for_selector(".tvguests [data-who]", timeout=10000)
+        readded = phone.evaluate("document.querySelector('.tvguests').textContent.includes('guest')")
+        screen.wait_for_function("tvPeople.people.some((p) => p.name === 'guest')", timeout=15000)
+        phone.screenshot(path=str(OUT / "owner-adds.png"))
+        print("the owner adds a person by name:", readded)
+        core.db().execute("UPDATE users SET admin = 0 WHERE name = 'family'")
+        checks["the TV's owner, an admin, adds a person to it by name from their phone, and the TV's Who's watching hears it"] = readded
         print("add a remote:", len(link), "letters, square:", qr, "| who's watching:", listed, "| owner sees:", owner_sees)
         checks["a TV's Add a remote: a guest's phone scans its square, signs in and lands on its remote; Who's watching lists them"] = \
             len(link) == 8 and qr and "guest" in listed and bool(asked) and "family's TV" in asked[0] and owner_sees and screen.evaluate("!!document.querySelector('#tvWho .tvwho-add')")
@@ -618,6 +635,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (38 if REMOTE else 14) and all(checks.values()) and not errors
+ok = len(checks) == (39 if REMOTE else 14) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

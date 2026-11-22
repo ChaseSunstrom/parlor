@@ -123,7 +123,9 @@ The code works once, for five minutes, and a new one shows up by itself. That ac
 - The TV acts as them only when they pick themselves on their own phone's remote. Picking them on the TV's screen asks for their PIN, so without a PIN it can't be done there.
 - Their remote lists only them and the TV's owner, not the rest of the household.
 
-They take themselves off with **Remove** under **You → TVs**. The TV's owner sees them under that TV there, as **Added by its code**, and takes anyone off with the **×** by their name. Unpairing the TV takes everyone off.
+They take themselves off with **Remove** under **You → TVs**. The TV's owner sees them under that TV there, as **Also works it**, and takes anyone off with the **×** by their name. Unpairing the TV takes everyone off.
+
+**Without the code, when the owner is an admin.** A TV paired with an admin's account can be given to anyone from the admin's phone or computer: **You → TVs**, under that TV, **Add a person**, pick the account, **Add**. They get the TV just as if they had scanned its square, and can pick themselves on it from their phone, so the TV acts as them and not as the admin. This is the way when the admin account isn't [in the household](accounts.md#the-household-and-profiles-on-a-tv): a TV paired by an account outside the household isn't shared with the household by itself. An owner who isn't an admin doesn't see the list of accounts and uses the code.
 
 A TV page opened before 21 November 2026 doesn't do that last part: after an update it can stay **Off** on the remote while its screen looks fine. Reload it once (restart the TV's browser).
 
