@@ -216,7 +216,8 @@ class Keys(unittest.TestCase):
         code = self.person.post("/api/private/enable", json={"password": "first password"}, headers=H).json()["recovery_code"]
         self.assertEqual(self.person.get("/api/private/state").json(), {"on": True, "open": True})
         private._held.clear()  # a restart
-        self.assertEqual(self.person.get("/api/private").status_code, 423)
+        r = self.person.get("/api/private")  # 423 is the vault lock to the site: it would drop the page to the passphrase gate
+        self.assertEqual((r.status_code, r.json()["detail"]), (403, "Enter your password to open your private items"))
         self.assertEqual(self.person.post("/api/private/unlock", json={"password": "first password"}, headers=H).json()["open"], True)
         # a password change re-seals it
         self.person.post("/api/me/password", json={"old": "first password", "new": "second password"}, headers=H)

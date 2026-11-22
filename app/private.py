@@ -188,7 +188,7 @@ def _key(request: Request, user) -> X25519PrivateKey:
         return held[1]
     if not one("SELECT 1 AS x FROM person_keys WHERE user_id = ?", user["id"]):
         raise HTTPException(409, "Turn on private items first (Settings → Private items)")
-    raise HTTPException(423, "Enter your password to open your private items")
+    raise HTTPException(403, "Enter your password to open your private items")  # not 423: the site reads that as the vault lock
 
 
 # --- items ----------------------------------------------------------------------------------------
