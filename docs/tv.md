@@ -91,6 +91,7 @@ The remote's status line says how fast the TV answers: `On · answers in 12 ms`.
 - A press takes about 10 ms from the phone's request to the TV acting on it (measured on a living-room TV through a home reverse proxy: median 8 to 11 ms, worst 15 ms, 22 presses).
 - A held arrow waits for the last press to be sent before it sends the next, so presses never pile up on a slow link.
 - If the line says `slow to answer`, look at the TV: its page is slow to draw (its graphics chip, or a film it is decoding without help), or its link to Parlor is.
+- The server's log keeps each answer too: `docker compose logs parlor | grep "answered a press"` prints lines like `TV 2 answered a press in 180 ms (acting 9 ms, to its frame 140 ms)`. The first number is the whole way from the server to the TV's frame and back; the TV spent the other two acting on the press and drawing it, and what is left is the network.
 
 What the TV page costs to draw, at 3840×2160 on a software graphics chip with the page's thread slowed four times (`tests/perf_tv.py`):
 

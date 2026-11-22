@@ -7,6 +7,8 @@ one process (Parlor runs a single worker)."""
 import asyncio
 import itertools
 import json
+import logging
+import math
 import re
 import secrets
 import threading
@@ -26,6 +28,7 @@ import core
 import pwa
 from core import LINKED, _digest as _hash, db, me, one, rows  # the same digest as sessions.token, which tvs.session points at
 
+log = logging.getLogger("parlor.tv")
 router = APIRouter(prefix="/api/tv")
 page = APIRouter()  # /tv: the same page, which starts in TV mode there
 ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O, no 1/I/L: 8 of them is about 40 bits
@@ -553,9 +556,14 @@ class Do(BaseModel):
 async def do(tid: int, body: Do, request: Request, everyone: bool = False, user=Depends(me)):
     """A remote's command, or a cast: on to the TV, in order. A TV that isn't listening says so. Each gets a number;
     the TV answers with it in what it says next, which times the whole way there and back (state, below)."""
-    t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
-    if not await anyio.to_thread.run_sync(tv_of, core.session_cookie(request)):
-        await anyio.to_thread.run_sync(_not_held, t, user, everyone)
+    token = core.session_cookie(request)
+
+    def allowed():  # one trip to the thread pool per press, not three: a busy pool makes each trip wait
+        t = _mine(tid, user, everyone)
+        if not tv_of(token):
+            _not_held(t, user, everyone)
+        return t
+    t = await anyio.to_thread.run_sync(allowed)
     if body.cmd == "cast" and not body.cast:
         raise HTTPException(422, "What to cast?")
     listening = hub.tvs.get(tid)
@@ -587,6 +595,9 @@ async def state(body: State, request: Request, user=Depends(me)):
         raise HTTPException(413, "Too much state")
     sent = hub.sent[tv["id"]].pop(body.state.get("ack"), None) if type(body.state.get("ack")) is int else None
     hub.state[tv["id"]] = {**body.state, "seen": _now(), **({"lag": round((time.monotonic() - sent) * 1000)} if sent else {})}  # "at" is where it is in what's playing
+    if sent:  # the box's log says how quick the TV is: from a press reaching the server to the TV's frame that shows it
+        log.info("TV %s answered a press in %s ms (acting %s ms, to its frame %s ms)", tv["id"], hub.state[tv["id"]]["lag"],
+                 *(round(v) if type(v) in (int, float) and math.isfinite(v) else "?" for v in (body.state.get("took"), body.state.get("paint"))))  # numbers only: the rest is the way there and back
     hub.seen[tv["id"]] = _now()
     hub.tell(await anyio.to_thread.run_sync(audience, tv["id"]), {"type": "state", "tv": tv["id"], "state": hub.state[tv["id"]]})
     return {"ok": True}

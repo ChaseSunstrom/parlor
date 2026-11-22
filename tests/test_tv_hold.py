@@ -103,5 +103,24 @@ class Hold(unittest.TestCase):
         self.assertNotIn(self.tid, tv.hub.hold)
 
 
+class PressTime(unittest.TestCase):
+    """each press the TV answers is logged with its time there and back, so a slow remote can be read off the box's log"""
+    setUp, tearDown, press = Hold.setUp, Hold.tearDown, Hold.press
+
+    def test_an_answered_press_is_logged_with_its_time(self):
+        n = self.press(self.owner).json()["n"]
+        with self.assertLogs("parlor.tv", "INFO") as said:
+            self.assertEqual(self.tv.post("/api/tv/state", json={"state": {"ack": n, "page": "#/", "took": 9, "paint": 140}}, headers=H).status_code, 200)
+        self.assertTrue(any(f"TV {self.tid} answered a press in" in line and "(acting 9 ms, to its frame 140 ms)" in line for line in said.output), said.output)
+
+    def test_a_tv_s_odd_numbers_never_break_its_answer(self):
+        n = self.press(self.owner).json()["n"]
+        with self.assertLogs("parlor.tv", "INFO") as said:  # NaN and Infinity are JSON to Python, and a string could carry a new line
+            r = self.tv.post("/api/tv/state", content='{"state": {"ack": %d, "took": Infinity, "paint": "1\\nfake line"}}' % n,
+                             headers={**H, "content-type": "application/json"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("(acting ? ms, to its frame ? ms)", said.output[0])
+
+
 if __name__ == "__main__":
     unittest.main()
