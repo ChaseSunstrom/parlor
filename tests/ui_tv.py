@@ -301,6 +301,7 @@ with sync_playwright() as pw:
     press(screen, "Escape")
     screen.wait_for_timeout(500)
     checks["Back goes back"] = screen.evaluate("location.hash") == "#/library/The%20Gulls/Harbor"
+    checks["a TV's pages move with the focus and show no scrollbar"] = screen.evaluate("['html', 'body', 'main'].every((s) => getComputedStyle(document.querySelector(s)).scrollbarWidth === 'none')")
     screen.evaluate("location.hash = '#/'")
     screen.wait_for_selector("#tvh .tvt:focus", timeout=10000)
     # a TV is left on: when a newer Parlor answers, it reloads itself (nothing is playing)
@@ -653,6 +654,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (40 if REMOTE else 14) and all(checks.values()) and not errors
+ok = len(checks) == (41 if REMOTE else 15) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

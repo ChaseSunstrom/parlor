@@ -32,7 +32,12 @@ body[data-section="library"] { --accent: var(--sky); }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--dim) 40%, transparent) transparent; }
+html::-webkit-scrollbar { width: 8px; height: 8px; }
+html::-webkit-scrollbar-track { background: transparent; }
+html::-webkit-scrollbar-thumb { border-radius: 4px; background: color-mix(in oklab, var(--dim) 40%, transparent); }
+html.tv, html.tv * { scrollbar-width: none; } /* a TV's pages move with the focus: no bar to drag, so none to see */
+html.tv::-webkit-scrollbar, html.tv ::-webkit-scrollbar { display: none; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 400 1rem/1.5 var(--font); font-variation-settings: "opsz" 14;

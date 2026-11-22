@@ -7,7 +7,7 @@ const TV_MODE = location.pathname.replace(/\/+$/, "") === "/tv"
   || (NATIVE && navigator.maxTouchPoints === 0 && !matchMedia("(any-pointer: coarse)").matches); // the Android app on a TV
 let tvMe = null; // this TV's pairing, on a TV
 const tvFit = () => document.documentElement.style.setProperty("zoom", String(innerWidth >= 1500 ? innerWidth / 1280 : 1)); // 10-foot: a 1920 screen lays out like 1280
-if (TV_MODE) { document.body.classList.add("tv"); tvFit(); addEventListener("resize", tvFit); }
+if (TV_MODE) { document.body.classList.add("tv"); document.documentElement.classList.add("tv"); tvFit(); addEventListener("resize", tvFit); }
 
 /* ---------- moving with the arrows: to the nearest thing in that direction ---------- */
 
@@ -119,7 +119,7 @@ async function tvBoot() {
   tvMe = (await api("/api/tv/me").catch(() => ({}))).tv || null;
   if (!tvMe && TV_MODE && NATIVE && (tvMe = (await post("/api/tv/adopt", { name: "TV" }).catch(() => ({}))).tv || null)) ME = await api("/api/me"); // now a TV's, so never an admin's // the Android app on a TV, signed in with a password: a TV all the same, so the account's phones can work it (never a browser at /tv: an admin who looks at it keeps their own session)
   if (!tvMe) return remoteBoot();
-  if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); route(); tvAwake(); } // a TV's session opened at another address is still a TV
+  if (!TV_MODE) { document.body.classList.add("tv"); document.documentElement.classList.add("tv"); tvFit(); route(); tvAwake(); } // a TV's session opened at another address is still a TV
   tvListen();
   tvPeople = await api(`/api/tv/${tvMe.id}/people`).catch(() => null); // more than one person in the household: ask who is watching, once each time the TV starts
   if ((tvPeople?.people.length || 0) < 2) return;

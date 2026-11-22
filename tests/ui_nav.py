@@ -98,6 +98,7 @@ with sync_playwright() as p:
 
         if label == "desk":
             page.wait_for_selector("#side a")
+            checks["desk: the page's scrollbar is thin and in the theme's colours"] = page.evaluate("(() => { const c = getComputedStyle(document.documentElement); return c.scrollbarWidth === 'thin' && c.scrollbarColor !== 'auto'; })()")
             checks["desk: on Home the sidebar is the six sections and nothing else"] = side() == ["Home", "Library", "Watch", "Music", "Request", "You"]
             page.click("#side a.side-head:has-text('Request')")
             page.wait_for_function("location.hash === '#/request'")
@@ -169,6 +170,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots), "in", OUT)
-ok = all(checks.values()) and not errors and len(checks) == 9 + 3 + len(OLD) + 2 * (4 + 3 + 2 * len(OLD))  # desk's own, the lists, the old addresses; then tablet and phone
+ok = all(checks.values()) and not errors and len(checks) == 10 + 3 + len(OLD) + 2 * (4 + 3 + 2 * len(OLD))  # desk's own, the lists, the old addresses; then tablet and phone
 print("RESULT:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
