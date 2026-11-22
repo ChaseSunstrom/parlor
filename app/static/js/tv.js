@@ -58,6 +58,7 @@ if (TV_MODE) {
   document.addEventListener("keydown", (e) => {
     const typing = e.target.matches?.("input:not([type=range]):not([type=checkbox]), textarea"), dir = e.key.startsWith("Arrow") && e.key.slice(5).toLowerCase();
     const mine = () => { e.preventDefault(); e.stopPropagation(); }; // a page's own shortcuts (a player's arrows) stay out of it: one path
+    if (!$("#tvIdle")) tvAwake(); // every key, OK too, lifts the dim and starts the quiet minutes again (a sleeping screen's key is handled below)
     if (dir && !(typing && (dir === "left" || dir === "right")) && !(e.target.type === "range" && (dir === "left" || dir === "right"))) {
       mine();
       tvDo({ cmd: "key", key: dir });

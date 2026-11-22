@@ -192,10 +192,10 @@ document.addEventListener("focusin", (e) => {
 /** the box of the video playing on this TV's page (app.css makes it the whole screen) */
 const tvBox = () => (onTv() ? [...document.querySelectorAll("#view video")].find(tvShown)?.closest(".player") : null);
 const tvOpts = () => document.body.classList.contains("tvopts");
-let tvOsdTimer = 0;
+let tvOsdTimer = 0, tvOsdPausedFor = 10e3;
 
-/** show the strip (what's playing, where it is); it goes again by itself while the film plays */
-function tvOsd(stay = false) {
+/** show the strip (what's playing, where it is); it goes again by itself, playing or paused, unless the film's options are open */
+function tvOsd() {
   const box = tvBox(), v = box?.querySelector("video");
   if (!box) return;
   v.controls = false; // the browser's own bar wants a mouse
@@ -209,7 +209,7 @@ function tvOsd(stay = false) {
   tvOsdTime(v);
   box.classList.add("osd");
   clearTimeout(tvOsdTimer);
-  if (!stay) tvOsdTimer = setTimeout(() => { if (!v.paused && !tvOpts()) box.classList.remove("osd"); }, 4000);
+  tvOsdTimer = setTimeout(() => { if (!tvOpts()) box.classList.remove("osd"); }, v.paused ? tvOsdPausedFor : 4000); // paused, it goes too: a still strip is what an OLED keeps
 }
 function tvOsdTime(v) {
   const osd = v.closest(".player")?.querySelector(".tvosd"), d = v.duration;
@@ -218,7 +218,7 @@ function tvOsdTime(v) {
   $(".tvosd-left", osd).textContent = isFinite(d) && d ? `-${clock(Math.max(0, d - v.currentTime))}` : "";
   $(".tvosd-bar i", osd).style.transform = `scaleX(${isFinite(d) && d ? Math.min(1, v.currentTime / d) : 0})`;
 }
-for (const k of ["loadedmetadata", "pause", "seeking", "waiting"]) document.addEventListener(k, (e) => { if (e.target === tvBox()?.querySelector("video")) tvOsd(k === "pause"); }, true);
+for (const k of ["loadedmetadata", "pause", "seeking", "waiting"]) document.addEventListener(k, (e) => { if (e.target === tvBox()?.querySelector("video")) tvOsd(); }, true);
 document.addEventListener("play", (e) => { if (e.target === tvBox()?.querySelector("video")) tvOsd(); }, true);
 document.addEventListener("timeupdate", (e) => { if (e.target.closest?.(".player.osd")) tvOsdTime(e.target); }, true);
 
@@ -226,7 +226,7 @@ document.addEventListener("timeupdate", (e) => { if (e.target.closest?.(".player
 function tvOptions(on) {
   const tools = $("#view .ptools");
   document.body.classList.toggle("tvopts", !!(on && tools));
-  if (on && tools) { tvOsd(true); [...tools.querySelectorAll(TV_FOCUSABLE)].find(tvShown)?.focus({ preventScroll: true }); } else { tvBox()?.focus({ preventScroll: true }); tvOsd(); }
+  if (on && tools) { tvOsd(); [...tools.querySelectorAll(TV_FOCUSABLE)].find(tvShown)?.focus({ preventScroll: true }); } else { tvBox()?.focus({ preventScroll: true }); tvOsd(); }
 }
 addEventListener("hashchange", () => document.body.classList.remove("tvopts"));
 
@@ -258,7 +258,7 @@ function tvPlayerKey(key) {
   else if (key === "enter") skip ? skip.click() : v.paused ? tvPlay(v) : v.pause();
   else if (key === "down") return tvOptions(true), true;
   else if (key !== "up") return false; // Back leaves the film
-  tvOsd(v.paused);
+  tvOsd();
   return true;
 }
 
@@ -330,13 +330,16 @@ function tvType(text, enter) {
 /* ---------- a TV nobody is using: the household's own pictures, slowly, with a clock that moves (an OLED keeps what stands
    still); with no pictures, the dark screen and the clock ---------- */
 
-let tvIdleAfter = 5 * 60e3, tvIdleTimer = 0, tvSlideTimer = 0;
+let tvIdleAfter = 5 * 60e3, tvIdleTimer = 0, tvSlideTimer = 0, tvDimAfter = 2 * 60e3, tvDimTimer = 0;
 const tvTime = () => new Date().toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 function tvAwake() {
   clearTimeout(tvIdleTimer);
   clearTimeout(tvSlideTimer);
+  clearTimeout(tvDimTimer);
+  document.body.classList.remove("tvdimmed");
   if (!onTv()) return false;
   tvIdleTimer = setTimeout(tvIdle, tvIdleAfter);
+  tvDimTimer = setTimeout(tvDim, tvDimAfter);
   const idle = $("#tvIdle");
   idle?.remove();
   return !!idle; // the key that woke it does nothing else
@@ -352,6 +355,23 @@ function tvIdle() {
   tvIdleCard(true);
   tvIdleTimer = setTimeout(tvIdle, 60e3);
 }
+/** two quiet minutes: the screen dims, a paused film too, before the pictures come at five; a film that plays never dims */
+function tvDim() {
+  const v = [...document.querySelectorAll("#view video")].find(tvShown);
+  if (v && !v.paused) return (tvDimTimer = setTimeout(tvDim, tvDimAfter));
+  if (!$("#tvDim")) document.body.insertAdjacentHTML("beforeend", `<div class="tvdim" id="tvDim"></div>`);
+  void $("#tvDim").offsetWidth; // so it fades in
+  document.body.classList.add("tvdimmed");
+}
+/* nothing bright holds the same pixels for long: the rail, the clock, the hero, the row names, the page links and a film's
+   strip move a few pixels every three minutes, slowly (too slow to see, enough that no edge wears into an OLED) */
+const TV_SHIFT = [[0, 0], [3, 2], [-2, 3], [-3, -2], [2, -3], [4, 0], [0, 4], [-4, 0], [0, -4]];
+let tvShiftAt = 0;
+function tvShift() {
+  const [x, y] = TV_SHIFT[++tvShiftAt % TV_SHIFT.length];
+  document.documentElement.style.setProperty("--pxy", x || y ? `${x}px ${y}px` : "none");
+}
+setInterval(() => onTv() && tvShift(), 180e3);
 /** the clock, the date (or the song playing) and the picture's name; moved to somewhere else each minute and each picture */
 function tvIdleCard(move) {
   const box = $("#tvIdle"), card = $("#tvIdle .tvidle-card"), song = dock.queue.length && !dock.audio.paused ? dock.queue[dock.at] : null, x = tvSlide.now;

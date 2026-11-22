@@ -1105,6 +1105,10 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .tvidle b { font-size: 96px; font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .tvidle span { font-size: 24px; font-weight: 600; }
 .tvidle small:empty { display: none; }
+/* burn-in care (tvhome.js): the chrome moves a few pixels every three minutes; two quiet minutes dim the screen */
+body.tv :is(.side, .dock, .tvh-clock, .tvh-hero, .tvh-row h2, .chips.subnav, .tvosd-top, .tvosd-bot, .tvosd-hint, .tvwho, .tvlink) { translate: var(--pxy, none); transition: translate 4s ease; } /* none at rest: a translate, even 0, holds fixed children to it */
+.tvdim { position: fixed; inset: 0; z-index: 85; background: #000; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
+body.tvdimmed .tvdim { opacity: .55; transition-duration: 3s; }
 /* the slideshow: each picture fades in over the last while it pans and zooms, dimmed (an OLED rests, and the card reads) */
 .tvidle-art { position: absolute; inset: 0; overflow: hidden; }
 .tvidle-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 2.4s ease;

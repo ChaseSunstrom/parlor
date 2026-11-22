@@ -32,7 +32,7 @@ Parlor on a TV is laid out for a couch and a remote: everything is bigger, there
 - **The menu** is a slim rail of icons on the left (Search, Home, Library, Watch, Music, Request, You). Left from the first poster reaches it, and its names show while the focus is in it. A section's pages are the row of links along the top of each of its pages.
 - **Who's watching**: with two or more people in [the household](accounts.md#the-household-and-profiles-on-a-tv), the TV asks who is watching each time it starts, and a round picture at the foot of the menu opens the same screen later. Pick a person with the arrows and OK; one with a PIN gets a number pad (a remote's own number keys work too). The TV then starts again at Home as them.
 - **Other pages**: the arrows move to the nearest thing in that direction, and what's selected has a bright outline. When a page opens, the focus is already in it.
-- **A film or a video fills the screen.** A strip shows its name and where it is for a few seconds, and whenever it is paused.
+- **A film or a video fills the screen.** A strip shows its name and where it is for a few seconds, and for 10 seconds when you pause it, then gets out of the way; a paused film left for 5 minutes shows your pictures like any idle screen.
 
   | Key | What it does while a film plays |
   |---|---|
@@ -46,6 +46,7 @@ Parlor on a TV is laid out for a couch and a remote: everything is bigger, there
 - **Search** has a keyboard on the screen: pick letters with the arrows and OK, and what's in the library shows beside it as you go. **Search YouTube and everything else** under the keyboard takes the same words to the full search. Text typed on a phone's remote lands here too.
 - **Colour keys** on a remote that has them: red is Home, green is Search, yellow is the Library, blue is play or pause.
 - **Left alone for 5 minutes** with nothing playing on the screen, the TV shows your own films' and shows' pictures one after another, dimmed and slowly moving, with the title, the time and the date (or the song, when music plays) small in a corner that changes with each picture, so nothing burns in. Before Home has loaded once on that TV there are no pictures yet, and it goes dark with a dim clock that moves each minute. Any key wakes it and does nothing else.
+- **It looks after an OLED.** The clock, the rail and the other parts that never change drift a few pixels every 3 minutes, and a screen nobody has touched for 2 minutes dims; any key brightens it again. A film that is playing is never dimmed.
 
 ## Play on TV
 

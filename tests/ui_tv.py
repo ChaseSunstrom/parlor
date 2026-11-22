@@ -208,6 +208,23 @@ with sync_playwright() as pw:
     print("idle:", was[1], "→", slid[0], "| card", was[2], "→", slid[1], "| bare clock:", bare)
     checks["an idle TV shows the household's pictures with their name and a clock that move, a dark clock with none, and the first key only wakes it"] = \
         woke == tile and bool(was[1]) and slid[1] != was[2] and bare
+    # burn-in: the chrome moves a few pixels every three minutes; two quiet minutes dim the screen, and a key brings it back
+    rail = "document.querySelector('#side').getBoundingClientRect().left"
+    left = screen.evaluate(rail)
+    screen.evaluate("tvShift()")  # the three minutes, now
+    screen.wait_for_timeout(4400)
+    shifted = screen.evaluate(rail) - left
+    screen.evaluate("tvDimAfter = 300; tvAwake()")
+    screen.wait_for_function("document.body.classList.contains('tvdimmed') && +getComputedStyle(document.querySelector('#tvDim')).opacity > .5", timeout=8000)
+    screen.screenshot(path=str(OUT / "tv-dim.png"))
+    press(screen, "Enter")  # OK too, not just the arrows: it opens the title, bright
+    undimmed = screen.evaluate("!document.body.classList.contains('tvdimmed')")
+    screen.wait_for_function("!document.querySelector('#tvh')", timeout=10000)
+    press(screen, "Escape")
+    screen.wait_for_selector("#tvh .tvt:focus", timeout=10000)
+    screen.evaluate("tvDimAfter = 2 * 60e3; tvAwake()")
+    print("burn-in: the rail moved", shifted, "px; a key undims:", undimmed)
+    checks["On a TV the chrome moves a few pixels every few minutes, and two quiet minutes dim the screen until a key"] = 2 <= abs(shifted) <= 8 and undimmed
     # search: the remote's green key opens a keyboard on the screen; letters with the arrows and OK find a film; Right reaches it
     screen.evaluate("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ColorF1Green', bubbles: true }))")
     screen.wait_for_selector("#tvSearch [data-k]:focus", timeout=10000)
@@ -435,6 +452,16 @@ with sync_playwright() as pw:
         print("film:", film, "subtitle list", subs, "stepped", stepped)
         checks["a film fills the TV: OK pauses under a strip, Down opens its options, OK steps a list, Up returns, the arrows seek"] = film["full"] and film["bare"] and "Night Train" in film["title"] \
             and film["tools"] == "none" and stepped and film["out"] and 9 < film["seek"] < 11
+        # burn-in: a paused film lets its strip go, dims after quiet minutes, and the pictures come on over it; a key wakes it, still paused
+        screen.evaluate("tvOsdPausedFor = 300; tvOsd()")
+        screen.wait_for_function("!document.querySelector('.player.osd') && document.querySelector('#jfVideo').paused", timeout=5000)
+        screen.evaluate("tvDimAfter = 200; tvIdleAfter = 1200; tvAwake()")
+        screen.wait_for_function("document.body.classList.contains('tvdimmed')", timeout=5000)
+        screen.wait_for_selector("#tvIdle", timeout=5000)
+        press(screen, "ArrowLeft")
+        still = screen.evaluate("!document.querySelector('#tvIdle') && !document.body.classList.contains('tvdimmed') && !document.body.classList.contains('tvopts') && document.querySelector('#jfVideo').paused")
+        screen.evaluate("tvOsdPausedFor = 10e3; tvDimAfter = 2 * 60e3; tvIdleAfter = 5 * 60e3; tvAwake()")
+        checks["a paused film lets its strip go, dims, and the pictures come on over it; a key brings it back where it was"] = still
         press(screen, "Enter")  # playing again
         # a TV that blocks playing without a press asks for OK: the arrows stay on it, Back closes it and stays put
         was = screen.evaluate("location.hash")
@@ -591,6 +618,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (36 if REMOTE else 13) and all(checks.values()) and not errors
+ok = len(checks) == (38 if REMOTE else 14) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)
