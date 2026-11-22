@@ -21,7 +21,7 @@ async function showTvs(t, [id, all] = []) {
   if (t !== ticket) return;
   tvKnown = tvs;
   tvBar();
-  paint(t, `<section class="home">${aurora}<h1>TVs</h1><p>Open Parlor on a TV at <b>${esc(location.origin)}/tv</b> (or the Android app on Android TV): it shows a code. Enter it here, and this account's phones and computers can play things on that TV and work it as a remote.</p></section>
+  paint(t, `<section class="home">${aurora}<h1>TVs</h1><p>Play things on a TV and work it from here, like a remote.</p></section>
     <div class="wrap tvs-page">
       <form class="panel tvadd" id="tvAdd"><h3>Add a TV</h3>
         <ol class="tvadd-ways"><li><b>A TV that shows Parlor already:</b> on the TV open <b>You → Add a remote</b> (or <b>Add someone</b> in Who's watching), then scan its square with this phone's camera or enter its code here.</li>

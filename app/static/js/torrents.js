@@ -81,7 +81,7 @@ async function pollTorrents(t) {
 async function showTorrents(t) {
   if (!ME?.admin) return paint(t, `<div class="wrap"><div class="empty-state">Only admins manage torrents.</div></div>`);
   Object.assign(tor, { rid: 0, list: {}, menu: null, limitsShown: false });
-  paint(t, `<section class="home">${aurora}<h1>Torrents</h1><p id="torSpeeds" class="dim">${SPIN}</p></section>
+  paint(t, `<section class="home">${aurora}<h1>Torrents</h1><p id="torSpeeds" class="dim">Asking qBittorrent…</p></section>
   <div class="wrap">
     <p class="notice" id="torError" hidden></p>
     <div class="chips page-actions">${T_FILTERS.map(([k, l]) => `<button data-tfilter="${k}"${k === tor.filter ? ' aria-pressed="true" class="on"' : ""}>${l}</button>`).join("")}

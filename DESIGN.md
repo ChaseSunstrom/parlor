@@ -27,6 +27,19 @@ The app always shows a little movement, which carries information where it can:
 
 All of it stops under `prefers-reduced-motion`. Light mode follows the system.
 
+## Cards, buttons and forms (the TV's look everywhere)
+
+The phone and computer site use the TV's pieces, in one block at the end of `app.css` (T-0203):
+
+- **Every card is a TV tile:** posters, video cards, square music tiles and games are rounded art that lifts (`translateY(-4px) scale(1.03)`) under the pointer or the keyboard, with a 2 px ring and a glow in the section's colour; the caption turns that colour; a press sinks it (`scale(.98)`). Artists are round. A row that scrolls sideways leaves room (12 px above, 28 px below) so the lift and glow aren't cut off.
+- **Buttons are solid or tonal:** a ghost button is a soft fill of the text colour (8 %, 14 % on hover), never an outline; on, it takes the accent's tint.
+- **Tick boxes are switches** (42 × 24, the knob slides); **panels** are soft cards (18 px corners, a faint top light, a long soft shadow); a focused field gets a 4 px accent halo.
+- **A page rises in** (10 px and a fade, 0.34 s) as it first paints. `backwards`, not `both`: a held `translate` would make the page the containing block of the player and dialogs.
+- **On a phone the tab bar floats** 10 px off the edges with 22 px corners, and the player, TV and update bars float above it; the queue opens as a sheet 8 px over the player, as wide as it.
+- **Light mode:** the section colours are bright for a dark ground, so text and controls in them use `--accent-ink` (55 % accent, 45 % text), and an off switch is 42 % text: 3:1 and up on white.
+- **A picture that doesn't load** is hidden (`img.broke`), leaving the card's own ground, and shows again if its address changes and loads.
+- Only `transform`, `opacity`, `box-shadow` and colours move, and under reduced motion nothing does. A TV keeps its own focus look (the lifts are scoped to `body:not(.tv)`) and its pages don't rise in; neither does a page redrawn in place, nor a book's reader.
+
 ## Navigation
 
 One list (`NAV` in `app/static/js/nav.js`) draws all of it, so a new section or page is one entry:

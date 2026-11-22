@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw  # noqa: E402
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 OUT = rs.OUT
+TILES = ".pcard .poster, .vcard .vthumb, .jcard .jart, .tile .cover img, .gcard .gart"  # each kind of card's art
 WIDTHS = {"desk": (1366, 900, False), "tablet": (820, 1180, False), "phone": (390, 844, True)}
 THUMB = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 9'><defs><linearGradient id='g' x2='1' y2='1'><stop stop-color='%s'/>"
          "<stop offset='1' stop-color='%s'/></linearGradient></defs><rect width='16' height='9' fill='url(#g)'/></svg>")
@@ -133,6 +134,38 @@ def main():
                         bad.append(f"{label} {name}: {len(saw['rows'])} rows of page links: {saw['rows']}")
                     if saw["twice"]:
                         bad.append(f"{label} {name}: links the sidebar already shows: {saw['twice']}")
+                    # the TV's look (T-0203): a page rises in; tick boxes are switches; the phone's tab bar floats; a tile lifts and
+                    # glows under the pointer; under reduced motion none of it moves
+                    look = p.evaluate("""() => { const box = [...document.querySelectorAll('main .check input[type=checkbox], main .field input[type=checkbox]')]
+                        .filter((b) => b.offsetParent).find((b) => getComputedStyle(b).appearance !== 'none' || Math.abs(b.getBoundingClientRect().width - 42) > 1);
+                      return { rose: document.querySelector('#view').classList.contains('page-in'),
+                               box: box && { look: getComputedStyle(box).appearance, w: box.getBoundingClientRect().width, in: box.closest('[class]').className },
+                               bar: parseFloat(getComputedStyle(document.querySelector('.nav')).borderTopLeftRadius) }; }""")
+                    if not look["rose"]:
+                        bad.append(f"{label} {name}: the page didn't rise in")
+                    if look["box"]:  # every one on the page
+                        bad.append(f"{label} {name}: a tick box isn't a switch: {look['box']}")
+                    if mobile and look["bar"] < 16:
+                        bad.append(f"{label} {name}: the tab bar doesn't float (radius {look['bar']})")
+                    tile = p.locator(TILES).first
+                    if not mobile and tile.count() and tile.is_visible():
+                        tile.hover()
+                        p.wait_for_timeout(450)
+                        lift = tile.evaluate("""(e) => { const s = e.closest('.strip, .vstrip, .pstrip, .jstrip, .gshelf'), r = e.getBoundingClientRect(), b = s && s.getBoundingClientRect();
+                          return [getComputedStyle(e).transform, getComputedStyle(e).boxShadow, !s || (r.top >= b.top && r.left >= b.left - 1)]; }""")
+                        if lift[0] == "none" or lift[1] == "none":
+                            bad.append(f"{label} {name}: a tile doesn't lift and glow under the pointer: {lift}")
+                        if not lift[2]:
+                            bad.append(f"{label} {name}: a lifted tile is cut off by the row it scrolls in")
+                        if label == "desk":
+                            p.emulate_media(reduced_motion="reduce")
+                            p.wait_for_timeout(150)
+                            still = tile.evaluate("(e) => [getComputedStyle(e).transform, getComputedStyle(document.querySelector('#view')).animationName]")
+                            if still != ["none", "none"]:
+                                bad.append(f"{label} {name}: reduced motion still moves: {still}")
+                            p.emulate_media(reduced_motion="no-preference")
+                        p.mouse.move(0, 0)
+                        p.wait_for_timeout(300)
                     if name == "home":  # the rows stay put whatever the hero shows: its tallest form and its shortest
                         tall = """tvhHero({ title: 'Continue watching', accent: 'var(--amber)' }, { title: 'Spider-Man: Far From Home, the Extended Fan Cut', kind: 'Film',
                           meta: ['2019', '2h 9m', 'PG-13', 'Action · Adventure · Science Fiction'], over: 'Peter Parker and his friends go on a summer trip to Europe. '.repeat(6),
@@ -182,7 +215,7 @@ def main():
         for scheme in ("dark", "light"):
             sheet([name for name, *_ in PAGES], f"{label}-{scheme}")
     (OUT / "found.json").write_text(json.dumps(found, indent=1))
-    shots = len(list(OUT.glob("*-dark.png"))) + len(list(OUT.glob("*-light.png")))
+    shots = sum((OUT / f"{name}-{label}-{scheme}.png").exists() for name, *_ in PAGES for label in WIDTHS for scheme in ("dark", "light"))  # this run's, not a folder's leftovers
     print(f"{len(PAGES)} pages × {len(WIDTHS)} widths × 2 themes: {shots} screenshots in {OUT}")
     for line in bad:
         print("  ✗", line)

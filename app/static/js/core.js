@@ -264,7 +264,19 @@ let ticket = 0, current = "home";
    puts subnav() in its paint, and one that doesn't (a film, a player) hides it */
 const ROW = "<!--pages-->";
 const subnav = () => ROW;
-const paint = (t, html) => { if (t === ticket) { stage.innerHTML = html; $("#pages").hidden = !html.includes(ROW); } };
+addEventListener("error", (e) => { if (e.target instanceof HTMLImageElement) e.target.classList.add("broke"); }, true); // a picture that didn't load leaves its card's own ground, not a torn icon and its alt text
+addEventListener("load", (e) => { if (e.target instanceof HTMLImageElement) e.target.classList.remove("broke"); }, true); // one whose src changed and loaded shows again
+const paint = (t, html) => {
+  if (t !== ticket) return;
+  stage.innerHTML = html;
+  $("#pages").hidden = !html.includes(ROW);
+  if (paint.t === t || keepScroll || document.body.classList.contains("tv") || html.includes('class="reader"')) return; // a page rises in once, as it first opens: not
+  // as it redraws in place (keepScroll), not on a TV (its chip is slow), not a book's reader (fixed, and epub.js measures it at once)
+  paint.t = t;
+  stage.classList.remove("page-in");
+  void stage.offsetWidth;
+  stage.classList.add("page-in");
+};
 function page(name, fn, sectionName) { PAGES[name] = { fn, section: sectionName }; }
 function go(hash) {
   if (location.hash === hash) route();

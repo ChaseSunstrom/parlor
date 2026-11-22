@@ -344,9 +344,10 @@ with sync_playwright() as pw:
     pp.screenshot(path=str(OUT / "queue-phone.png"))
     box = pp.locator("#queuePanel").bounding_box()
     print("phone sheet:", box, pp.locator("#dock").bounding_box(), pp.evaluate("[document.documentElement.scrollWidth, innerWidth]"))
-    checks["on a phone the queue is a sheet above the dock, no sideways scroll"] = (
-        pp.evaluate("document.documentElement.scrollWidth <= innerWidth + 1") and box["width"] >= 389
-        and box["y"] + box["height"] <= pp.locator("#dock").bounding_box()["y"] + 1)
+    dock = pp.locator("#dock").bounding_box()  # the dock floats off the edges on a phone (T-0203), and the sheet with it
+    checks["on a phone the queue is a sheet above the dock, as wide as it, no sideways scroll"] = (
+        pp.evaluate("document.documentElement.scrollWidth <= innerWidth + 1") and box["width"] >= dock["width"] - 1
+        and box["y"] + box["height"] <= dock["y"])
     b.close()
 
     # on plain http at a name other than this computer, Settings says install and offline need https, and no worker runs

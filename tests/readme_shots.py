@@ -289,6 +289,8 @@ def stock_sets():
 def set_picture(route):
     """what the image host would send: a poster with the title on it, or a studio's wordmark in the theme's ink"""
     url = route.request.url
+    if "/api/art?" in url:  # Parlor's own picture proxy, asked for the image host's picture
+        url = parse_qs(urlparse(url).query)["u"][0]
     path = "/" + url.rsplit("/", 1)[1]
     if path.startswith("/logo-"):
         kind, sid = path[6:-4].split("-")
@@ -493,6 +495,7 @@ def main():
             # Films & shows → Collections, with Seerr standing in from here on
             stock_sets()
             desk.context.route("https://image.tmdb.org/**", set_picture)
+            desk.context.route("**/api/art?u=https%3A%2F%2Fimage.tmdb.org*", set_picture)  # posters through Parlor's proxy (a broken one is hidden now)
             shoot(desk, "collections", "desktop", "#/sets", ".logogrid + .shelf-head + .logogrid img", tall=1200)
             shoot(desk, "request-all", "desktop", "#/set/collection/100", "#setGrid .pcard", lambda q: (
                 q.locator("#setAsk[open]").count() or q.click("#askAll"), q.wait_for_selector("#setAsk[open]"), q.wait_for_timeout(600)), tall=900)
