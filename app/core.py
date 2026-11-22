@@ -171,6 +171,13 @@ CREATE TABLE IF NOT EXISTS tvs (
   session TEXT NOT NULL UNIQUE REFERENCES sessions(token) ON DELETE CASCADE,  -- signing out everywhere unpairs it
   created REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS tv_links (                                    -- a code a TV shows so a phone can add itself as a remote
+  code TEXT PRIMARY KEY, tv_id INTEGER NOT NULL REFERENCES tvs(id) ON DELETE CASCADE, created REAL NOT NULL  -- sha256 of the code
+);
+CREATE TABLE IF NOT EXISTS tv_remotes (                                  -- an account that added itself to one TV by its code
+  tv_id INTEGER NOT NULL REFERENCES tvs(id) ON DELETE CASCADE, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created REAL NOT NULL, PRIMARY KEY (tv_id, user_id)
+);
 -- TV sets (tvhw.py): the hardware an admin added, and who may press its buttons. secret: an LG's key or a Samsung's token
 CREATE TABLE IF NOT EXISTS tv_sets (
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, name TEXT NOT NULL, host TEXT NOT NULL DEFAULT '',
@@ -344,6 +351,9 @@ def check_password(password: str, stored) -> bool:
     return kind == "scrypt" and hmac.compare_digest(mine.hex(), digest)
 
 
+LINKED = "EXISTS (SELECT 1 FROM tv_remotes r WHERE r.tv_id = t.id AND r.user_id = v.id)"  # SQL: the person v was added to the TV t by its code
+
+
 def _digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -359,10 +369,10 @@ def new_session(user_id: int, agent: str = "") -> str:
 def session_user(token: str):
     if not token:
         return None
-    # a TV acts as its viewer while that person is still in the household, else as its owner (the session's own account)
+    # a TV acts as its viewer while that person is still in the household or added to this TV, else as its owner (the session's own account)
     row = one("""SELECT u.id, u.name, u.admin, u.jellyfin_id, u.seerr_id, u.pw IS NOT NULL AS local, s.seen, t.id AS tv
                  FROM sessions s LEFT JOIN tvs t ON t.session = s.token
-                 JOIN users u ON u.id = COALESCE((SELECT id FROM users WHERE id = t.viewer_id AND household = 1), s.user_id)
+                 JOIN users u ON u.id = COALESCE((SELECT v.id FROM users v WHERE v.id = t.viewer_id AND (v.household = 1 OR """ + LINKED + """)), s.user_id)
                  WHERE s.token = ?""", _digest(token))
     if not row:
         return None

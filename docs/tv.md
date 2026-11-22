@@ -105,6 +105,25 @@ A browser won't start sound that nobody pressed a key for, and a phone's press d
 
 A TV left on reloads itself when Parlor was updated, as soon as nothing is playing. While Parlor restarts the remote says **Off**; the TV asks again every 5 seconds until Parlor answers, also when a proxy in front of Parlor answered in its place with an error page.
 
+The Android app on a TV signed in with a password (its own sign-in screen) counts as a TV too: it is your account's TV, your phones list it under **You → TVs**, and like every TV it is never signed in as an admin.
+
+## Adding someone's phone as a remote
+
+Anyone with an account in Parlor can work a TV that shows Parlor already, from their own phone, and be one of its people in **Who's watching**:
+
+1. On the TV open **You → Add a remote**, or **Add someone** in Who's watching. The TV shows a code and a square.
+2. On the phone point the camera at the square (it opens Parlor and asks to sign in if it isn't), or open **You → TVs** and enter the code under **Add a TV**.
+3. The phone asks **Add this account to *owner*'s TV "*name*"?** Say yes only to a TV in front of you. It then lands on that TV's remote.
+4. The TV shows the new person at once, with a fresh code for the next one.
+
+The code works once, for five minutes, and a new one shows up by itself. That account gets this TV only:
+
+- Not the owner's other TVs, and never as an admin.
+- The TV acts as them only when they pick themselves on their own phone's remote. Picking them on the TV's screen asks for their PIN, so without a PIN it can't be done there.
+- Their remote lists only them and the TV's owner, not the rest of the household.
+
+They take themselves off with **Remove** under **You → TVs**. The TV's owner sees them under that TV there, as **Added by its code**, and takes anyone off with the **×** by their name. Unpairing the TV takes everyone off.
+
 A TV page opened before 21 November 2026 doesn't do that last part: after an update it can stay **Off** on the remote while its screen looks fine. Reload it once (restart the TV's browser).
 
 ## Unpairing and safety

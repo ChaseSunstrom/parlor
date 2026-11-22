@@ -24,29 +24,52 @@ async function showTvs(t, [id, all] = []) {
   paint(t, `<section class="home">${aurora}<h1>TVs</h1><p>Open Parlor on a TV at <b>${esc(location.origin)}/tv</b> (or the Android app on Android TV): it shows a code. Enter it here, and this account's phones and computers can play things on that TV and work it as a remote.</p></section>
     <div class="wrap tvs-page">
       <form class="panel tvadd" id="tvAdd"><h3>Add a TV</h3>
+        <ol class="tvadd-ways"><li><b>A TV that shows Parlor already:</b> on the TV open <b>You → Add a remote</b> (or <b>Add someone</b> in Who's watching), then scan its square with this phone's camera or enter its code here.</li>
+          <li><b>A new TV:</b> open <b>${esc(location.origin)}/tv</b> on it (or the Android app), and enter the code it shows, with a name for it.</li></ol>
         <div class="actions"><label class="field"><span>The code on the TV</span><input id="tvAddCode" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD EFGH" required></label>
-        <label class="field grow"><span>Its name</span><input id="tvAddName" maxlength="60" placeholder="Living room" required></label>
-        <button class="primary small">Pair</button></div>
-        <p class="dim">Only enter a code you see on a TV in front of you: that screen gets this account.</p></form>
+        <label class="field grow"><span>A name, for a new TV</span><input id="tvAddName" maxlength="60" placeholder="Living room"></label>
+        <button class="primary small">Add</button></div>
+        <p class="dim">Only enter a code you see on a TV in front of you: that screen and this account get each other.</p></form>
       ${tvs.length ? `<ul class="tvlist">${tvs.map((x) => `<li data-tv="${x.id}"><span class="dot${x.online ? " on" : ""}"></span>
         <div><a href="#/tvs/${x.id}"><b>${esc(x.name)}</b></a><small class="dim">${x.online ? (x.state?.title ? `Playing ${esc(x.state.title)}` : "On") : "Off, or not showing Parlor"}</small></div>
-        <a class="ghost" href="#/tvs/${x.id}">${ICON.tv}Remote</a><button class="ghost danger" data-tv-drop="${x.id}">Unpair</button></li>`).join("")}</ul>`
-        : `<div class="empty-state"><strong>No TVs yet</strong>Pair one above.</div>`}
+        <a class="ghost" href="#/tvs/${x.id}">${ICON.tv}Remote</a>${x.linked ? `<button class="ghost danger" data-tv-unlink="${x.id}">Remove</button>` : `<button class="ghost danger" data-tv-drop="${x.id}">Unpair</button>`}
+        ${x.remotes?.length ? `<p class="tvguests dim">Added by its code: ${x.remotes.map((g) => `<span class="chip">${esc(g.name)}<button class="ghost-round" data-tv-unlink="${x.id}" data-who="${g.id}" data-name="${esc(g.name)}" title="Take ${esc(g.name)} off ${esc(x.name)}" aria-label="Take ${esc(g.name)} off ${esc(x.name)}">${ICON.x}</button></span>`).join(" ")}</p>` : ""}</li>`).join("")}</ul>`
+        : `<div class="empty-state"><strong>No TVs yet</strong>Add one above.</div>`}
       <div class="rhw" id="rHw" hidden></div>
     </div>`);
   api("/api/tv/hw").then(({ sets }) => t === ticket && drawHw(0, sets), () => {});  // the sets themselves need no paired screen
   if (id === "pair" && all) { $("#tvAddCode").value = all.toUpperCase().slice(0, 8); $("#tvAddName").focus(); } // the TV's square was scanned: only its name is left to type
+  if (id === "link" && all) { $("#tvAddCode").value = all.toUpperCase().slice(0, 8); tvLink(all).catch((err) => toast(err.message)); } // a TV's Add a remote square, scanned (after signing in, if this phone wasn't): asked first, by name
   $("#tvAdd").addEventListener("submit", async (e) => {
     e.preventDefault();
+    const code = $("#tvAddCode").value, name = $("#tvAddName").value.trim();
     try {
-      const r = await post("/api/tv/pair", { code: $("#tvAddCode").value, name: $("#tvAddName").value.trim() });
+      return await tvLink(code); // a TV that is on already, adding this account
+    } catch (err) { if (err.status !== 404) return toast(err.message); }
+    if (!name) { toast("That's a new TV's code: give it a name"); return $("#tvAddName").focus(); }
+    try {
+      const r = await post("/api/tv/pair", { code, name });
       toast(`Paired with ${r.name}: it signs in by itself in a moment`);
       setTimeout(route, 2500);
     } catch (err) { toast(err.message); }
   });
 }
 
+/** add this account to a TV that is on, by the code it shows (Add a remote), then open its remote */
+async function tvLink(code) {
+  const { tv } = await post("/api/tv/link", { code, peek: true }); // a link can come from anyone: say whose TV it is and ask, never add in one tap
+  if (!confirm(`Add this account to ${tv.owner}'s TV “${tv.name}”?\n\nThis phone works it as a remote, and when you're picked in its Who's watching, the TV acts as you: your history, your libraries. Only say yes to a TV in front of you.`)) return;
+  const r = await post("/api/tv/link", { code });
+  toast(`Added: this phone works ${r.tv.name} now`);
+  remoteBoot();
+  location.replace(`#/tvs/${r.tv.id}`);
+}
+
 document.addEventListener("click", (e) => {
+  const off = e.target.closest("[data-tv-unlink]");
+  const who = off?.dataset.who; // the owner taking a guest off, or this account taking itself off
+  if (off && confirm(who ? `Take ${off.dataset.name} off this TV? They can't work it or be picked on it until they enter a new code.` : "Take this account off that TV? Its code adds it again."))
+    del(`/api/tv/${off.dataset.tvUnlink}/remotes/${who || ME.id}`).then(route, (err) => toast(err.message));
   const drop = e.target.closest("[data-tv-drop]");
   if (drop && confirm("Unpair this TV? It signs out, and shows a new code.")) del(`/api/tv/${drop.dataset.tvDrop}${drop.hasAttribute("data-tv-all") ? "?everyone=true" : ""}`).then(route, (err) => toast(err.message));
 });

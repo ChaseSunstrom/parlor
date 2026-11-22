@@ -77,6 +77,7 @@ The app is kept on the device by a service worker.
 - **How it works**: the app carries Parlor's page with it and passes its requests on to your server, so everything works as in the browser, saving for offline included, over plain http on your home network.
 - **Music**: it keeps playing with the screen off, with a media notification and lock-screen controls.
 - **Switch servers**: **Settings → This device → Use another Parlor**.
+- **On a TV**: signed in with a password, it becomes your account's TV, so your phone works it as a remote and other accounts add themselves from **You → Add a remote** (see [Adding someone's phone as a remote](tv.md#adding-someones-phone-as-a-remote)).
 - **Test**: `tests/live_android.py` checks it on an Android emulator.
 
 ## iPhone and iPad

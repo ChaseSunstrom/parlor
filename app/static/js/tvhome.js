@@ -376,7 +376,8 @@ async function showWho(t) {
   try { sessionStorage.setItem("parlor:who", "1"); } catch { /* no storage */ } // asked: the restart after a pick doesn't ask again
   const now = p.viewer ?? p.people.find((x) => x.owner)?.id;
   paint(t, `<div class="tvwho" id="tvWho"><h1>Who's watching?</h1>
-    <div class="tvwho-people" id="tvWhoPeople">${p.people.map((x) => `<button data-who="${x.id}"${x.id === now ? ' aria-current="true"' : ""}>${avatar(x.name)}<b>${esc(x.name)}</b><small>${x.pin ? `${ICON.lock}PIN` : "&nbsp;"}</small></button>`).join("")}</div>
+    <div class="tvwho-people" id="tvWhoPeople">${p.people.map((x) => `<button data-who="${x.id}"${x.id === now ? ' aria-current="true"' : ""}>${avatar(x.name)}<b>${esc(x.name)}</b><small>${x.pin ? `${ICON.lock}PIN` : "&nbsp;"}</small></button>`).join("")}
+      <a class="tvwho-add" href="#/tvremote"><span class="avatar">+</span><b>Add someone</b><small>with their phone</small></a></div>
     <div class="tvwho-pin" id="tvWhoPin" hidden><p id="tvWhoFor"></p><div class="tvwho-dots" id="tvWhoDots" aria-live="polite"></div>
       <div class="tvwho-keys">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button data-d="${d}">${d}</button>`).join("")}<button data-d="del" aria-label="Delete">⌫</button><button data-d="0">0</button><button data-d="ok" class="primary">OK</button></div>
       <p class="tvwho-said" id="tvWhoSaid" role="alert"></p></div></div>`);
@@ -413,3 +414,36 @@ async function showWho(t) {
   ($("#tvWho [aria-current]") || $("#tvWho [data-who]")).focus({ preventScroll: true });
 }
 page("who", showWho, "home");
+
+/* ---------- Add a remote: a code and a square that any account's phone opens, to work this TV and be one of its people ---------- */
+
+let tvRemoteTimer = 0;
+async function showTvRemote(t) {
+  if (!tvMe) return go("#/");
+  clearTimeout(tvRemoteTimer);
+  let got = null, error = "";
+  try { got = await post("/api/tv/remote-code"); } catch (err) { error = err.message; }
+  if (t !== ticket) return;
+  const code = got?.code || "";
+  paint(t, `<div class="tvlink" id="tvLink">
+    <div class="tvlink-text"><p class="tvh-kind">Add a remote</p><h1>Use your phone as the remote</h1>
+      <p>Point your phone's camera at the square, or open Parlor on your phone, go to <b>You → TVs</b> and enter this code:</p>
+      <div class="tvcode" id="tvLinkCode" role="img" aria-label="Code ${esc(code.split("").join(" "))}">${esc(code.slice(0, 4))}<i></i>${esc(code.slice(4))}</div>
+      <p class="dim">${error ? esc(error) : "Any account in Parlor can add itself: it works this TV from its phone and shows in Who's watching. The code works once, for five minutes; a new one shows up by itself."}</p>
+      <div class="tvlink-people" id="tvLinkPeople"></div>
+      <button class="primary" id="tvLinkNew">New code</button></div>
+    ${got?.qr ? `<div class="tvqr tvlink-qr" role="img" aria-label="The same code as a square to scan">${got.qr}</div>` : ""}</div>`);
+  showTvRemote.people();
+  $("#tvLinkNew").addEventListener("click", () => route());
+  tvRemoteTimer = setTimeout(() => location.hash.startsWith("#/tvremote") && route(), Math.max(10, (got?.expires || 10) - 5) * 1000);
+}
+/** who can work this TV now: a new face shows the moment a phone adds itself (and the used code is replaced) */
+showTvRemote.people = () => {
+  const box = $("#tvLinkPeople");
+  if (!box) return;
+  const was = box.dataset.n, now = String(tvPeople?.people.length || 0);
+  box.innerHTML = (tvPeople?.people || []).map((x) => `<span>${avatar(x.name)}<b>${esc(x.name)}</b></span>`).join("");
+  box.dataset.n = now;
+  if (was && was !== now) route(); // that code was used: show a fresh one
+};
+page("tvremote", showTvRemote, "you");

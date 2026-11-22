@@ -116,6 +116,7 @@ let tvPairTimer = 0;
 /** after sign-in: a TV's session listens; anyone else learns their TVs, for Play on TV (remote.js) */
 async function tvBoot() {
   tvMe = (await api("/api/tv/me").catch(() => ({}))).tv || null;
+  if (!tvMe && TV_MODE && NATIVE && (tvMe = (await post("/api/tv/adopt", { name: "TV" }).catch(() => ({}))).tv || null)) ME = await api("/api/me"); // now a TV's, so never an admin's // the Android app on a TV, signed in with a password: a TV all the same, so the account's phones can work it (never a browser at /tv: an admin who looks at it keeps their own session)
   if (!tvMe) return remoteBoot();
   if (!TV_MODE) { document.body.classList.add("tv"); tvFit(); route(); tvAwake(); } // a TV's session opened at another address is still a TV
   tvListen();
@@ -128,6 +129,13 @@ async function tvBoot() {
 }
 
 let tvPeople = null; // {people, viewer}: who this TV can act as (tv.py)
+/** someone was added to this TV or taken off: Who's watching and the rail's picture follow, and Add a remote draws again */
+async function tvNewPeople() {
+  tvPeople = await api(`/api/tv/${tvMe.id}/people`).catch(() => tvPeople);
+  if ((tvPeople?.people.length || 0) > 1 && !$("#side [data-g=who]")) $("#side")?.insertAdjacentHTML("beforeend", tvWhoLink());
+  if (location.hash.startsWith("#/tvremote")) showTvRemote.people();
+  else if (location.hash.startsWith("#/who")) route();
+}
 /** start again at Home: the TV acts as someone else now */
 function tvRestart() {
   history.replaceState(null, "", `${location.pathname}#/`);
@@ -146,6 +154,7 @@ function tvListen() {
     const m = JSON.parse(e.data);
     if (m.type === "do") tvDo(m);
     else if (m.type === "viewer" && m.tv === tvMe?.id) tvRestart(); // someone else is watching now: their rows, their place, their limits
+    else if (m.type === "people" && m.tv === tvMe?.id) tvNewPeople(); // a phone added itself, or someone was taken off
   };
   tvStream.onopen = () => { tvReport(true); tvFresh(); }; // it opens again after Parlor restarts: an update, perhaps
 }

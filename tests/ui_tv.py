@@ -37,6 +37,7 @@ core.db()
 auth.create_user("boss", PASSWORD, True)
 auth.create_user("family", PASSWORD, False)
 auth.create_user("kid", PASSWORD, False)  # joins the household at the end (Who's watching)
+auth.create_user("guest", PASSWORD, False)  # never in the household: adds itself to the TV by its Add a remote code
 jfs.point(core)
 folder = Path.cwd() / "The Gulls" / "Harbor"
 folder.mkdir(parents=True, exist_ok=True)
@@ -538,6 +539,38 @@ with sync_playwright() as pw:
         other.goto(BASE + "/#/tvs/pair/abcd2345")
         other.wait_for_function("document.querySelector('#tvAddCode')?.value === 'ABCD2345'", timeout=10000)
         checks["the pairing screen shows a square to scan, and the phone it opens has the code filled in"] = square
+        # Add a remote: a guest outside the household opens the TV's square on a phone that isn't signed in, signs in,
+        # and lands on that TV's remote; the TV's page shows them at once with a fresh code, and Who's watching lists them
+        screen.evaluate("go('#/tvremote')")
+        screen.wait_for_selector("#tvLinkCode", timeout=10000)
+        link = screen.evaluate("document.querySelector('#tvLinkCode').textContent")
+        qr = screen.evaluate("!!document.querySelector('.tvlink-qr svg')")
+        screen.screenshot(path=str(OUT / "tv-add-remote.png"))
+        gctx = b.new_context(viewport={"width": 390, "height": 844}, color_scheme="dark", is_mobile=True, has_touch=True)
+        guest = gctx.new_page()
+        guest.on("pageerror", lambda e: errors.append(f"guest: {e}"))
+        asked = []  # the phone names the TV and its owner and asks before adding itself
+        guest.on("dialog", lambda d: (asked.append(d.message), d.accept()))
+        guest.goto(BASE + f"/#/tvs/link/{link}")
+        guest.wait_for_selector("#gateForm")
+        guest.fill("#gName", "guest")
+        guest.fill("#gPw", PASSWORD)
+        guest.click("#gateForm .primary")
+        guest.wait_for_function(f"location.hash === '#/tvs/{tid}' && !!document.querySelector('#rPad')", timeout=30000)
+        guest.screenshot(path=str(OUT / "guest-remote.png"))
+        screen.wait_for_function(f"document.querySelector('#tvLinkCode') && document.querySelector('#tvLinkCode').textContent !== '{link}'"
+                                 " && tvPeople.people.some((p) => p.name === 'guest')", timeout=15000)
+        screen.evaluate("go('#/who')")
+        screen.wait_for_selector("#tvWho [data-who]", timeout=10000)
+        listed = screen.evaluate("[...document.querySelectorAll('#tvWho [data-who] b')].map((b) => b.textContent)")
+        phone.goto(BASE + "/#/tvs")  # the owner sees who added themselves, with a way to take them off
+        phone.wait_for_selector(".tvguests [data-who]", timeout=10000)
+        owner_sees = phone.evaluate("document.querySelector('.tvguests').textContent.includes('guest')")
+        phone.screenshot(path=str(OUT / "owner-guests.png"))
+        print("add a remote:", len(link), "letters, square:", qr, "| who's watching:", listed, "| owner sees:", owner_sees)
+        checks["a TV's Add a remote: a guest's phone scans its square, signs in and lands on its remote; Who's watching lists them"] = \
+            len(link) == 8 and qr and "guest" in listed and bool(asked) and "family's TV" in asked[0] and owner_sees and screen.evaluate("!!document.querySelector('#tvWho .tvwho-add')")
+        gctx.close()
     b.close()
 server.should_exit = True
 for k, v in checks.items():
@@ -545,6 +578,6 @@ for k, v in checks.items():
 print("page errors:", errors or "none")
 shots = sorted(x.name for x in OUT.glob("*.png"))
 print("screenshots:", ", ".join(shots))
-ok = len(checks) == (35 if REMOTE else 13) and all(checks.values()) and not errors
+ok = len(checks) == (36 if REMOTE else 13) and all(checks.values()) and not errors
 print("RESULT:", "ok" if ok else f"FAIL: {[k for k, v in checks.items() if not v] or ''} {errors or ''} {len(checks)} checks")  # the last line says why: it is what a runner keeps
 sys.exit(0 if ok else 1)

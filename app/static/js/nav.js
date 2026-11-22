@@ -66,7 +66,8 @@ function tabsHtml(at) {
 function youHtml() {
   const you = NAV.find((g) => g.key === "you");
   const tile = ([label, href, note, icon]) => `<a class="you-tile" href="${href}"><span class="ic">${ICON[icon || you.icon]}</span><span><b>${esc(label)}</b><small>${esc(note || "")}</small></span></a>`;
-  return `<div class="you-grid">${you.pages.map(tile).join("")}
+  const pages = you.pages.map((p) => (p[1] === "#/tvs" && tvMe ? ["Add a remote", "#/tvremote", "Work this TV from your phone", "screen"] : p)); // a TV adds phones; a phone adds TVs
+  return `<div class="you-grid">${pages.map(tile).join("")}
       <button class="you-tile" data-logout><span class="ic">${ICON.door}</span><span><b>Sign out</b><small>On this device</small></span></button></div>
     <div class="you-more">${NAV.filter((g) => g.pages && g !== you).map((g) => `<section data-g="${g.key}"><h3>${ICON[g.icon]}${esc(g.label)}</h3>
       ${g.pages.map(([label, href]) => `<a href="${href}">${esc(label)}</a>`).join("")}</section>`).join("")}</div>`;

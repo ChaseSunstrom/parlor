@@ -23,13 +23,13 @@ from pydantic import BaseModel, Field, StringConstraints
 import auth
 import core
 import pwa
-from core import _digest as _hash, db, me, one, rows  # the same digest as sessions.token, which tvs.session points at
+from core import LINKED, _digest as _hash, db, me, one, rows  # the same digest as sessions.token, which tvs.session points at
 
 router = APIRouter(prefix="/api/tv")
 page = APIRouter()  # /tv: the same page, which starts in TV mode there
 ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"  # no 0/O, no 1/I/L: 8 of them is about 40 bits
 CODE_LIFE = 300  # seconds a code lasts
-LIMITS = {"pair": 5, "code": 20, "claim": 120, "hw": 90, "hwtest": 10}  # tries a minute per address (hw: a TV set's buttons, tvhw.py)
+LIMITS = {"pair": 5, "link": 5, "code": 20, "claim": 120, "hw": 90, "hwtest": 10}  # tries a minute per address (hw: a TV set's buttons, tvhw.py)
 PING = 15  # seconds between keep-alives on an event stream (and between checks that its session still stands)
 _tries: dict = defaultdict(list)
 _now = time.time  # the clock (tests move it)
@@ -62,7 +62,7 @@ def new_code(request: Request):
     return {"code": code, "claim": claim, "expires": CODE_LIFE, "qr": _qr(request, code)}
 
 
-def _qr(request: Request, code: str) -> str:
+def _qr(request: Request, code: str, kind: str = "pair") -> str:
     """the pairing code as a square to scan (SVG): a phone's camera opens Parlor at You → TVs with the code filled in, at
     the address this TV opened Parlor by. Empty when that address isn't plain, or the QR library isn't installed."""
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
@@ -72,7 +72,12 @@ def _qr(request: Request, code: str) -> str:
         import segno  # here, so a setup without it loses this picture and nothing else
     except ImportError:
         return ""
-    return segno.make(f"{origin}/#/tvs/pair/{code}", error="m").svg_inline(border=2, omitsize=True)
+    return segno.make(_url(request, code, kind), error="m").svg_inline(border=2, omitsize=True)
+
+
+def _url(request: Request, code: str, kind: str) -> str:
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    return f"{origin}/#/tvs/{kind}/{code}"
 
 
 class Pair(BaseModel):
@@ -115,8 +120,8 @@ def claim(body: Claim, request: Request, response: Response):
 
 def tv_of(token: str) -> Optional[dict]:
     """the TV this session belongs to, if it's a TV's, with who it acts as now (viewer: None while that is its owner)"""
-    t = one("""SELECT t.id, t.user_id, t.name, v.id AS vid, v.name AS vname FROM tvs t
-               LEFT JOIN users v ON v.id = t.viewer_id AND v.household = 1 WHERE t.session = ?""", _hash(token)) if token else None
+    t = one(f"""SELECT t.id, t.user_id, t.name, v.id AS vid, v.name AS vname FROM tvs t
+               LEFT JOIN users v ON v.id = t.viewer_id AND (v.household = 1 OR {LINKED}) WHERE t.session = ?""", _hash(token)) if token else None
     return t and {"id": t["id"], "user_id": t["user_id"], "name": t["name"], "viewer": {"id": t["vid"], "name": t["vname"]} if t["vid"] else None}
 
 
@@ -137,30 +142,40 @@ def household(user_id: int) -> bool:
 
 
 def _viewer(tid: int) -> Optional[int]:
-    """who the TV acts as (a household account), None while it is its owner"""
-    v = one("SELECT v.id FROM tvs t JOIN users v ON v.id = t.viewer_id AND v.household = 1 WHERE t.id = ?", tid)
+    """who the TV acts as (a household account, or one added to it), None while it is its owner"""
+    v = one(f"SELECT v.id FROM tvs t JOIN users v ON v.id = t.viewer_id AND (v.household = 1 OR {LINKED}) WHERE t.id = ?", tid)
     return v and v["id"]
 
 
 def audience(tid: int) -> set:
-    """the accounts that hear a TV and may drive it: its owner, and the rest of the household when the owner is part of it
-    (a TV paired by someone outside the household stays theirs alone). The viewer is always one of them."""
+    """the accounts that hear a TV and may drive it: its owner, the accounts added to it by its code, and the rest of the
+    household when the owner is part of it (a TV paired by someone outside the household stays theirs and their guests').
+    The viewer is always one of them."""
     t = one("SELECT t.user_id, u.household FROM tvs t JOIN users u ON u.id = t.user_id WHERE t.id = ?", tid)
     if not t:
         return set()
-    return {t["user_id"]} | ({r["id"] for r in rows("SELECT id FROM users WHERE household = 1")} if t["household"] else set())
+    return ({t["user_id"]} | {r["user_id"] for r in rows("SELECT user_id FROM tv_remotes WHERE tv_id = ?", tid)}
+            | ({r["id"] for r in rows("SELECT id FROM users WHERE household = 1")} if t["household"] else set()))
+
+
+def _guest(t: dict, uid: int) -> bool:
+    """uid hears this TV only because they added themselves by its code: neither its owner nor household with it"""
+    return uid != t["user_id"] and not (household(uid) and household(t["user_id"]))
 
 
 @router.get("")
 def my_tvs(everyone: bool = False, user=Depends(me)):
     """this account's TVs, and the household's for an account that is part of it; an admin asks for everyone's (Settings → TVs)"""
     every = everyone and user["admin"]
-    found = rows("""SELECT t.id, t.name, t.user_id, t.created, u.name AS owner, v.id AS vid, v.name AS vname FROM tvs t
-                    JOIN users u ON u.id = t.user_id LEFT JOIN users v ON v.id = t.viewer_id AND v.household = 1"""
-                 + ("" if every else " WHERE t.user_id = ? OR (u.household = 1 AND ?)") + " ORDER BY t.created",
-                 *(() if every else (user["id"], household(user["id"]))))
+    found = rows(f"""SELECT t.id, t.name, t.user_id, t.created, u.name AS owner, v.id AS vid, v.name AS vname,
+                       EXISTS (SELECT 1 FROM tv_remotes r WHERE r.tv_id = t.id AND r.user_id = ?) AS linked FROM tvs t
+                    JOIN users u ON u.id = t.user_id LEFT JOIN users v ON v.id = t.viewer_id AND (v.household = 1 OR {LINKED})"""
+                 + ("" if every else " WHERE t.user_id = ? OR (u.household = 1 AND ?) OR t.id IN (SELECT tv_id FROM tv_remotes WHERE user_id = ?)")
+                 + " ORDER BY t.created", user["id"], *(() if every else (user["id"], household(user["id"]), user["id"])))
     for t in found:
-        t.update(online=hub.online(t["id"]), state=hub.state.get(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
+        if every or t["user_id"] == user["id"]:  # the owner sees who added themselves, to take them off
+            t["remotes"] = rows("SELECT u.id, u.name FROM tv_remotes r JOIN users u ON u.id = r.user_id WHERE r.tv_id = ? ORDER BY u.name", t["id"])
+        t.update(linked=bool(t["linked"]) and t["user_id"] != user["id"], online=hub.online(t["id"]), state=hub.state.get(t["id"]), viewer={"id": t.pop("vid"), "name": t.pop("vname")} if t["vid"] else None)
     return {"tvs": found}
 
 
@@ -183,14 +198,85 @@ async def unpair(tid: int, everyone: bool = False, user=Depends(me)):
     return {"ok": True}
 
 
+# --- adding a remote: a TV that is already on, and a phone of any account ---------------------
+
+@router.post("/remote-code")
+def remote_code(request: Request, user=Depends(me)):
+    """A TV's Add a remote: a code (and a square that opens it) a signed-in phone enters to add its account to this TV.
+    Only a TV's own session asks; a newer code replaces its last one; it lasts as long as a pairing code, and works once."""
+    t = tv_of(core.session_cookie(request))
+    if not t:
+        raise HTTPException(403, "Only a TV shows a code to add a remote")
+    _throttle(request, "code")
+    code, now = "".join(secrets.choice(ALPHABET) for _ in range(8)), _now()
+    db().execute("DELETE FROM tv_links WHERE tv_id = ? OR created < ?", (t["id"], now - CODE_LIFE))
+    db().execute("INSERT INTO tv_links(code, tv_id, created) VALUES (?, ?, ?)", (_hash(code), t["id"], now))
+    return {"code": code, "expires": CODE_LIFE, "url": _url(request, code, "link"), "qr": _qr(request, code, "link")}
+
+
+class Adopt(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)] = "TV"
+
+
+@router.post("/adopt")
+def adopt(body: Adopt, request: Request, user=Depends(me)):
+    """A TV that was signed in with a password (the Android app's own sign-in) becomes this account's TV, as if it had been
+    paired: the account's phones list it and work it as a remote, it can show a code to add other accounts, and like every
+    TV its session is never an admin's. A session that is a TV's already keeps its TV."""
+    token = core.session_cookie(request)
+    if not token or request.headers.get("x-api-key"):  # the cookie's own account, never a key's
+        raise HTTPException(403, "Only a signed-in screen can become a TV")
+    if not tv_of(token):
+        db().execute("INSERT OR IGNORE INTO tvs(user_id, name, session, created) VALUES (?, ?, ?, ?)", (user["id"], body.name, _hash(token), _now()))
+    return {"tv": tv_of(token)}
+
+
+class Link(BaseModel):
+    code: str = Field(max_length=20)
+    peek: bool = False  # only say whose TV it is: the phone asks its person before the TV may act as them
+
+
+@router.post("/link")
+def link(body: Link, request: Request, user=Depends(me)):
+    """A signed-in phone enters (or scans) a TV's remote code: its account hears this TV, drives it and is one of its people,
+    so that TV can act as them when they're picked. With peek, it only says whose TV it is (the code stays): a link sent by
+    someone else must never add an account in one tap, so the phone shows the TV and its owner and asks first."""
+    _throttle(request, "link")  # its own bucket: the phone tries a code as a link, then as a pairing
+    code = _hash("".join(c for c in body.code.upper() if c in ALPHABET))
+    sql = "SELECT tv_id FROM tv_links WHERE code = ? AND created >= ?" if body.peek else "DELETE FROM tv_links WHERE code = ? AND created >= ? RETURNING tv_id"
+    row = one(sql, code, _now() - CODE_LIFE)
+    if not row:
+        raise HTTPException(404, "That code isn't right, or it has run out: the TV shows a fresh one")
+    t = one("SELECT t.id, t.name, t.user_id, u.name AS owner FROM tvs t JOIN users u ON u.id = t.user_id WHERE t.id = ?", row["tv_id"])
+    if body.peek:
+        return {"tv": {"id": t["id"], "name": t["name"], "owner": t["owner"]}}
+    if t["user_id"] != user["id"]:
+        db().execute("INSERT OR IGNORE INTO tv_remotes(tv_id, user_id, created) VALUES (?, ?, ?)", (t["id"], user["id"], _now()))
+    hub.tell_tv(t["id"], {"type": "people", "tv": t["id"]})  # the TV's Who's watching and Add a remote draw again
+    return {"tv": {"id": t["id"], "name": t["name"]}}
+
+
+@router.delete("/{tid}/remotes/{uid}")
+def unlink(tid: int, uid: int, everyone: bool = False, user=Depends(me)):
+    """an account takes itself off a TV it was added to; the TV's owner (or an admin from Settings → TVs) takes anyone off"""
+    t = _mine(tid, user, everyone, owner=uid != user["id"])
+    if not db().execute("DELETE FROM tv_remotes WHERE tv_id = ? AND user_id = ?", (tid, uid)).rowcount:
+        raise HTTPException(404, "They weren't added to this TV")
+    hub.tell_tv(tid, {"type": "people", "tv": tid}, {uid})
+    if db().execute("UPDATE tvs SET viewer_id = NULL WHERE id = ? AND viewer_id = ?", (tid, uid)).rowcount:
+        hub.tell_tv(tid, {"type": "viewer", "tv": tid, "viewer": None}, {uid})  # the TV stops showing their rows
+    return {"ok": True}
+
+
 # --- who the TV is for ----------------------------------------------------------------------
 
 @router.get("/{tid}/people")
 def people(tid: int, everyone: bool = False, user=Depends(me)):
     """who this TV can act as: its owner and the household, and whether each has a PIN (the TV's own picker and a remote's)"""
     t = _mine(tid, user, everyone)
+    them = {t["user_id"], user["id"]} if _guest(t, user["id"]) and not (everyone and user["admin"]) else audience(tid)  # a guest: not the household's names
     found = [p for p in rows("SELECT id, name, pin IS NOT NULL AS pin, id = ? AS owner FROM users ORDER BY owner DESC, name", t["user_id"])
-             if p["id"] in audience(tid)]
+             if p["id"] in them]
     return {"people": [{**p, "pin": bool(p["pin"]), "owner": bool(p["owner"])} for p in found], "viewer": _viewer(tid)}
 
 
@@ -207,7 +293,14 @@ def _pick(t: dict, body: Pick, user: dict, by_tv: bool, address: str) -> Optiona
     row = one("SELECT id, name, pin FROM users WHERE id = ?", target) if target in audience(t["id"]) else None
     if not row:
         raise HTTPException(404, "They aren't part of the household")
-    if row["pin"] and target != (_viewer(t["id"]) or owner) and (by_tv or user["id"] != target):
+    someone_else = by_tv or user["id"] != target
+    # a guest is picked only from their own phone or with their PIN (else whoever holds the TV acts as them); a guest picks
+    # only themselves and the owner unless they know the person's PIN
+    asked = target != (_viewer(t["id"]) or owner) and someone_else and (
+        row["pin"] or _guest(t, target) or (not by_tv and target != owner and _guest(t, user["id"])))
+    if asked and not row["pin"]:
+        raise HTTPException(403, f"{row['name']} picks themselves, on their own phone (or sets a PIN to be picked here)")
+    if asked:
         keys = (f"pin:{target}", f"pinip:{address}")  # wrong tries count against the person and against the address
         if auth._throttled(*keys):
             raise HTTPException(429, "Too many wrong PINs. Wait a few minutes and try again.")
@@ -227,10 +320,7 @@ async def pick_viewer(tid: int, body: Pick, request: Request, everyone: bool = F
     token, address = core.session_cookie(request), request.client.host if request.client else "?"
     t = await anyio.to_thread.run_sync(_mine, tid, user, everyone)
     viewer = await anyio.to_thread.run_sync(lambda: _pick(t, body, user, bool(tv_of(token)), address))
-    msg = {"type": "viewer", "tv": tid, "viewer": viewer}
-    for q in hub.tvs.get(tid, ()):  # the TV reloads what it shows for the new person
-        _put(q, msg)
-    hub.tell(await anyio.to_thread.run_sync(audience, tid), msg)
+    await anyio.to_thread.run_sync(hub.tell_tv, tid, {"type": "viewer", "tv": tid, "viewer": viewer})  # the TV reloads what it shows for the new person
     return {"ok": True, "viewer": viewer}
 
 
@@ -256,6 +346,12 @@ class Hub:
         """to the remotes of these accounts (a TV's audience) and Settings → TVs"""
         for q in [*(q for u in users for q in self.remotes.get(u, ())), *self.everyone]:
             _put(q, msg)
+
+    def tell_tv(self, tid: int, msg: dict, also=()):
+        """to the TV itself, its audience's remotes (and these accounts', who just left it) and Settings → TVs"""
+        for q in self.tvs.get(tid, ()):
+            _put(q, msg)
+        self.tell(audience(tid) | set(also), msg)
 
     def close_tv(self, tid: int):
         for q in self.tvs.pop(tid, ()):

@@ -70,7 +70,7 @@ PUBLIC = {"/api/health", "/api/auth/state", "/api/auth/login", "/api/auth/setup"
 # what a TV's session never does, whoever it acts as: it sits in the living room, and its owner or the person picked on it
 # manages their account from their own phone (passwords, PINs, keys, other devices, pairing more screens)
 TV_NEVER = ("/api/me/sessions", "/api/me/api-keys", "/api/me/app-passwords", "/api/me/password", "/api/me/pin", "/api/me/youtube-cookies",
-            "/api/auth/logout-everywhere", "/api/tv/pair")
+            "/api/auth/logout-everywhere", "/api/tv/pair", "/api/tv/link")
 
 
 @app.middleware("http")
