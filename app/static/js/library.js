@@ -341,7 +341,7 @@ function stopJf() {
   jfStop(s.p);
   dockKeys();
 }
-addEventListener("hashchange", () => { if (!location.hash.startsWith("#/jf/play/")) stopJf(); });
+addEventListener("hashchange", () => { if (!location.hash.startsWith("#/jf/play/") && !inMini(jfp?.video)) stopJf(); }); // small in the corner: it plays on
 
 async function attach(video, url, at, s) {
   s.hls?.destroy();
@@ -403,6 +403,7 @@ async function showJfPlay(t, [id, from]) {
       <span class="grow"></span><span class="stat" id="jfStat"></span>
       ${tvButton("data-cast-jf", x.id)}
       ${next ? `<a class="ghost" href="#/jf/play/${esc(next.id)}/start" title="Next episode (N)">${ICON.next}Next episode</a>` : ""}
+      <button class="ghost icon" data-mini-ask title="Small, in the corner (I)" aria-label="Keep watching small, in the corner">${ICON.mini}</button>
       <button class="ghost icon" id="jfFull" title="Full screen (F)" aria-label="Full screen">${ICON.full}</button>
     </div>
     <div class="vinfo"><h1>${esc(title)}</h1>
@@ -478,7 +479,7 @@ async function showJfPlay(t, [id, from]) {
   $("#jfAudio").addEventListener("change", (e) => load({ audio_index: +e.target.value, transcode: true, start: video.currentTime }));
   $("#jfQuality").addEventListener("change", (e) => load({ max_bitrate: +e.target.value || undefined, transcode: !!e.target.value, start: video.currentTime, audio_index: +$("#jfAudio").value || undefined }));
   $("#jfChapters").addEventListener("change", (e) => { if (e.target.value !== "") video.currentTime = +e.target.value; e.target.value = ""; });
-  const full = () => (document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.().catch(() => {}));
+  const full = () => fullToggle(box, video);
   $("#jfFull").addEventListener("click", full);
   doubleTap(box, (d) => (video.currentTime += d), full);
   // Skip intro / Skip credits: only inside a part Jellyfin found (10.10 and later), and not once you've skipped it
@@ -506,7 +507,7 @@ async function showJfPlay(t, [id, from]) {
   video.addEventListener("error", () => s.fail(video.error?.message || "the browser can't play this file"));
   video.addEventListener("ended", () => {
     s.save(true);
-    if (!next) return;
+    if (!next || inMini(video)) return; // small in the corner: up next would take the page away
     let n = 8;
     overlay(`<p>Up next</p><strong>${esc(epCode(next))} · ${esc(next.name)}</strong><p class="count" id="jfCount">in ${n}</p>
       <div class="actions"><a class="primary" href="#/jf/play/${esc(next.id)}/start">${ICON.play}Play now</a><button class="ghost" id="jfStay">Stay here</button></div>`);
@@ -515,10 +516,10 @@ async function showJfPlay(t, [id, from]) {
     s.countdown = setTimeout(tick, 1000);
   });
   s.keys = (e) => {
-    if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || inMini(video)) return;
     const act = { " ": () => (video.paused ? video.play() : video.pause()), k: () => (video.paused ? video.play() : video.pause()),
       ArrowLeft: () => (video.currentTime -= 10), ArrowRight: () => (video.currentTime += 10), j: () => (video.currentTime -= 10), l: () => (video.currentTime += 10),
-      f: full, m: () => { video.muted = !video.muted; }, N: () => next && go(`#/jf/play/${next.id}/start`) }[e.key];
+      f: full, i: miniSmall, m: () => { video.muted = !video.muted; }, N: () => next && go(`#/jf/play/${next.id}/start`) }[e.key];
     if (act && !(e.key === " " && document.activeElement === video)) { e.preventDefault(); act(); }
   };
   document.addEventListener("keydown", s.keys);

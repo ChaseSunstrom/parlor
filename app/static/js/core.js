@@ -59,6 +59,8 @@ const ICON = {
   pad: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 7h9a5 5 0 0 1 4.9 6l-.8 3.6a2.6 2.6 0 0 1-4.4 1.2L13.9 16h-3.8l-2.3 1.8a2.6 2.6 0 0 1-4.4-1.2L2.6 13A5 5 0 0 1 7.5 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7.5 10v4M5.5 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="15.5" cy="11" r="1.2" fill="currentColor"/><circle cx="17.8" cy="13.2" r="1.2" fill="currentColor"/></svg>',
   screen: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 21h8M12 17v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   wide: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  mini: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor"/></svg>',
+  unmini: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15 15 8.5 8.5M8.5 13V8.5H13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   full: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   disc: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>',
   pause: '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 5.5h3v13h-3zM13.5 5.5h3v13h-3z" fill="currentColor"/></svg>',
@@ -283,6 +285,77 @@ function go(hash) {
   else location.hash = hash; // fires hashchange -> route()
 }
 
+/* The small player (T-0218): a film or video left while it plays keeps playing in the corner as Parlor is used. Its whole
+   page moves aside alive (listeners, timers, the buffer, a YouTube video's own sound) and comes back as it was when its
+   page is opened again. On a TV only its Small button does it: Back is how a film is left there. This listener is the
+   first on hashchange, so a player's own "stop when its page is left" sees it gone small. */
+const MINI_FROM = /^#\/(watch|jf\/play)\//;
+let mini = null, miniAsk = false, miniBack = null, miniLeft = "#/";
+const inMini = (el) => !!el?.closest?.("#mini");
+function miniOff() { // closed: its film stops and keeps its place
+  if (!mini) return;
+  mini.box.remove();
+  mini = null;
+  globalThis.stopPlayer?.(); globalThis.stopJf?.();
+}
+function miniSmall() { // the Small button, or I: back to where the film was opened from, the film along in the corner
+  miniAsk = true;
+  go(miniLeft);
+}
+addEventListener("hashchange", (e) => {
+  const was = new URL(e.oldURL).hash, now = location.hash, asked = miniAsk;
+  miniAsk = false;
+  if (!MINI_FROM.test(was) && !MINI_FROM.test(now)) miniLeft = now;
+  else if (!MINI_FROM.test(was)) miniLeft = was;
+  if (mini && now === mini.hash) { // its page again: put it back
+    stage.replaceChildren(...mini.box.querySelector(".minipage").childNodes);
+    mini.box.remove();
+    mini = null;
+    miniBack = now;
+    return;
+  }
+  if (MINI_FROM.test(now)) return miniOff(); // another film: one plays at a time
+  const v = MINI_FROM.test(was) && !mini && stage.querySelector(".player video");
+  if (!v || v.ended || !(asked || (!document.body.classList.contains("tv") && (!v.paused || v.currentTime > 1)))) return;
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  const box = document.createElement("div");
+  box.id = "mini";
+  box.className = v.paused ? "paused" : "";
+  box.innerHTML = `<div class="minibar" role="group" aria-label="The small player">
+    <button class="ghost icon" data-mini="full" title="Back to full size" aria-label="Back to full size">${ICON.unmini}</button>
+    <button class="ghost icon" data-mini="play" title="Play or pause" aria-label="Play or pause"><span class="minipause">${ICON.pause}</span><span class="miniplay">${ICON.play}</span></button>
+    <button class="ghost icon" data-mini="close" title="Close" aria-label="Close">${ICON.x}</button></div><div class="minipage"></div>`;
+  box.lastChild.append(...stage.childNodes);
+  document.body.append(box);
+  mini = { hash: was, box, v };
+});
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-mini]");
+  if (!b || !mini) return;
+  const act = b.dataset.mini, v = mini.v;
+  if (act === "full") go(mini.hash);
+  else if (act === "play") v.paused ? v.play().catch(() => {}) : v.pause();
+  else miniOff();
+});
+document.addEventListener("click", (e) => { if (e.target.closest("[data-mini-ask]")) miniSmall(); });
+for (const k of ["play", "pause"]) document.addEventListener(k, (e) => { if (e.target === mini?.v) mini.box.classList.toggle("paused", k === "pause"); }, true);
+/** full screen in and out on the player's box, with a way out on it (the page's own buttons stay behind); an iPhone has only the video's own */
+function fullToggle(box, video) {
+  if (document.fullscreenElement) return document.exitFullscreen().catch(() => {});
+  if (!box.requestFullscreen) return video?.webkitEnterFullscreen?.();
+  if (!box.querySelector(".fsexit")) box.insertAdjacentHTML("beforeend", `<button class="fsexit ghost icon" data-fs-exit title="Leave full screen (F or Esc)" aria-label="Leave full screen">${ICON.x}</button>`);
+  box.requestFullscreen().catch(() => {});
+}
+document.addEventListener("click", (e) => { if (e.target.closest("[data-fs-exit]")) document.exitFullscreen().catch(() => {}); });
+let fsTimer = 0;
+for (const k of ["pointermove", "pointerdown"]) document.addEventListener(k, () => { // the way out shows as the pointer moves, and goes a moment after
+  const f = document.fullscreenElement;
+  if (!f?.querySelector(".fsexit")) return;
+  f.classList.add("fsawake");
+  clearTimeout(fsTimer);
+  fsTimer = setTimeout(() => f.classList.remove("fsawake"), 2500);
+}, { passive: true });
+
 async function route() {
   const t = ++ticket;
   const [, view = "", ...rest] = location.hash.split("/");
@@ -295,6 +368,8 @@ async function route() {
   closeMenus();
   document.querySelector("dialog[open]")?.close();  // Back with a question open: it goes with its page, unanswered
   if (!(PAGES[view] && /search/.test(location.hash))) input.value = "";
+  if (miniBack === location.hash) { miniBack = null; $("#pages").hidden = true; tvLand(); return; } // the small player came back: its page is already here
+  miniBack = null;
   stage.innerHTML = `<div class="note">${SPIN}</div>`;  // the row of pages stays as it was until the page itself paints
   try {
     await entry.fn(t, parts);

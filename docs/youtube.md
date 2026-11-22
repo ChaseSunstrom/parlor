@@ -20,7 +20,9 @@ The player streams through your server:
 
 - **SponsorBlock**: sponsors, self-promotion and "like and subscribe" segments are skipped (with Undo), and the seek bar shows every marked segment, the chapters and YouTube's "most replayed" curve. Choose categories in Settings. Lookups use a hash prefix, so SponsorBlock never learns which video you're watching.
 - **Resume**: videos pick up where you left off, on any device.
-- **Keys**: Space or K to play and pause, J and L to skip 10 s, ← and → for 5 s, ↑ and ↓ for volume, M to mute, F for full screen, T for theater mode, C for captions, < and > for speed, 0–9 to jump, Shift+N for the next video, / to search.
+- **Keys**: Space or K to play and pause, J and L to skip 10 s, ← and → for 5 s, ↑ and ↓ for volume, M to mute, F for full screen, T for theater mode, I for the small player, C for captions, < and > for speed, 0–9 to jump, Shift+N for the next video, / to search.
+- **Small, in the corner**: leave a film or video while it plays and it keeps playing small in the bottom-right corner as you use the rest of Parlor. Its buttons pause it, put it back full size on its own page (Back does too) and close it, which stops it and keeps its place. The corner-picture button beside full screen, or I, does it on purpose; on a TV that button is the only way, since Back leaves a film there.
+- **Full screen**: the button on the picture's top right (it shows when the pointer moves), F or Esc leaves it.
 - **Live streams** play here too, with going back and Go live: see [Live](#live).
 
 ## Browsing

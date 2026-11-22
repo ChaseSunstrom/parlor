@@ -38,8 +38,10 @@ Parlor on a TV is laid out for a couch and a remote: everything is bigger, there
   |---|---|
   | OK | Pause, play |
   | Left, Right | Back or on 10 seconds |
-  | Down | Sound, subtitles, quality and the rest. OK on a list steps to its next choice; Up or Back returns to the film |
+  | Down | Sound, subtitles, quality, full screen, **Small** and the rest. OK on a list steps to its next choice; Up or Back returns to the film |
   | Back | Leaves the film |
+
+  **Small**, in the options, keeps the film playing in the bottom-right corner while you go back to where you opened it; the arrows reach its buttons (back to full size, pause, close). Back alone always leaves the film.
 
   When **Skip intro** or **Up next** shows, OK presses it.
 - **A film that stutters**: the TV asks for a lighter stream by itself when it drops more than 15 in 100 frames for ten seconds, and says so. Quality in the options puts it back.

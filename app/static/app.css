@@ -1111,7 +1111,7 @@ body.tv .tvkeygrid button:focus { outline: none; box-shadow: none; background: v
 .tvidle span { font-size: 24px; font-weight: 600; }
 .tvidle small:empty { display: none; }
 /* burn-in care (tvhome.js): the chrome moves a few pixels every three minutes; two quiet minutes dim the screen */
-body.tv :is(.side, .dock, .tvh-clock, .tvh-hero, .tvh-row h2, .chips.subnav, .tvosd-top, .tvosd-bot, .tvosd-hint, .tvwho, .tvlink) { translate: var(--pxy, none); transition: translate 4s ease; } /* none at rest: a translate, even 0, holds fixed children to it */
+body.tv :is(.side, .dock, .tvh-clock, .tvh-hero, .tvh-row h2, .chips.subnav, .tvosd-top, .tvosd-bot, .tvosd-hint, .tvwho, .tvlink, #mini .minibar) { translate: var(--pxy, none); transition: translate 4s ease; } /* none at rest: a translate, even 0, holds fixed children to it */
 .tvdim { position: fixed; inset: 0; z-index: 85; background: #000; opacity: 0; pointer-events: none; transition: opacity .3s ease; }
 body.tvdimmed .tvdim { opacity: .55; transition-duration: 3s; }
 /* the slideshow: each picture fades in over the last while it pans and zooms, dimmed (an OLED rests, and the card reads) */
@@ -1319,6 +1319,30 @@ body.tv :is(#appKeys, #apiKeys, #devices, #account, #cookies, #pinPanel) { displ
 .tvbar b, .tvbar small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tvbar small { color: var(--dim); font-size: .78rem; }
 .tvbar .icon-btn { flex: none; color: var(--text); }
+
+/* ---------- the small player: a film left while it plays, in the corner (T-0218); its page is kept, unseen ---------- */
+#mini { --mw: min(400px, calc(100vw - 32px)); --mb: calc(20px + env(safe-area-inset-bottom)); position: fixed; z-index: 28; right: 0; bottom: 0; width: 0; height: 0; visibility: hidden; }
+#mini .minipage { position: fixed; inset: 0; overflow: hidden; }
+#mini .player { visibility: visible; position: fixed; z-index: 1; right: 16px; bottom: var(--mb); width: var(--mw); height: auto; max-height: none; aspect-ratio: 16 / 9; margin: 0;
+  border-radius: 12px; box-shadow: 0 22px 60px -14px rgb(0 0 0 / .7), 0 0 0 1px var(--line); animation: minin .3s var(--lift, ease); }
+#mini .player video { width: 100%; height: 100%; max-height: none; object-fit: contain; }
+#mini .minibar { visibility: visible; position: fixed; z-index: 1; right: 16px; bottom: calc(var(--mb) + var(--mw) * 9 / 16 + 8px); display: flex; gap: 4px; padding: 4px; border-radius: 12px;
+  background: color-mix(in oklab, var(--bg) 82%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 0 0 1px var(--line); animation: minin .3s var(--lift, ease); }
+#mini:not(.paused) .miniplay, #mini.paused .minipause { display: none; }
+@keyframes minin { from { opacity: 0; translate: 0 16px; } }
+@media (prefers-reduced-motion: reduce) { #mini .player, #mini .minibar { animation: none; } }
+body.docked #mini { --mb: calc(104px + env(safe-area-inset-bottom)); }
+@media (max-width: 899px) {
+  #mini { --mw: min(260px, calc(100vw - 32px)); --mb: calc(84px + env(safe-area-inset-bottom)); }
+  body.docked #mini { --mb: calc(168px + env(safe-area-inset-bottom)); }
+}
+body.tv #mini { --mw: 420px; --mb: 40px; }
+body.tv.docked #mini { --mb: 124px; }
+.fsexit { display: none; }
+.player:fullscreen .fsexit { display: grid; place-items: center; position: absolute; z-index: 5; top: 20px; right: 20px; width: 48px; height: 48px; border-radius: 50%;
+  color: #fff; background: rgb(0 0 0 / .45); opacity: 0; transition: opacity .25s ease; }
+.player:fullscreen.fsawake .fsexit, .player:fullscreen .fsexit:focus-visible { opacity: 1; } /* comes as the pointer moves, goes 2.5 s after: nothing stays lit on the picture */
+body.tv #mini .player, body.tv #mini .minibar { right: 48px; }
 body.docked .tvbar { bottom: 104px; }
 @media (max-width: 760px) { .tvbar { bottom: calc(70px + env(safe-area-inset-bottom)); } body.docked .tvbar { bottom: calc(142px + env(safe-area-inset-bottom)); } }
 .rhw { display: grid; gap: 12px; padding: 16px 0; border-block: 1px solid var(--line); }

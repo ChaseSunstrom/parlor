@@ -172,7 +172,7 @@ async function tvFresh() {
 
 /** what's playing on this TV, if anything: a video on the page, else the dock */
 function tvPlayer() {
-  const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
+  const v = [...document.querySelectorAll("#view video, #mini video")].find(tvShown); // a film, a video, a saved or private one, or one small in the corner
   return v || (dock.queue.length ? dock.audio : null);
 }
 /** not to be reloaded now: a song playing, or a film or video open, paused or not (it keeps its place until it is left) */
@@ -307,7 +307,7 @@ function tvReport(now = false) {
   if (tvBlocked && tvBlocked.paused === false) { tvBlocked = null; $("#tvAsk")?.remove(); } // the music dock's player isn't on the page: its "playing" isn't heard there
   const p = tvPlayer(), x = p === dock.audio ? dock.queue[dock.at] : null;
   const state = {
-    page: location.hash || "#/", title: x?.title || (p ? $(".vinfo h1, .jplay h1, .offline-video h1, .hero h1")?.textContent || "" : ""),
+    page: location.hash || "#/", title: x?.title || (p ? (p.closest("#mini") || document).querySelector(".vinfo h1, .jplay h1, .offline-video h1, .hero h1")?.textContent || "" : ""),
     by: x?.by || "", kind: p ? (p === dock.audio ? "audio" : "video") : null, playing: !!p && !p.paused, at: p ? Math.floor(p.currentTime || 0) : 0,
     length: p && isFinite(p.duration) ? Math.floor(p.duration) : 0, volume: p ? Math.round(p.volume * 100) / 100 : 1,
     ...(p?.muted ? { muted: true } : {}), ...(tvBlocked ? { blocked: true } : {}), ...tvAck,

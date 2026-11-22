@@ -345,7 +345,7 @@ function tvAwake() {
   return !!idle; // the key that woke it does nothing else
 }
 function tvIdle() {
-  const v = [...document.querySelectorAll("#view video")].find(tvShown); // a film, a video, a saved or private one
+  const v = [...document.querySelectorAll("#view video, #mini video")].find(tvShown); // a film, a video, a saved or private one, or one small in the corner
   if (!onTv() || $("#gate")?.childElementCount || (v && !v.paused)) return tvAwake(); // a film playing is not idle
   if (!$("#tvIdle")) {
     document.body.insertAdjacentHTML("beforeend", `<div class="tvidle bare" id="tvIdle"><div class="tvidle-art"></div><div class="tvidle-card"><small></small><b></b><span></span></div></div>`);
@@ -357,7 +357,7 @@ function tvIdle() {
 }
 /** two quiet minutes: the screen dims, a paused film too, before the pictures come at five; a film that plays never dims */
 function tvDim() {
-  const v = [...document.querySelectorAll("#view video")].find(tvShown);
+  const v = [...document.querySelectorAll("#view video, #mini video")].find(tvShown);
   if (v && !v.paused) return (tvDimTimer = setTimeout(tvDim, tvDimAfter));
   if (!$("#tvDim")) document.body.insertAdjacentHTML("beforeend", `<div class="tvdim" id="tvDim"></div>`);
   void $("#tvDim").offsetWidth; // so it fades in

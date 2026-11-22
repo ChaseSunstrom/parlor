@@ -29,7 +29,9 @@ Library plays what Jellyfin has, inside Parlor, with Parlor's login. Each person
 - **Conversions end when you leave**: closing the player, opening another film or picking another quality tells Jellyfin to stop converting the last one, so a server with one graphics card isn't still busy with it when the next film starts.
 - **Quality**: the quality menu asks for a lower bitrate when you're away from home.
 - **Menus**: audio tracks, subtitles and chapters have menus.
-- **Keys**: Space or K, J and L or ← and → for 10 s, F for full screen, M to mute, Shift+N for the next episode.
+- **Keys**: Space or K, J and L or ← and → for 10 s, F for full screen, I for the small player, M to mute, Shift+N for the next episode.
+- **Small, in the corner**: leave a film or video while it plays and it keeps playing small in the bottom-right corner as you use the rest of Parlor. Its buttons pause it, put it back full size on its own page (Back does too) and close it, which stops it and keeps its place. The corner-picture button beside full screen, or I, does it on purpose; on a TV that button is the only way, since Back leaves a film there.
+- **Full screen**: the button on the picture's top right (it shows when the pointer moves), F or Esc leaves it.
 - **Skip intro**: on Jellyfin 10.10 or later, which finds intros and credits itself, a **Skip intro** or **Skip credits** button shows while one plays and jumps past it. An older Jellyfin, or a title it found none in, shows no button.
 - **Double-tap**: on a touch screen, double-tap the left or right of the picture to go back or forward 10 s, and the middle for full screen. The bar at the bottom is the browser's own. With a mouse, double-click is full screen.
 

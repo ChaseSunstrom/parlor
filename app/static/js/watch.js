@@ -500,6 +500,7 @@ async function showWatch(t, [id, at]) {
         ${segments.some((s) => s.category === "poi_highlight") ? `<button class="ghost" id="highlight">Jump to highlight</button>` : ""}
         <span class="grow"></span>
         <span class="stat" id="stat"></span>
+        <button class="ghost icon" data-mini-ask title="Small, in the corner (I)" aria-label="Keep watching small, in the corner">${ICON.mini}</button>
         <button class="ghost icon" id="theater" title="Theater mode (T)" aria-label="Theater mode">${ICON.wide}</button>
         <button class="ghost icon" id="fullscreen" title="Full screen (F)" aria-label="Full screen">${ICON.full}</button>
       </div>
@@ -563,7 +564,7 @@ function setupPlayer(v, card, segments, at) {
     $("#theater").addEventListener("click", () => { const on = !pref("theater"); setPref("theater", on); $("#watch").classList.toggle("theater", on); });
     state.mode = "live";
     state.live = livePlayer(box, video, `/api/live/yt/${encodeURIComponent(v.id)}.m3u8`);
-    $("#fullscreen").addEventListener("click", () => (document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.().catch(() => {})));
+    $("#fullscreen").addEventListener("click", () => fullToggle(box, $("#video")));
     return;
   }
 
@@ -753,18 +754,18 @@ function setupPlayer(v, card, segments, at) {
 
   // theater, full screen, keys
   on($("#theater"), "click", () => { const on_ = !pref("theater"); setPref("theater", on_); $("#watch").classList.toggle("theater", on_); });
-  const fullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen?.().catch(() => {}));
+  const fullscreen = () => fullToggle(box, video);
   on($("#fullscreen"), "click", fullscreen);
   on(video, "dblclick", fullscreen);
   state.keys = (e) => {
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey || inMini(video)) return;
     const k = e.key;
     const act = {
       " ": () => (video.paused ? video.play() : video.pause()), k: () => (video.paused ? video.play() : video.pause()),
       j: () => (video.currentTime -= 10), l: () => (video.currentTime += 10), ArrowLeft: () => (video.currentTime -= 5), ArrowRight: () => (video.currentTime += 5),
       ArrowUp: () => setVolume(video.volume + 0.05), ArrowDown: () => setVolume(video.volume - 0.05),
       m: () => { video.muted = !video.muted; audio.muted = video.muted; toast(video.muted ? "Muted" : "Sound on"); },
-      f: fullscreen, t: () => $("#theater").click(),
+      f: fullscreen, t: () => $("#theater").click(), i: miniSmall,
       c: () => { capSel.selectedIndex = capSel.selectedIndex ? 0 : Math.min(1, capSel.options.length - 1); capSel.dispatchEvent(new Event("change")); },
       ">": () => { video.playbackRate = Math.min(3, video.playbackRate + 0.25); toast(`${video.playbackRate}×`); },
       "<": () => { video.playbackRate = Math.max(0.25, video.playbackRate - 0.25); toast(`${video.playbackRate}×`); },
@@ -809,7 +810,7 @@ function stopPlayer() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   player = null;
 }
-addEventListener("hashchange", () => { if (!location.hash.startsWith("#/watch/")) stopPlayer(); });
+addEventListener("hashchange", () => { if (!location.hash.startsWith("#/watch/") && !inMini(player?.video)) stopPlayer(); }); // small in the corner: it plays on
 
 async function fillAside(v) {
   const aside = $("#aside");
@@ -836,7 +837,7 @@ async function fillAside(v) {
 let autoplayTimer;
 function upNext(now) {
   const next = $("#aside")?.dataset.next;
-  if (!next || (!now && !pref("autoplay"))) return;
+  if (!next || (!now && (!pref("autoplay") || inMini($("#player"))))) return;
   if (now) return go(`#/watch/${next}`);
   const box = $("#player");
   box?.insertAdjacentHTML("beforeend", `<div class="overlay" id="autoplay"><strong>Up next in 5 seconds</strong><div class="actions" style="justify-content:center">
